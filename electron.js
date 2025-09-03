@@ -1,12 +1,14 @@
-const { app, BrowserWindow, dialog } = require('electron');
+// electron.js
+const { app, BrowserWindow } = require('electron');
 const path = require('path');
 const { autoUpdater } = require('electron-updater');
+const { spawn } = require('child_process');
 
 let mainWindow;
 let updateWindow;
-
 const isDev = !app.isPackaged;
 
+// --- fenêtres ---
 function createMainWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -22,13 +24,10 @@ function createMainWindow() {
   if (isDev) {
     mainWindow.loadURL('http://localhost:5173');
   } else {
-    // ton bundle Vite
     mainWindow.loadFile(path.join(__dirname, 'dist', 'index.html'));
   }
 
-  mainWindow.on('ready-to-show', () => {
-    mainWindow.show();
-  });
+  mainWindow.on('ready-to-show', () => mainWindow.show());
 }
 
 function createUpdateWindow() {
@@ -50,58 +49,93 @@ function createUpdateWindow() {
   updateWindow.on('ready-to-show', () => updateWindow.show());
 }
 
-function wireAutoUpdater() {
-  // télécharge automatiquement quand une MAJ est trouvée
-  autoUpdater.autoDownload = true;
+// --- flux d’auto-update (avec contournement PowerShell) ---
+function startUpdateFlow() {
+  // On contrôle le téléchargement manuellement pour lancer l’EXE via CMD
+  autoUpdater.autoDownload = false;
+
+  // (facultatif) logs
+  // const log = require('electron-log'); autoUpdater.logger = log; autoUpdater.logger.transports.file.level = 'info';
 
   autoUpdater.on('checking-for-update', () => {
     updateWindow?.webContents.send('update:event', { type: 'checking' });
   });
 
-  autoUpdater.on('update-available', (info) => {
+  autoUpdater.on('update-available', async (info) => {
     updateWindow?.webContents.send('update:event', { type: 'available', info });
+
+    try {
+      // Télécharge la MAJ et récupère le chemin du setup .exe
+      const files = await autoUpdater.downloadUpdate();
+      const installerPath = Array.isArray(files) ? files[0] : files;
+
+      updateWindow?.webContents.send('update:event', { type: 'downloaded' });
+
+      // Lance l’installateur via CMD (pas PowerShell) puis quitte l’app
+      // Ajoute "/S" pour installation silencieuse NSIS si tu veux : `"${installerPath}" /S`
+      spawn('cmd.exe', ['/c', 'start', '', `"${installerPath}"`], {
+        detached: true,
+        windowsVerbatimArguments: true
+      });
+
+      setTimeout(() => {
+        app.quit(); // laisse l’install se faire, l’app redémarrera ensuite
+      }, 600);
+    } catch (e) {
+      updateWindow?.webContents.send('update:event', { type: 'error', error: e?.message || String(e) });
+      // Ouvre l’app quand même
+      if (updateWindow) { updateWindow.close(); updateWindow = null; }
+      if (!mainWindow) createMainWindow();
+    }
   });
 
   autoUpdater.on('download-progress', (p) => {
-    // p.percent, p.bytesPerSecond, p.transferred, p.total
     updateWindow?.webContents.send('update:event', { type: 'progress', progress: p });
   });
 
   autoUpdater.on('update-not-available', () => {
-    // pas de MAJ → on ferme l’écran d’update et on ouvre l’app
+    // Pas de MAJ → on lance l’app
     if (updateWindow) { updateWindow.close(); updateWindow = null; }
-    createMainWindow();
-  });
-
-  autoUpdater.on('update-downloaded', () => {
-    updateWindow?.webContents.send('update:event', { type: 'downloaded' });
-    // petite latence visuelle puis installation
-    setTimeout(() => {
-      autoUpdater.quitAndInstall(); // redémarre sur la nouvelle version
-    }, 800);
+    if (!mainWindow) createMainWindow();
   });
 
   autoUpdater.on('error', (err) => {
     updateWindow?.webContents.send('update:event', { type: 'error', error: err?.message || String(err) });
-    // fallback : laisser entrer dans l’app au cas où
-    setTimeout(() => {
-      if (updateWindow) { updateWindow.close(); updateWindow = null; }
-      if (!mainWindow) createMainWindow();
-    }, 1200);
+    if (updateWindow) { updateWindow.close(); updateWindow = null; }
+    if (!mainWindow) createMainWindow();
   });
+
+  autoUpdater.checkForUpdates();
 }
 
-app.whenReady().then(() => {
-  if (isDev) {
-    // en dev on lance direct l’app
-    createMainWindow();
-  } else {
-    // en prod on affiche d'abord l'écran d'update
-    createUpdateWindow();
-    wireAutoUpdater();
-    autoUpdater.checkForUpdates();
-  }
-});
+// --- cycle de vie ---
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
 
-app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
-app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createMainWindow(); });
+  app.whenReady().then(() => {
+    if (isDev) {
+      // En dev on ouvre directement l’app
+      createMainWindow();
+    } else {
+      // En prod : petit écran d’update puis flux de MAJ
+      createUpdateWindow();
+      startUpdateFlow();
+    }
+  });
+
+  app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') app.quit();
+  });
+
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
+  });
+}
