@@ -1,4 +1,5 @@
-import React from "react";
+import { motion } from "framer-motion";
+
 export function Switch({ checked = false, onCheckedChange = () => {} }) {
   return (
     <button
@@ -6,9 +7,17 @@ export function Switch({ checked = false, onCheckedChange = () => {} }) {
       role="switch"
       aria-checked={checked}
       onClick={() => onCheckedChange(!checked)}
-      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 ${checked ? "bg-indigo-500" : "bg-slate-600"} shadow-inner`}
+      className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors duration-200 
+        ${checked ? "bg-indigo-500/80" : "bg-slate-600/80"} shadow-inner`}
     >
-      <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform duration-200 shadow ${checked ? "translate-x-5" : "translate-x-1"}`} />
+      <motion.span
+        layout
+        transition={{ type: "spring", stiffness: 600, damping: 32 }}
+        className="inline-block h-6 w-6 rounded-full bg-white shadow"
+        style={{ x: checked ? 20 : 2 }}
+      />
+      {/* halo doux */}
+      {checked && <span className="absolute inset-0 rounded-full ring-2 ring-indigo-300/30 pointer-events-none" />}
     </button>
   );
 }

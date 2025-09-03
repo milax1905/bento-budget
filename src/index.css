@@ -17,3 +17,28 @@ body {
 
 /* Accessoires */
 * { box-sizing: border-box; }
+
+/* Slider coocooning */
+.bb-slider{
+  -webkit-appearance:none; appearance:none;
+  width:100%; height:10px; border-radius:9999px;
+  background:#334155; outline:none;
+  transition: box-shadow .2s ease;
+}
+.bb-slider::-webkit-slider-thumb{
+  -webkit-appearance:none; appearance:none;
+  width:18px; height:18px; border-radius:9999px;
+  background:#fff; box-shadow:0 2px 8px rgba(0,0,0,.25);
+  border:2px solid rgba(99,102,241,.8);
+  transition: transform .12s ease;
+}
+.bb-slider:active::-webkit-slider-thumb{ transform:scale(.95); }
+.bb-slider::-moz-range-thumb{
+  width:18px; height:18px; border-radius:9999px;
+  background:#fff; border:2px solid rgba(99,102,241,.8);
+}
+
+/* Réduit les animations si l'OS le demande */
+@media (prefers-reduced-motion: reduce){
+  * { animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important; scroll-behavior:auto !important; }
+}
