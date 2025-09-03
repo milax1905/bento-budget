@@ -2,13 +2,13 @@ import React, { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
   Card, CardHeader, CardTitle, CardContent, CardDescription,
-} from "./components/ui/card";
-import { Button } from "./components/ui/button";
-import { Input } from "./components/ui/input";
-import { Label } from "./components/ui/label";
-import { Textarea } from "./components/ui/textarea";
-import { Slider } from "./components/ui/slider";
-import ThemeToggle from "./components/ui/ThemeToggle";
+} from "./card";                 // ⬅️ local
+import { Button } from "./button"; // ⬅️ local
+import { Input } from "./input";
+import { Label } from "./label";
+import { Textarea } from "./textarea";
+import { Slider } from "./slider";
+import ThemeToggle from "./ThemeToggle";
 import "./index.css";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -21,7 +21,7 @@ import {
 
 /* ---------- Utils ---------- */
 
-const CURRENCIES = ["€", "$", "£", "CHF", "¥"]; 
+const CURRENCIES = ["€", "$", "£", "CHF", "¥"];
 const DEFAULT_BUDGETS = [
   { name: "Logement",   limit: 600, color: "#A5B4FC" },
   { name: "Courses",    limit: 300, color: "#FBCFE8" },
@@ -218,8 +218,8 @@ export default function BentoBudgetApp() {
       style={{
         backgroundImage:
           "radial-gradient(1200px 600px at 50% -200px, rgba(99,102,241,.08), transparent 60%)",
-        }}
-      >
+      }}
+    >
       <div className="mx-auto w-full max-w-screen-2xl px-3 sm:px-4 lg:px-6">
         {/* Header */}
         <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
@@ -652,7 +652,7 @@ function QuickAdd({ onAdd, currency, budgets }) {
 
   return (
     <div className="space-y-3">
-      {/* <<< isolate = nouveau contexte de pile pour éviter que les ombres passent au-dessus des voisins >>> */}
+      {/* isolate = évite que les ombres glissent sur les voisins */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-stretch isolate">
         {/* TYPE */}
         <div className="relative z-0 rounded-xl bg-slate-800/40 p-2 overflow-hidden min-w-0">
@@ -677,7 +677,7 @@ function QuickAdd({ onAdd, currency, budgets }) {
           </div>
         </div>
 
-        {/* MONTANT — priorité de rendu au-dessus du bloc TYPE */}
+        {/* MONTANT (z-10 pour passer au-dessus si besoin) */}
         <div className="relative z-10 rounded-xl bg-slate-800/40 p-2 overflow-hidden min-w-0">
           <Label className="text-xs">Montant ({currency})</Label>
           <Input
