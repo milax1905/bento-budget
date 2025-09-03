@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <title>Bento Budget</title>
+
+    <!-- Tailwind CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      // petit réglage Tailwind
+      tailwind.config = {
+        darkMode: 'class',
+        theme: { extend: {} },
+      };
+    </script>
+
+    <!-- Styles pour le slider -->
+    <style>
+      .bb-slider{appearance:none;-webkit-appearance:none;width:100%;height:10px;border-radius:9999px;background:#334155;outline:none}
+      .bb-slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:18px;height:18px;border-radius:9999px;background:#fff;border:2px solid #6366f1;box-shadow:0 2px 8px rgba(0,0,0,.25);cursor:pointer}
+      .bb-slider::-moz-range-thumb{width:18px;height:18px;border-radius:9999px;background:#fff;border:2px solid #6366f1;box-shadow:0 2px 8px rgba(0,0,0,.25);cursor:pointer}
+    </style>
+  </head>
+
+  <body class="bg-slate-950">
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

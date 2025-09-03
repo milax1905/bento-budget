@@ -1,0 +1,19 @@
+@import "tailwindcss";
+
+/* Thème clair/sombre */
+html { @apply bg-white text-black; }
+html.dark { @apply bg-slate-900 text-white; }
+
+/* Remplir la fenêtre (Web/Tauri) */
+html, body, #root { height: 100%; }
+
+/* Corps simple (pas le CSS par défaut de Vite qui centre tout) */
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: transparent;
+}
+
+/* Accessoires */
+* { box-sizing: border-box; }
