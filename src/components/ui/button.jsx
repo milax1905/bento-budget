@@ -2,7 +2,7 @@ import { motion } from "framer-motion";
 
 const styles = {
   glow:
-    "relative inline-flex items-center justify-center rounded-2xl px-4 py-2 font-medium " +
+    "group relative inline-flex items-center justify-center rounded-2xl px-4 py-2 font-medium " +
     "text-white bg-gradient-to-br from-indigo-500 to-violet-500 " +
     "shadow-[0_10px_30px_-10px_rgba(99,102,241,.55)] overflow-hidden",
   secondary:
@@ -32,11 +32,11 @@ export function Button({ children, className = "", variant = "glow", ...props })
       {/* texte au-dessus */}
       <span className="relative z-10">{children}</span>
 
-      {/* halo radial (pas besoin de group) */}
+      {/* halo radial (déclenché par group-hover) */}
       {variant === "glow" && (
         <span
           aria-hidden
-          className="pointer-events-none absolute -inset-16 rounded-full opacity-0 transition-opacity duration-200 hover:opacity-100"
+          className="pointer-events-none absolute -inset-16 rounded-full opacity-0 transition-opacity duration-200 group-hover:opacity-100"
           style={{
             background:
               "radial-gradient(360px 160px at 50% 120%, rgba(34,211,238,.32), transparent 60%)",
@@ -48,7 +48,7 @@ export function Button({ children, className = "", variant = "glow", ...props })
       {variant === "glow" && (
         <span
           aria-hidden
-          className="pointer-events-none absolute inset-0 rounded-2xl opacity-0 transition-opacity duration-200 hover:opacity-20"
+          className="pointer-events-none absolute inset-0 rounded-2xl opacity-0 transition-opacity duration-200 group-hover:opacity-20"
           style={{
             background:
               "linear-gradient(120deg, rgba(255,255,255,.38), rgba(255,255,255,0) 60%)",

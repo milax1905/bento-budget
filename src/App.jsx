@@ -213,7 +213,13 @@ export default function BentoBudgetApp() {
 
   /* --------- UI --------- */
   return (
-    <div className="min-h-screen w-full overflow-x-hidden bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100 p-4 md:p-8">
+    <div
+      className="min-h-screen w-full overflow-x-hidden text-slate-100 p-4 md:p-8 bg-slate-950"
+      style={{
+        backgroundImage:
+          "radial-gradient(1200px 600px at 50% -200px, rgba(99,102,241,.08), transparent 60%)",
+        }}
+      >
       <div className="mx-auto w-full max-w-screen-2xl px-3 sm:px-4 lg:px-6">
         {/* Header */}
         <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
