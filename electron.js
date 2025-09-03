@@ -3,82 +3,105 @@ const path = require('path');
 const { autoUpdater } = require('electron-updater');
 
 let mainWindow;
+let updateWindow;
 
-function createWindow() {
+const isDev = !app.isPackaged;
+
+function createMainWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     backgroundColor: '#0f172a',
+    show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
-      contextIsolation: false,
-      nodeIntegration: false,
-    },
+      contextIsolation: true
+    }
   });
-
-  const isDev = !app.isPackaged;
 
   if (isDev) {
     mainWindow.loadURL('http://localhost:5173');
   } else {
+    // ton bundle Vite
     mainWindow.loadFile(path.join(__dirname, 'dist', 'index.html'));
   }
 
-  // Quand la fenêtre est prête → vérifier les mises à jour
-  mainWindow.once('ready-to-show', () => {
-    if (!isDev) checkForUpdates();
+  mainWindow.on('ready-to-show', () => {
+    mainWindow.show();
   });
 }
 
-// --- Auto Update ---
-function checkForUpdates() {
-  // Activer le log si besoin
-  // const log = require('electron-log');
-  // autoUpdater.logger = log;
-  // autoUpdater.logger.transports.file.level = 'info';
+function createUpdateWindow() {
+  updateWindow = new BrowserWindow({
+    width: 460,
+    height: 200,
+    resizable: false,
+    fullscreenable: false,
+    backgroundColor: '#0b1220',
+    titleBarStyle: 'hiddenInset',
+    frame: true,
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true
+    }
+  });
+  updateWindow.loadFile(path.join(__dirname, 'update.html'));
+  updateWindow.on('ready-to-show', () => updateWindow.show());
+}
 
+function wireAutoUpdater() {
+  // télécharge automatiquement quand une MAJ est trouvée
   autoUpdater.autoDownload = true;
 
-  // Quand une MAJ est trouvée
-  autoUpdater.on('update-available', () => {
-    dialog.showMessageBox({
-      type: 'info',
-      title: 'Mise à jour disponible',
-      message: 'Une nouvelle version de Bento Budget est disponible. Téléchargement en cours...'
-    });
+  autoUpdater.on('checking-for-update', () => {
+    updateWindow?.webContents.send('update:event', { type: 'checking' });
   });
 
-  // Quand la MAJ est téléchargée
+  autoUpdater.on('update-available', (info) => {
+    updateWindow?.webContents.send('update:event', { type: 'available', info });
+  });
+
+  autoUpdater.on('download-progress', (p) => {
+    // p.percent, p.bytesPerSecond, p.transferred, p.total
+    updateWindow?.webContents.send('update:event', { type: 'progress', progress: p });
+  });
+
+  autoUpdater.on('update-not-available', () => {
+    // pas de MAJ → on ferme l’écran d’update et on ouvre l’app
+    if (updateWindow) { updateWindow.close(); updateWindow = null; }
+    createMainWindow();
+  });
+
   autoUpdater.on('update-downloaded', () => {
-    dialog.showMessageBox({
-      type: 'info',
-      title: 'Mise à jour prête',
-      message: 'La mise à jour a été téléchargée. Redémarrer maintenant ?',
-      buttons: ['Oui', 'Plus tard']
-    }).then(result => {
-      if (result.response === 0) {
-        autoUpdater.quitAndInstall();
-      }
-    });
+    updateWindow?.webContents.send('update:event', { type: 'downloaded' });
+    // petite latence visuelle puis installation
+    setTimeout(() => {
+      autoUpdater.quitAndInstall(); // redémarre sur la nouvelle version
+    }, 800);
   });
 
-  // En cas d'erreur
   autoUpdater.on('error', (err) => {
-    console.error('Erreur auto-update :', err);
+    updateWindow?.webContents.send('update:event', { type: 'error', error: err?.message || String(err) });
+    // fallback : laisser entrer dans l’app au cas où
+    setTimeout(() => {
+      if (updateWindow) { updateWindow.close(); updateWindow = null; }
+      if (!mainWindow) createMainWindow();
+    }, 1200);
   });
-
-  // Lancer la vérification
-  autoUpdater.checkForUpdates();
 }
 
-app.whenReady().then(createWindow);
-
-// Fermer l'app quand toutes les fenêtres sont fermées
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
+app.whenReady().then(() => {
+  if (isDev) {
+    // en dev on lance direct l’app
+    createMainWindow();
+  } else {
+    // en prod on affiche d'abord l'écran d'update
+    createUpdateWindow();
+    wireAutoUpdater();
+    autoUpdater.checkForUpdates();
+  }
 });
 
-// Réouvrir une fenêtre si l'app est relancée sur Mac
-app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) createWindow();
-});
+app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createMainWindow(); });

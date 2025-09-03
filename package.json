@@ -1,6 +1,6 @@
 {
   "name": "bento-budget",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "Application de gestion de budget futuriste avec comptes, budgets, et suivi en temps réel.",
   "private": true,
   "main": "electron.js",
@@ -19,7 +19,8 @@
       "dist/**/*",
       "electron.js",
       "preload.js",
-      "index.html"
+      "index.html",
+      "update.html"
     ],
     "asar": true,
     "directories": {
@@ -34,7 +35,8 @@
       {
         "provider": "github",
         "owner": "milax1905",
-        "repo": "bento-budget"
+        "repo": "bento-budget",
+        "releaseType": "release"
       }
     ]
   },
