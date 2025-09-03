@@ -1,14 +1,18 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import {
-  Card, CardHeader, CardTitle, CardContent, CardDescription,
-} from "./card";                 // ⬅️ local
-import { Button } from "./button"; // ⬅️ local
-import { Input } from "./input";
-import { Label } from "./label";
-import { Textarea } from "./textarea";
-import { Slider } from "./slider";
-import ThemeToggle from "./ThemeToggle";
+// Components locaux (selon ta structure src/components/ui/)
+import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "./components/ui/card";
+import { Button } from "./components/ui/button";   // export nommé
+
+import Input from "./components/ui/input";          // export par défaut
+import Label from "./components/ui/label";          // export par défaut
+import Textarea from "./components/ui/textarea";    // export par défaut
+import Slider from "./components/ui/slider";        // export par défaut
+
+import ThemeToggle from "./components/ui/ThemeToggle"; // export par défaut
+
+// (si tu utilises le dashboard séparé)
+import Dashboard from "./components/ui/Dashboard";  // export par défaut
 import "./index.css";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
