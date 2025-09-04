@@ -45,6 +45,7 @@
     "url": "https://github.com/milax1905/bento-budget.git"
   },
   "dependencies": {
+    "electron-log": "^5.4.3",
     "electron-updater": "^6.6.2",
     "framer-motion": "^12.23.12",
     "lucide-react": "^0.302.0",
