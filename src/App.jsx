@@ -10,7 +10,7 @@ import { Textarea } from "./components/ui/textarea";  // ⬅ named
 import { Slider } from "./components/ui/slider";      // ⬅ named
 
 import ThemeToggle from "./components/ui/ThemeToggle"; // stays default
-import { Dashboard } from "./components/ui/Dashboard";     // if you use it
+import Dashboard from "./components/ui/Dashboard";     // if you use it
 import "./index.css";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
