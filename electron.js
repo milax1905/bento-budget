@@ -49,48 +49,30 @@ function createUpdateWindow() {
   updateWindow.on('ready-to-show', () => updateWindow.show());
 }
 
-// --- flux d’auto-update (avec contournement PowerShell) ---
+// --- flux d’auto-update (maintenant simplifié et fiable) ---
 function startUpdateFlow() {
-  // On contrôle le téléchargement manuellement pour lancer l’EXE via CMD
+  // autoUpdater.autoDownload = false; est conservé pour le contrôle
+  // du téléchargement, mais l'installation est gérée par la méthode intégrée
   autoUpdater.autoDownload = false;
-
-  // (facultatif) logs
-  // const log = require('electron-log'); autoUpdater.logger = log; autoUpdater.logger.transports.file.level = 'info';
 
   autoUpdater.on('checking-for-update', () => {
     updateWindow?.webContents.send('update:event', { type: 'checking' });
   });
 
-  autoUpdater.on('update-available', async (info) => {
+  autoUpdater.on('update-available', (info) => {
     updateWindow?.webContents.send('update:event', { type: 'available', info });
-
-    try {
-      // Télécharge la MAJ et récupère le chemin du setup .exe
-      const files = await autoUpdater.downloadUpdate();
-      const installerPath = Array.isArray(files) ? files[0] : files;
-
-      updateWindow?.webContents.send('update:event', { type: 'downloaded' });
-
-      // Lance l’installateur via CMD (pas PowerShell) puis quitte l’app
-      // Ajoute "/S" pour installation silencieuse NSIS si tu veux : `"${installerPath}" /S`
-      spawn('cmd.exe', ['/c', 'start', '', `"${installerPath}"`], {
-        detached: true,
-        windowsVerbatimArguments: true
-      });
-
-      setTimeout(() => {
-        app.quit(); // laisse l’install se faire, l’app redémarrera ensuite
-      }, 600);
-    } catch (e) {
-      updateWindow?.webContents.send('update:event', { type: 'error', error: e?.message || String(e) });
-      // Ouvre l’app quand même
-      if (updateWindow) { updateWindow.close(); updateWindow = null; }
-      if (!mainWindow) createMainWindow();
-    }
+    // On commence le téléchargement de la mise à jour
+    autoUpdater.downloadUpdate();
   });
 
   autoUpdater.on('download-progress', (p) => {
     updateWindow?.webContents.send('update:event', { type: 'progress', progress: p });
+  });
+
+  autoUpdater.on('update-downloaded', () => {
+    updateWindow?.webContents.send('update:event', { type: 'downloaded' });
+    // L'installation est prête. On quitte l'application pour lancer l'installateur.
+    autoUpdater.quitAndInstall();
   });
 
   autoUpdater.on('update-not-available', () => {
