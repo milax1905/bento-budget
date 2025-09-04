@@ -618,6 +618,16 @@ function YearView({ state, setState, yearsAvailable, selYear, setSelYear, yearSe
   );
 }
 
+function BentoCard({ children, className="", gradient="from-indigo-400/10 via-fuchsia-400/10 to-cyan-400/10" }) {
+  return (
+    <div className={`min-w-0 rounded-3xl bg-slate-900/60 backdrop-blur shadow-[0_10px_40px_-15px_rgba(0,0,0,0.6)] ring-1 ring-white/10 ${className}`} style={{ backgroundImage: `linear-gradient(135deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02))` }}>
+      <div className={`rounded-3xl bg-gradient-to-br ${gradient}`}>
+        <Card className="bg-transparent border-0 shadow-none">{children}</Card>
+      </div>
+    </div>
+  );
+}
+
 /* ---------- Shared subcomponents ---------- */
 
 function BentoCard({ children, className="", gradient="from-indigo-400/10 via-fuchsia-400/10 to-cyan-400/10" }) {
