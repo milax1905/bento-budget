@@ -1,10 +1,11 @@
 {
   "name": "bento-budget",
-  "version": "2.2.3",
-  "description": "Application de gestion de budget futuriste avec comptes, budgets, et suivi en temps réel.",
+  "version": "2.2.4",
+  "description": "Application de gestion de budget futuriste avec comptes, budgets et suivi en temps réel.",
   "private": true,
   "main": "electron.js",
   "author": "Axel",
+
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -12,25 +13,34 @@
     "dist": "cross-env NODE_ENV=production vite build && electron-builder",
     "publish": "cross-env NODE_ENV=production vite build && electron-builder --publish always"
   },
+
   "build": {
     "appId": "com.bento.budget",
     "productName": "Bento Budget",
+
     "files": [
       "dist/**/*",
       "electron.js",
       "preload.js",
-      "index.html",
-      "update.html"
+      "assets/**/*"
     ],
     "asar": true,
     "directories": {
       "buildResources": "assets"
     },
+
     "win": {
       "target": "nsis",
       "icon": "assets/icon.ico",
-      "publisherName": "Axel"
+      "verifyUpdateCodeSignature": false
     },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": false
+    },
+
     "publish": [
       {
         "provider": "github",
@@ -40,10 +50,12 @@
       }
     ]
   },
+
   "repository": {
     "type": "git",
     "url": "https://github.com/milax1905/bento-budget.git"
   },
+
   "dependencies": {
     "electron-log": "^5.4.3",
     "electron-updater": "^6.6.2",

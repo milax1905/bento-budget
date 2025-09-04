@@ -41,8 +41,7 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 if (process.platform === 'win32') {
-  // Mets ici ton appId (même que build.appId)
-  app.setAppUserModelId('com.yourorg.yourapp');
+  app.setAppUserModelId('com.bento.budget'); // <- même que build.appId
 }
 
 // Sécurité: bloque les navigations externes
