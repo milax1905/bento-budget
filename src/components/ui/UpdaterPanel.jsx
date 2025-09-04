@@ -1,3 +1,4 @@
+// src/pages/UpdatesPage.jsx
 import React from "react";
 
 const safeBento = (typeof window !== "undefined" && window.bento) ? window.bento : {
@@ -6,52 +7,42 @@ const safeBento = (typeof window !== "undefined" && window.bento) ? window.bento
   update: { check: async () => {}, download: async () => {}, install: async () => {} },
 };
 
-export default function UpdaterPanel() {
+export default function UpdatesPage() {
   const [info, setInfo] = React.useState({ version: "?", platform: "", arch: "", isPackaged: false });
   const [status, setStatus] = React.useState("idle");
   const [progress, setProgress] = React.useState(null);
   const [availableVersion, setAvailableVersion] = React.useState(null);
   const [error, setError] = React.useState("");
+  const [logLines, setLogLines] = React.useState([]);
 
   React.useEffect(() => {
     (async () => {
       try {
         const i = await safeBento.app.getInfo();
         setInfo(i);
-      } catch (e) {
-        setError(String(e));
-      }
+      } catch (e) { setError(String(e)); }
     })();
 
+    const push = (t) => setLogLines((lines) => [...lines.slice(-199), `${new Date().toLocaleTimeString()}  ${t}`]);
+
     safeBento.onUpdateEvent((ev) => {
-      if (!ev || !ev.type) return;
+      if (!ev?.type) return;
       switch (ev.type) {
         case "checking":
-          setStatus("checking");
-          setError("");
-          break;
+          setStatus("checking"); setError(""); push("Vérification des mises à jour…"); break;
         case "available":
-          setStatus("available");
-          setAvailableVersion(ev.info?.version || null);
-          setError("");
-          break;
+          setStatus("available"); setAvailableVersion(ev.info?.version || null); setError(""); push(`Nouvelle version ${ev.info?.version} trouvée. Téléchargement…`); break;
         case "none":
-          setStatus("none");
-          setAvailableVersion(null);
-          setError("");
-          break;
+          setStatus("none"); setAvailableVersion(null); setError(""); push("Aucune mise à jour disponible."); break;
         case "progress":
-          setStatus("downloading");
-          setProgress(ev.progress || null);
-          setError("");
+          setStatus("downloading"); setProgress(ev.progress || null);
+          push(`Téléchargement: ${ev.progress?.percent?.toFixed?.(1) ?? "?"}% (${Math.round(ev.progress?.bytesPerSecond/1024)||0} kB/s)`); 
           break;
         case "downloaded":
-          setStatus("downloaded");
-          setError("");
+          setStatus("downloaded"); setError(""); push("Téléchargement terminé. Prêt à installer.");
           break;
         case "error":
-          setStatus("error");
-          setError(ev.error || "Erreur inconnue");
+          setStatus("error"); setError(ev.error || "Erreur inconnue"); push(`Erreur: ${ev.error || "inconnue"}`);
           break;
       }
     });
@@ -60,85 +51,81 @@ export default function UpdaterPanel() {
   const pct = progress?.percent ? Math.max(0, Math.min(100, progress.percent)) : null;
 
   return (
-    <div style={styles.card}>
-      <div style={styles.row}>
-        <strong>Version</strong>
-        <span>v{info.version}</span>
-      </div>
-      <div style={styles.row}>
-        <strong>Plateforme</strong>
-        <span>{info.platform} {info.arch}</span>
-      </div>
-      <div style={styles.row}>
-        <strong>Mode</strong>
-        <span>{info.isPackaged ? "Production (installée)" : "Dev/Unpacked"}</span>
-      </div>
+    <div className="min-h-screen w-full bg-slate-950 text-slate-100 p-6 md:p-10">
+      <div className="mx-auto w-full max-w-4xl">
+        <header className="flex items-center justify-between gap-2">
+          <div>
+            <h1 className="text-2xl md:text-3xl font-semibold">Mises à jour</h1>
+            <p className="text-slate-400 text-sm">Gestion des mises à jour de l’application</p>
+          </div>
+          <a href="#/" className="rounded-xl px-3 py-2 bg-slate-800/60 hover:bg-slate-700/60 transition text-sm">← Retour</a>
+        </header>
 
-      <div style={{marginTop: 12, fontSize: 12, opacity: 0.8}}>
-        Statut MAJ&nbsp;: {renderStatus(status, availableVersion, pct, error)}
-      </div>
+        <section className="mt-6 grid gap-4">
+          <div className="rounded-2xl bg-slate-900/60 p-4 ring-1 ring-white/10">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+              <Info label="Version installée" value={`v${info.version}`} />
+              <Info label="Plateforme" value={`${info.platform} ${info.arch}`} />
+              <Info label="Mode" value={info.isPackaged ? "Production (installée)" : "Dev/Unpacked"} />
+            </div>
+          </div>
 
-      <div style={{display: "flex", gap: 8, marginTop: 12}}>
-        <button onClick={() => safeBento.update.check()} style={styles.btn}>Vérifier</button>
-        {status === "downloaded" && (
-          <button onClick={() => safeBento.update.install()} style={styles.btnPrimary}>Installer et redémarrer</button>
-        )}
-      </div>
+          <div className="rounded-2xl bg-slate-900/60 p-4 ring-1 ring-white/10 space-y-3">
+            <h2 className="text-lg font-medium">Statut</h2>
+            <StatusLine status={status} availableVersion={availableVersion} error={error} />
+            <ProgressBar percent={pct} />
 
-      {/* badge discret en bas à droite de l’app */}
-      <div style={styles.badge}>v{info.version} • {info.platform} {info.arch}</div>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={() => safeBento.update.check()} className="rounded-xl px-4 py-2 bg-indigo-600 hover:bg-indigo-500 transition">Vérifier</button>
+              {status === "downloaded" && (
+                <button onClick={() => safeBento.update.install()} className="rounded-xl px-4 py-2 bg-emerald-600 hover:bg-emerald-500 transition">
+                  Installer et redémarrer
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-2xl bg-slate-900/60 p-4 ring-1 ring-white/10">
+            <h3 className="text-md font-medium mb-2">Journal</h3>
+            <div className="h-48 overflow-auto rounded-xl bg-slate-950/70 p-2 text-xs font-mono whitespace-pre-wrap">
+              {logLines.length === 0 ? <div className="opacity-60">—</div> : logLines.map((l, i) => <div key={i}>{l}</div>)}
+            </div>
+          </div>
+        </section>
+
+        <footer className="mt-8 text-xs text-slate-500">
+          v{info.version} • {info.platform} {info.arch}
+        </footer>
+      </div>
     </div>
   );
 }
 
-function renderStatus(status, availableVersion, pct, error) {
-  switch (status) {
-    case "idle": return "—";
-    case "checking": return "Vérification en cours…";
-    case "available": return <>Mise à jour disponible : <strong>{availableVersion}</strong>. Téléchargement en cours…</>;
-    case "downloading": return <>Téléchargement… {pct !== null ? pct.toFixed(1) + "%" : ""}</>;
-    case "downloaded": return <>Mise à jour téléchargée. Prête à installer.</>;
-    case "none": return "Aucune mise à jour disponible.";
-    case "error": return <span style={{color: "#ff6b6b"}}>Erreur : {error}</span>;
-    default: return status;
-  }
+function Info({ label, value }) {
+  return (
+    <div className="rounded-xl bg-slate-800/50 p-3">
+      <div className="text-slate-400 text-xs">{label}</div>
+      <div className="mt-1 font-medium">{value}</div>
+    </div>
+  );
 }
 
-const styles = {
-  card: {
-    position: "relative",
-    padding: 12,
-    borderRadius: 10,
-    background: "rgba(255,255,255,0.04)",
-    border: "1px solid rgba(255,255,255,0.08)",
-    maxWidth: 420
-  },
-  row: {
-    display: "flex",
-    justifyContent: "space-between",
-    fontSize: 14,
-    marginTop: 4
-  },
-  btn: {
-    padding: "8px 12px",
-    borderRadius: 8,
-    border: "1px solid rgba(255,255,255,0.15)",
-    background: "transparent",
-    cursor: "pointer"
-  },
-  btnPrimary: {
-    padding: "8px 12px",
-    borderRadius: 8,
-    border: "none",
-    background: "linear-gradient(90deg, #7c4dff, #6a8dff)",
-    color: "white",
-    cursor: "pointer"
-  },
-  badge: {
-    position: "absolute",
-    right: 8,
-    bottom: 6,
-    fontSize: 11,
-    opacity: 0.6
-  }
-};
+function StatusLine({ status, availableVersion, error }) {
+  let text = "—";
+  if (status === "checking") text = "Vérification en cours…";
+  if (status === "available") text = `Mise à jour disponible : v${availableVersion}. Téléchargement…`;
+  if (status === "downloading") text = "Téléchargement…";
+  if (status === "downloaded") text = "Mise à jour téléchargée. Prête à installer.";
+  if (status === "none") text = "Aucune mise à jour disponible.";
+  if (status === "error") text = `Erreur : ${error}`;
+  return <div className="text-sm">{text}</div>;
+}
+
+function ProgressBar({ percent }) {
+  if (percent === null) return null;
+  return (
+    <div className="h-2 w-full rounded-full bg-slate-800 overflow-hidden">
+      <div className="h-full bg-indigo-500 transition-all" style={{ width: `${percent}%` }} />
+    </div>
+  );
+}

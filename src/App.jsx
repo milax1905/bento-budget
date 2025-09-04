@@ -240,6 +240,9 @@ export default function App() {
               )}
             </div>
           </div>
+            <a href="#/updates" className="rounded-xl px-3 py-2 bg-slate-800/60 hover:bg-slate-700/60 transition text-sm">
+              Mises à jour
+          </a>
         </header>
 
         {/* Tabs */}
@@ -649,6 +652,13 @@ function KPI({ label, value, icon }) {
     </div>
   );
 }
+
+const [route, setRoute] = useState(() => (window.location.hash || "#/"));
+useEffect(() => {
+  const onHash = () => setRoute(window.location.hash || "#/");
+  window.addEventListener("hashchange", onHash);
+  return () => window.removeEventListener("hashchange", onHash);
+}, []);
 
 function QuickAdd({ onAdd, currency, budgets }) {
   const [type, setType] = useState("expense");
