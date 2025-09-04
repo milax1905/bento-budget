@@ -657,7 +657,7 @@ function QuickAdd({ onAdd, currency, budgets }) {
       {/* isolate = évite que les ombres glissent sur les voisins */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-stretch isolate">
         {/* TYPE */}
-        <div className="relative z-0 rounded-xl bg-slate-800/40 p-2 overflow-hidden min-w-0">
+        <div className="rounded-xl bg-slate-800/40 p-2 min-w-0">
           <Label className="text-xs">Type</Label>
           <div className="mt-2 flex gap-2">
             <Button
@@ -680,7 +680,7 @@ function QuickAdd({ onAdd, currency, budgets }) {
         </div>
 
         {/* MONTANT (z-10 pour passer au-dessus si besoin) */}
-        <div className="relative z-10 rounded-xl bg-slate-800/40 p-2 overflow-hidden min-w-0">
+        <div className="rounded-xl bg-slate-800/40 p-2 min-w-0">
           <Label className="text-xs">Montant ({currency})</Label>
           <Input
             type="number"
