@@ -3,16 +3,15 @@ import { motion } from "framer-motion";
 // Components (match your folders: src/components/ui)
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "./components/ui/card";
 import { Button } from "./components/ui/button";
-
-import { Input } from "./components/ui/input";        // ⬅ named
-import { Label } from "./components/ui/label";        // ⬅ named
-import { Textarea } from "./components/ui/textarea";  // ⬅ named
-import { Slider } from "./components/ui/slider";      // ⬅ named
+import { Input } from "./components/ui/input";
+import { Label } from "./components/ui/label";
+import { Textarea } from "./components/ui/textarea";
+import { Slider } from "./components/ui/slider";
 import UpdaterPanel from "./components/UpdaterPanel.jsx";
 
-import ThemeToggle from "./components/ui/ThemeToggle"; // stays default
-import Dashboard from "./components/ui/Dashboard";     // if you use it
+import ThemeToggle from "./components/ui/ThemeToggle";
 import "./index.css";
+
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, BarChart, Bar, Legend
@@ -51,20 +50,9 @@ function useLocalState(key, initial) {
 
 function monthLabel(m) { return ["Jan","Fév","Mar","Avr","Mai","Juin","Juil","Août","Sep","Oct","Nov","Déc"][m]; }
 
-/* ---------- App ---------- */
+/* ---------- App (unique default export) ---------- */
 
 export default function App() {
-  return (
-    <div>
-      {/* ... ton UI existante ... */}
-      <div style={{ position: "fixed", right: 16, bottom: 16, zIndex: 9999 }}>
-        <UpdaterPanel />
-      </div>
-    </div>
-  );
-}
-
-export default function BentoBudgetApp() {
   const [state, setState] = useLocalState(STORAGE_KEY, {
     theme: "dark",
     currency: "€",
@@ -205,7 +193,7 @@ export default function BentoBudgetApp() {
     r.readAsText(file);
   };
 
-  /* --------- Yearly aggregations (unchanged) --------- */
+  /* --------- Yearly aggregations --------- */
   const yearsAvailable = useMemo(() => {
     const years = new Set(state.transactions.map(t => new Date(t.date).getFullYear()));
     years.add(selYear);
@@ -298,6 +286,11 @@ export default function BentoBudgetApp() {
             yearSeries={yearSeries}
           />
         )}
+      </div>
+
+      {/* badge/version + panneau updater */}
+      <div style={{ position: "fixed", right: 16, bottom: 16, zIndex: 9999 }}>
+        <UpdaterPanel />
       </div>
     </div>
   );
@@ -631,8 +624,6 @@ function YearView({ state, setState, yearsAvailable, selYear, setSelYear, yearSe
 }
 
 /* ---------- Shared subcomponents ---------- */
-// NOTE: La première version de BentoCard qui était dupliquée a été supprimée
-// pour éviter les conflits de noms. Seule la version avec motion est conservée.
 
 function BentoCard({ children, className="", gradient="from-indigo-400/10 via-fuchsia-400/10 to-cyan-400/10" }) {
   return (
@@ -693,7 +684,7 @@ function QuickAdd({ onAdd, currency, budgets }) {
           </div>
         </div>
 
-        {/* MONTANT (z-10 pour passer au-dessus si besoin) */}
+        {/* MONTANT */}
         <div className="rounded-xl bg-slate-800/40 p-2 min-w-0">
           <Label className="text-xs">Montant ({currency})</Label>
           <Input
