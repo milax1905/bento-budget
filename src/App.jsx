@@ -8,6 +8,7 @@ import { Input } from "./components/ui/input";        // ⬅ named
 import { Label } from "./components/ui/label";        // ⬅ named
 import { Textarea } from "./components/ui/textarea";  // ⬅ named
 import { Slider } from "./components/ui/slider";      // ⬅ named
+import UpdaterPanel from "./components/UpdaterPanel.jsx";
 
 import ThemeToggle from "./components/ui/ThemeToggle"; // stays default
 import Dashboard from "./components/ui/Dashboard";     // if you use it
@@ -51,6 +52,17 @@ function useLocalState(key, initial) {
 function monthLabel(m) { return ["Jan","Fév","Mar","Avr","Mai","Juin","Juil","Août","Sep","Oct","Nov","Déc"][m]; }
 
 /* ---------- App ---------- */
+
+export default function App() {
+  return (
+    <div>
+      {/* ... ton UI existante ... */}
+      <div style={{ position: "fixed", right: 16, bottom: 16, zIndex: 9999 }}>
+        <UpdaterPanel />
+      </div>
+    </div>
+  );
+}
 
 export default function BentoBudgetApp() {
   const [state, setState] = useLocalState(STORAGE_KEY, {
