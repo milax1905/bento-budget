@@ -100,35 +100,81 @@ function createMainWindow() {
   return mainWindow;
 }
 
-// ---- Auto‑update flow ------------------------------------------------------
+// ---- Auto-update flow ------------------------------------------------------
 function wireAutoUpdaterIpc() {
   const send = (payload) => {
-    try { mainWindow?.webContents.send('update:event', payload); } catch (e) { log.warn('send fail', e); }
+    try {
+      mainWindow?.webContents.send("update:event", payload);
+    } catch (e) {
+      log.warn("send fail", e);
+    }
   };
 
-  autoUpdater.on('checking-for-update', () => { log.info('checking-for-update'); send({ type: 'checking' }); });
-  autoUpdater.on('update-available', (info) => { log.info('update-available', info?.version); send({ type: 'available', info }); autoUpdater.downloadUpdate().catch((err)=>{ log.error('downloadUpdate', err); send({ type:'error', error:String(err) }); }); });
-  autoUpdater.on('update-not-available', (info) => { log.info('update-not-available', info?.version); send({ type: 'none', info }); });
-  autoUpdater.on('download-progress', (progress) => send({ type: 'progress', progress }));
-  autoUpdater.on('error', (err) => { log.error('autoUpdater error', err); send({ type: 'error', error: err?.message || String(err) }); });
-
-  autoUpdater.on('update-downloaded', async (info) => {
-    log.info('update-downloaded', info?.version);
-    send({ type: 'downloaded', info });
-    try {
-      if (process.platform === 'win32' || process.platform === 'linux') {
-        setTimeout(() => { updateInProgress = true; autoUpdater.quitAndInstall(false, true); }, 500);
-      } else {
-        const res = await dialog.showMessageBox(mainWindow, { type: 'question', buttons: ['Redémarrer maintenant', 'Plus tard'], defaultId: 0, cancelId: 1, title: 'Mise à jour prête', message: 'Une nouvelle version a été téléchargée.', detail: "Voulez-vous redémarrer pour terminer l'installation ?" });
-        if (res.response === 0) { updateInProgress = true; autoUpdater.quitAndInstall(false, true); }
-      }
-    } catch (e) { log.error('quitAndInstall failed', e); }
+  autoUpdater.on("checking-for-update", () => {
+    log.info("checking-for-update");
+    send({ type: "checking" });
   });
 
-  // IPC depuis le renderer (facultatif)
-  ipcMain.handle('update:check', async () => { try { const r = await autoUpdater.checkForUpdates(); return { ok: true, result: r?.updateInfo }; } catch (e) { log.error('update:check', e); return { ok:false, error:String(e)} } });
-  ipcMain.handle('update:download', async () => { try { await autoUpdater.downloadUpdate(); return { ok: true }; } catch (e) { log.error('update:download', e); return { ok:false, error:String(e)} } });
-  ipcMain.handle('update:install', async () => { try { updateInProgress = true; autoUpdater.quitAndInstall(false, true); return { ok: true }; } catch (e) { log.error('update:install', e); return { ok:false, error:String(e)} } });
+  autoUpdater.on("update-available", (info) => {
+    log.info("update-available", info?.version);
+    send({ type: "available", info });
+    autoUpdater.downloadUpdate().catch((err) => {
+      log.error("downloadUpdate", err);
+      send({ type: "error", error: String(err) });
+    });
+  });
+
+  autoUpdater.on("update-not-available", (info) => {
+    log.info("update-not-available", info?.version);
+    send({ type: "none", info });
+  });
+
+  autoUpdater.on("download-progress", (progress) =>
+    send({ type: "progress", progress })
+  );
+
+  autoUpdater.on("error", (err) => {
+    log.error("autoUpdater error", err);
+    send({ type: "error", error: err?.message || String(err) });
+  });
+
+  autoUpdater.on("update-downloaded", (info) => {
+    log.info("update-downloaded", info?.version);
+    // 👉 NE PAS redémarrer automatiquement !
+    send({ type: "downloaded", info });
+  });
+
+  // IPC depuis le renderer
+  ipcMain.handle("update:check", async () => {
+    try {
+      const r = await autoUpdater.checkForUpdates();
+      return { ok: true, result: r?.updateInfo };
+    } catch (e) {
+      log.error("update:check", e);
+      return { ok: false, error: String(e) };
+    }
+  });
+
+  ipcMain.handle("update:download", async () => {
+    try {
+      await autoUpdater.downloadUpdate();
+      return { ok: true };
+    } catch (e) {
+      log.error("update:download", e);
+      return { ok: false, error: String(e) };
+    }
+  });
+
+  ipcMain.handle("update:install", async () => {
+    try {
+      updateInProgress = true;
+      autoUpdater.quitAndInstall(false, true);
+      return { ok: true };
+    } catch (e) {
+      log.error("update:install", e);
+      return { ok: false, error: String(e) };
+    }
+  });
 }
 
 async function startAutoUpdateIfPackaged() {
