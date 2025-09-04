@@ -7,7 +7,7 @@ const safeBento = (typeof window !== "undefined" && window.bento) ? window.bento
   update: { check: async () => {}, download: async () => {}, install: async () => {} },
 };
 
-export default function UpdaterPanel({ variant = "panel", onBack }) {
+export default function UpdaterPanel({ variant = "panel", onBack, onUpdateAvailable }) {
   const [info, setInfo] = React.useState({ version: "?", platform: "", arch: "", isPackaged: false });
   const [status, setStatus] = React.useState("idle");
   const [progress, setProgress] = React.useState(null);
@@ -29,18 +29,23 @@ export default function UpdaterPanel({ variant = "panel", onBack }) {
       if (!ev?.type) return;
       switch (ev.type) {
         case "checking":   setStatus("checking");  setError(""); push("Vérification des mises à jour…"); break;
-        case "available":  setStatus("available"); setAvailableVersion(ev.info?.version || null); setError(""); push(`Nouvelle version ${ev.info?.version} trouvée. Téléchargement…`); break;
+        case "available":
+          setStatus("available");
+          setAvailableVersion(ev.info?.version || null);
+          setError("");
+          push(`Nouvelle version ${ev.info?.version} trouvée. Téléchargement…`);
+          if (onUpdateAvailable) onUpdateAvailable(ev.info); // 🔔 notifie App.jsx
+          break;
         case "none":       setStatus("none");      setAvailableVersion(null); setError(""); push("Aucune mise à jour disponible."); break;
         case "progress":   setStatus("downloading"); setProgress(ev.progress || null); push(`Téléchargement: ${ev.progress?.percent?.toFixed?.(1) ?? "?"}%`); break;
         case "downloaded": setStatus("downloaded"); setError(""); push("Téléchargement terminé. Prêt à installer."); break;
         case "error":      setStatus("error");     setError(ev.error || "Erreur inconnue"); push(`Erreur: ${ev.error || "inconnue"}`); break;
       }
     });
-  }, []);
+  }, [onUpdateAvailable]);
 
   const pct = progress?.percent ? Math.max(0, Math.min(100, progress.percent)) : null;
 
-  // Styles selon le mode
   const isPage = variant === "page";
   const wrapStyle = isPage
     ? { minHeight: "100vh", width: "100%", padding: 24, background: "#0b1220", color: "#e5e7eb" }

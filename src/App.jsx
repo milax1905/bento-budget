@@ -1,5 +1,6 @@
+// src/App.jsx
 import React, { useEffect, useMemo, useState } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "./components/ui/card";
 import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
@@ -73,6 +74,9 @@ export default function App() {
   useEffect(() => {
     document.documentElement.classList.toggle("dark", state.theme === "dark");
   }, [state.theme]);
+
+  // ----------- NEW: state maj dispo (toast)
+  const [updateInfo, setUpdateInfo] = useState(null);
 
   /* --------- Tabs & date selections --------- */
   const [tab, setTab] = useState("month"); // "month" | "year"
@@ -224,6 +228,7 @@ export default function App() {
       <UpdaterPanel
         variant="page"
         onBack={() => (window.location.hash = "#/")}
+        onUpdateAvailable={(info) => setUpdateInfo(info)} // callback vers le toast
       />
     );
   }
@@ -262,6 +267,35 @@ export default function App() {
             </a>
           </div>
         </header>
+
+        {/* -------- NOTIF Apple-like -------- */}
+        <AnimatePresence>
+          {updateInfo && (
+            <motion.div
+              initial={{ opacity: 0, x: -40, y: 20 }}
+              animate={{ opacity: 1, x: 0, y: 20 }}
+              exit={{ opacity: 0, x: -40, y: 20 }}
+              transition={{ duration: 0.35, ease: "easeOut" }}
+              className="fixed top-6 left-6 z-50 flex items-center gap-3 rounded-2xl bg-slate-900/80 backdrop-blur-md text-slate-100 px-5 py-3 shadow-xl border border-white/10"
+              style={{ minWidth: "260px" }}
+            >
+              <div className="flex-shrink-0 w-9 h-9 rounded-full bg-indigo-500 flex items-center justify-center text-lg">
+                🚀
+              </div>
+              <div className="flex-1">
+                <div className="font-semibold">Mise à jour dispo</div>
+                <div className="text-sm opacity-80">Version {updateInfo.version}</div>
+              </div>
+              <Button
+                size="sm"
+                className="rounded-lg"
+                onClick={() => (window.location.hash = "#/updates")}
+              >
+                Voir
+              </Button>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Tabs */}
         <div className="mb-4 flex gap-2">
@@ -675,6 +709,7 @@ function QuickAdd({ onAdd, currency, budgets }) {
 
   return (
     <div className="space-y-3">
+      {/* isolate = évite que les ombres glissent sur les voisins */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-stretch isolate">
         {/* TYPE */}
         <div className="rounded-xl bg-slate-800/40 p-2 min-w-0">
