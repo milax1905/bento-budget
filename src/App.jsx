@@ -740,8 +740,17 @@ function QuickAdd({ onAdd, currency, budgets }) {
           <Input
             type="number"
             className="rounded-xl mt-2"
-            value={amount}
-            onChange={(e) => setAmount(Number(e.target.value || 0))}
+            value={amount === 0 ? "" : amount}
+            onFocus={(e) => {
+              if (amount === 0) setAmount(""); // efface le 0 quand on clique
+            }}
+            onBlur={(e) => {
+              if (e.target.value === "" || isNaN(Number(e.target.value))) {
+                setAmount(0); // remet 0 si on sort du champ sans rien mettre
+              }
+            }}
+            onChange={(e) => setAmount(Number(e.target.value))}
+            placeholder="0"
           />
         </div>
 
