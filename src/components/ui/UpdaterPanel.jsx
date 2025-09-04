@@ -1,4 +1,4 @@
-// src/pages/UpdatesPage.jsx
+// components/ui/UpdaterPanel.jsx
 import React from "react";
 
 const safeBento = (typeof window !== "undefined" && window.bento) ? window.bento : {
@@ -7,7 +7,7 @@ const safeBento = (typeof window !== "undefined" && window.bento) ? window.bento
   update: { check: async () => {}, download: async () => {}, install: async () => {} },
 };
 
-export default function UpdatesPage() {
+export default function UpdaterPanel({ variant = "panel", onBack }) {
   const [info, setInfo] = React.useState({ version: "?", platform: "", arch: "", isPackaged: false });
   const [status, setStatus] = React.useState("idle");
   const [progress, setProgress] = React.useState(null);
@@ -28,104 +28,142 @@ export default function UpdatesPage() {
     safeBento.onUpdateEvent((ev) => {
       if (!ev?.type) return;
       switch (ev.type) {
-        case "checking":
-          setStatus("checking"); setError(""); push("Vérification des mises à jour…"); break;
-        case "available":
-          setStatus("available"); setAvailableVersion(ev.info?.version || null); setError(""); push(`Nouvelle version ${ev.info?.version} trouvée. Téléchargement…`); break;
-        case "none":
-          setStatus("none"); setAvailableVersion(null); setError(""); push("Aucune mise à jour disponible."); break;
-        case "progress":
-          setStatus("downloading"); setProgress(ev.progress || null);
-          push(`Téléchargement: ${ev.progress?.percent?.toFixed?.(1) ?? "?"}% (${Math.round(ev.progress?.bytesPerSecond/1024)||0} kB/s)`); 
-          break;
-        case "downloaded":
-          setStatus("downloaded"); setError(""); push("Téléchargement terminé. Prêt à installer.");
-          break;
-        case "error":
-          setStatus("error"); setError(ev.error || "Erreur inconnue"); push(`Erreur: ${ev.error || "inconnue"}`);
-          break;
+        case "checking":   setStatus("checking");  setError(""); push("Vérification des mises à jour…"); break;
+        case "available":  setStatus("available"); setAvailableVersion(ev.info?.version || null); setError(""); push(`Nouvelle version ${ev.info?.version} trouvée. Téléchargement…`); break;
+        case "none":       setStatus("none");      setAvailableVersion(null); setError(""); push("Aucune mise à jour disponible."); break;
+        case "progress":   setStatus("downloading"); setProgress(ev.progress || null); push(`Téléchargement: ${ev.progress?.percent?.toFixed?.(1) ?? "?"}%`); break;
+        case "downloaded": setStatus("downloaded"); setError(""); push("Téléchargement terminé. Prêt à installer."); break;
+        case "error":      setStatus("error");     setError(ev.error || "Erreur inconnue"); push(`Erreur: ${ev.error || "inconnue"}`); break;
       }
     });
   }, []);
 
   const pct = progress?.percent ? Math.max(0, Math.min(100, progress.percent)) : null;
 
+  // Styles selon le mode
+  const isPage = variant === "page";
+  const wrapStyle = isPage
+    ? { minHeight: "100vh", width: "100%", padding: 24, background: "#0b1220", color: "#e5e7eb" }
+    : { position: "relative", padding: 12, borderRadius: 10, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", maxWidth: 420 };
+
   return (
-    <div className="min-h-screen w-full bg-slate-950 text-slate-100 p-6 md:p-10">
-      <div className="mx-auto w-full max-w-4xl">
-        <header className="flex items-center justify-between gap-2">
+    <div style={wrapStyle}>
+      {isPage && (
+        <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
           <div>
-            <h1 className="text-2xl md:text-3xl font-semibold">Mises à jour</h1>
-            <p className="text-slate-400 text-sm">Gestion des mises à jour de l’application</p>
+            <div style={{ fontSize: 22, fontWeight: 600 }}>Mises à jour</div>
+            <div style={{ fontSize: 13, opacity: .7 }}>Gestion des mises à jour de l’application</div>
           </div>
-          <a href="#/" className="rounded-xl px-3 py-2 bg-slate-800/60 hover:bg-slate-700/60 transition text-sm">← Retour</a>
+          <a
+            onClick={() => (onBack ? onBack() : (window.location.hash = "#/"))}
+            style={{ padding: "8px 12px", borderRadius: 10, background: "rgba(148,163,184,.18)", cursor: "pointer", fontSize: 13 }}
+          >
+            ← Retour
+          </a>
         </header>
+      )}
 
-        <section className="mt-6 grid gap-4">
-          <div className="rounded-2xl bg-slate-900/60 p-4 ring-1 ring-white/10">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
-              <Info label="Version installée" value={`v${info.version}`} />
-              <Info label="Plateforme" value={`${info.platform} ${info.arch}`} />
-              <Info label="Mode" value={info.isPackaged ? "Production (installée)" : "Dev/Unpacked"} />
-            </div>
+      <Section isPage={isPage} title="Infos">
+        <Row label="Version" value={`v${info.version}`} />
+        <Row label="Plateforme" value={`${info.platform} ${info.arch}`} />
+        <Row label="Mode" value={info.isPackaged ? "Production (installée)" : "Dev/Unpacked"} />
+      </Section>
+
+      <Section isPage={isPage} title="Statut">
+        <div style={{ fontSize: isPage ? 14 : 12, marginBottom: 8 }}>
+          {renderStatus(status, availableVersion, pct, error)}
+        </div>
+        {pct !== null && (
+          <div style={{ height: 8, width: "100%", borderRadius: 6, background: "rgba(148,163,184,.2)", overflow: "hidden", marginBottom: 8 }}>
+            <div style={{ height: "100%", width: `${pct}%`, background: "#6366f1", transition: "width .2s" }} />
           </div>
+        )}
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button onClick={() => safeBento.update.check()} style={btn()}>
+            Vérifier
+          </button>
+          {status === "downloaded" && (
+            <button onClick={() => safeBento.update.install()} style={btnPrimary()}>
+              Installer et redémarrer
+            </button>
+          )}
+        </div>
+      </Section>
 
-          <div className="rounded-2xl bg-slate-900/60 p-4 ring-1 ring-white/10 space-y-3">
-            <h2 className="text-lg font-medium">Statut</h2>
-            <StatusLine status={status} availableVersion={availableVersion} error={error} />
-            <ProgressBar percent={pct} />
+      <Section isPage={isPage} title="Journal">
+        <div style={{
+          height: isPage ? 220 : 160,
+          overflow: "auto",
+          borderRadius: 10,
+          background: "rgba(2,6,23,.6)",
+          padding: 8,
+          fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
+          fontSize: 12
+        }}>
+          {logLines.length === 0 ? <div style={{ opacity: .6 }}>—</div> : logLines.map((l, i) => <div key={i}>{l}</div>)}
+        </div>
+      </Section>
 
-            <div className="flex flex-wrap gap-2">
-              <button onClick={() => safeBento.update.check()} className="rounded-xl px-4 py-2 bg-indigo-600 hover:bg-indigo-500 transition">Vérifier</button>
-              {status === "downloaded" && (
-                <button onClick={() => safeBento.update.install()} className="rounded-xl px-4 py-2 bg-emerald-600 hover:bg-emerald-500 transition">
-                  Installer et redémarrer
-                </button>
-              )}
-            </div>
-          </div>
-
-          <div className="rounded-2xl bg-slate-900/60 p-4 ring-1 ring-white/10">
-            <h3 className="text-md font-medium mb-2">Journal</h3>
-            <div className="h-48 overflow-auto rounded-xl bg-slate-950/70 p-2 text-xs font-mono whitespace-pre-wrap">
-              {logLines.length === 0 ? <div className="opacity-60">—</div> : logLines.map((l, i) => <div key={i}>{l}</div>)}
-            </div>
-          </div>
-        </section>
-
-        <footer className="mt-8 text-xs text-slate-500">
+      {!isPage && (
+        <div style={{ position: "absolute", right: 8, bottom: 6, fontSize: 11, opacity: .6 }}>
           v{info.version} • {info.platform} {info.arch}
-        </footer>
-      </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function Info({ label, value }) {
+function Section({ title, children, isPage }) {
   return (
-    <div className="rounded-xl bg-slate-800/50 p-3">
-      <div className="text-slate-400 text-xs">{label}</div>
-      <div className="mt-1 font-medium">{value}</div>
+    <div style={{
+      marginTop: 12,
+      padding: isPage ? 16 : 12,
+      borderRadius: 16,
+      background: "rgba(255,255,255,0.04)",
+      border: "1px solid rgba(255,255,255,0.08)"
+    }}>
+      <div style={{ fontSize: isPage ? 16 : 14, fontWeight: 600, marginBottom: 8 }}>{title}</div>
+      {children}
     </div>
   );
 }
 
-function StatusLine({ status, availableVersion, error }) {
-  let text = "—";
-  if (status === "checking") text = "Vérification en cours…";
-  if (status === "available") text = `Mise à jour disponible : v${availableVersion}. Téléchargement…`;
-  if (status === "downloading") text = "Téléchargement…";
-  if (status === "downloaded") text = "Mise à jour téléchargée. Prête à installer.";
-  if (status === "none") text = "Aucune mise à jour disponible.";
-  if (status === "error") text = `Erreur : ${error}`;
-  return <div className="text-sm">{text}</div>;
-}
-
-function ProgressBar({ percent }) {
-  if (percent === null) return null;
+function Row({ label, value }) {
   return (
-    <div className="h-2 w-full rounded-full bg-slate-800 overflow-hidden">
-      <div className="h-full bg-indigo-500 transition-all" style={{ width: `${percent}%` }} />
+    <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, fontSize: 14 }}>
+      <strong style={{ opacity: .8 }}>{label}</strong>
+      <span>{value}</span>
     </div>
   );
 }
+
+function renderStatus(status, availableVersion, pct, error) {
+  switch (status) {
+    case "idle":        return "—";
+    case "checking":    return "Vérification en cours…";
+    case "available":   return <>Mise à jour disponible : <strong>v{availableVersion}</strong>. Téléchargement…</>;
+    case "downloading": return <>Téléchargement… {pct !== null ? pct.toFixed(1) + "%" : ""}</>;
+    case "downloaded":  return "Mise à jour téléchargée. Prête à installer.";
+    case "none":        return "Aucune mise à jour disponible.";
+    case "error":       return `Erreur : ${error}`;
+    default:            return status;
+  }
+}
+
+const btn = () => ({
+  padding: "8px 12px",
+  borderRadius: 10,
+  border: "1px solid rgba(255,255,255,0.15)",
+  background: "transparent",
+  cursor: "pointer",
+  fontSize: 14
+});
+const btnPrimary = () => ({
+  padding: "8px 12px",
+  borderRadius: 10,
+  border: "none",
+  background: "linear-gradient(90deg,#7c4dff,#6a8dff)",
+  color: "white",
+  cursor: "pointer",
+  fontSize: 14
+});

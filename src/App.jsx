@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-// Components (match your folders: src/components/ui)
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "./components/ui/card";
 import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
@@ -8,7 +7,6 @@ import { Label } from "./components/ui/label";
 import { Textarea } from "./components/ui/textarea";
 import { Slider } from "./components/ui/slider";
 import UpdaterPanel from "./components/ui/UpdaterPanel.jsx";
-
 import ThemeToggle from "./components/ui/ThemeToggle";
 import "./index.css";
 
@@ -17,7 +15,7 @@ import {
   PieChart, Pie, Cell, BarChart, Bar, Legend
 } from "recharts";
 import {
-  Plus, TrendingDown, TrendingUp, PiggyBank, Wallet2, Trash2, Calendar,
+  TrendingDown, TrendingUp, PiggyBank, Wallet2, Trash2, Calendar,
   Search, Settings, Download, Upload
 } from "lucide-react";
 
@@ -60,8 +58,16 @@ export default function App() {
     monthStartDay: 1,
     goals: [{ id: uid(), name: "Épargne de secours", target: 1000, saved: 0 }],
     budgets: DEFAULT_BUDGETS,
-    transactions: [], // {id,date:YYYY-MM-DD,type:'expense'|'income',amount,category,note}
+    transactions: [],
   });
+
+  // routing ultra léger via hash
+  const [route, setRoute] = useState(() => window.location.hash || "#/");
+  useEffect(() => {
+    const onHash = () => setRoute(window.location.hash || "#/");
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
 
   // dark mode
   useEffect(() => {
@@ -208,12 +214,21 @@ export default function App() {
       if(t.type==="income") base[d.getMonth()].revenus += t.amount;
       else base[d.getMonth()].depenses += t.amount;
     }
-    // inclure le salaire mensuel récurrent sur 12 mois
-    base.forEach(x => x.revenus += state.salary);
+    base.forEach(x => x.revenus += state.salary); // salaire mensuel récurrent
     return base;
   }, [state.transactions, selYear, state.salary]);
 
-  /* --------- UI --------- */
+  /* --------- Routing: page Mises à jour --------- */
+  if (route === "#/updates") {
+    return (
+      <UpdaterPanel
+        variant="page"
+        onBack={() => (window.location.hash = "#/")}
+      />
+    );
+  }
+
+  /* --------- UI principale --------- */
   return (
     <div
       className="min-h-screen w-full overflow-x-hidden text-slate-100 p-4 md:p-8 bg-slate-950"
@@ -235,14 +250,17 @@ export default function App() {
           <div className="flex flex-wrap items-center gap-2">
             <ThemeToggle value={state.theme==="dark"} onChange={(d)=>setState(s=>({...s, theme:d?"dark":"light"}))}/>
             <div className="flex items-center gap-2 rounded-2xl bg-slate-800/60 px-2 py-2">
-              {CURRENCIES.map(c=>
-                (<Button key={c} variant={state.currency===c?"default":"ghost"} className="rounded-xl" onClick={()=>setState(s=>({...s, currency:c}))}>{c}</Button>)
-              )}
+              {CURRENCIES.map(c=> (
+                <Button key={c} variant={state.currency===c?"default":"ghost"} className="rounded-xl" onClick={()=>setState(s=>({...s, currency:c}))}>
+                  {c}
+                </Button>
+              ))}
             </div>
-          </div>
+            {/* Lien vers la page Mises à jour */}
             <a href="#/updates" className="rounded-xl px-3 py-2 bg-slate-800/60 hover:bg-slate-700/60 transition text-sm">
               Mises à jour
-          </a>
+            </a>
+          </div>
         </header>
 
         {/* Tabs */}
@@ -289,11 +307,6 @@ export default function App() {
             yearSeries={yearSeries}
           />
         )}
-      </div>
-
-      {/* badge/version + panneau updater */}
-      <div style={{ position: "fixed", right: 16, bottom: 16, zIndex: 9999 }}>
-        <UpdaterPanel />
       </div>
     </div>
   );
@@ -653,13 +666,6 @@ function KPI({ label, value, icon }) {
   );
 }
 
-const [route, setRoute] = useState(() => (window.location.hash || "#/"));
-useEffect(() => {
-  const onHash = () => setRoute(window.location.hash || "#/");
-  window.addEventListener("hashchange", onHash);
-  return () => window.removeEventListener("hashchange", onHash);
-}, []);
-
 function QuickAdd({ onAdd, currency, budgets }) {
   const [type, setType] = useState("expense");
   const [amount, setAmount] = useState(0);
@@ -669,7 +675,6 @@ function QuickAdd({ onAdd, currency, budgets }) {
 
   return (
     <div className="space-y-3">
-      {/* isolate = évite que les ombres glissent sur les voisins */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-stretch isolate">
         {/* TYPE */}
         <div className="rounded-xl bg-slate-800/40 p-2 min-w-0">
