@@ -23,16 +23,12 @@ export default function UpdaterPanel({ variant = "panel", onBack, onUpdateAvaila
       } catch (e) { setError(String(e)); }
     })();
 
-    useEffect(() => {
+    React.useEffect(() => {
       window.electronAPI?.onUpdateEvent((event) => {
-        if (event.type === "available") {
-          props.onUpdateAvailable?.(event.info);
-        }
-        if (event.type === "downloaded") {
-          props.onUpdateAvailable?.(event.info);
-        }
+        if (event.type === "available") onUpdateAvailable?.(event.info);
+        if (event.type === "downloaded") onUpdateAvailable?.(event.info);
       });
-    }, []);
+    }, [onUpdateAvailable]);
 
     const push = (t) => setLogLines((lines) => [...lines.slice(-199), `${new Date().toLocaleTimeString()}  ${t}`]);
 
