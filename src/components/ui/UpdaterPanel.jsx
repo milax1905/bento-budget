@@ -21,7 +21,7 @@ const safeBento =
         },
       };
 
-// Utilitaire pour gérer le stockage persistant
+// Hook custom pour stocker les données de façon persistante
 function usePersistentState(key, initialValue) {
   const [value, setValue] = React.useState(() => {
     try {
@@ -33,7 +33,9 @@ function usePersistentState(key, initialValue) {
   });
 
   React.useEffect(() => {
-    localStorage.setItem(key, JSON.stringify(value));
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch {}
   }, [key, value]);
 
   return [value, setValue];
@@ -46,13 +48,18 @@ export default function UpdaterPanel({ variant = "panel", onBack, onUpdateAvaila
     arch: "",
     isPackaged: false,
   });
+
+  // Ajout du state manquant pour corriger le bug
+  const [error, setError] = React.useState("");
+
+  // États persistants pour les mises à jour
   const [status, setStatus] = usePersistentState("update_status", "idle");
   const [progress, setProgress] = usePersistentState("update_progress", null);
   const [availableVersion, setAvailableVersion] = usePersistentState("update_version", null);
   const [logLines, setLogLines] = usePersistentState("update_logs", []);
 
   React.useEffect(() => {
-    // Infos app
+    // Récupération des infos de l'application
     (async () => {
       try {
         const i = await safeBento.app.getInfo();
@@ -62,14 +69,18 @@ export default function UpdaterPanel({ variant = "panel", onBack, onUpdateAvaila
       }
     })();
 
+    // Fonction pour ajouter des logs en sécurité
     const push = (t) => {
-      setLogLines((lines = []) => [
-        ...lines.slice(-199),
-        `${new Date().toLocaleTimeString()}  ${t}`,
-      ]);
+      setLogLines((lines) => {
+        const safeLines = Array.isArray(lines) ? lines : [];
+        return [
+          ...safeLines.slice(-199),
+          `${new Date().toLocaleTimeString()}  ${t}`,
+        ];
+      });
     };
 
-    // Écoute les événements envoyés par le main (electron.js -> preload -> renderer)
+    // Écoute des événements envoyés par l'app principale
     const off = safeBento.onUpdateEvent((ev) => {
       if (!ev?.type) return;
 
@@ -85,7 +96,7 @@ export default function UpdaterPanel({ variant = "panel", onBack, onUpdateAvaila
           setAvailableVersion(ev.info?.version || null);
           setError("");
           push(`Nouvelle version ${ev.info?.version} trouvée. Téléchargement…`);
-          onUpdateAvailable?.(ev.info); // 🔔 déclenche le toast dans App.jsx
+          onUpdateAvailable?.(ev.info);
           break;
 
         case "none":
@@ -98,16 +109,14 @@ export default function UpdaterPanel({ variant = "panel", onBack, onUpdateAvaila
         case "progress":
           setStatus("downloading");
           setProgress(ev.progress || null);
-          push(
-            `Téléchargement: ${ev.progress?.percent?.toFixed?.(1) ?? "?"}%`
-          );
+          push(`Téléchargement: ${ev.progress?.percent?.toFixed?.(1) ?? "?"}%`);
           break;
 
         case "downloaded":
           setStatus("downloaded");
           setError("");
           push("Téléchargement terminé. Prêt à installer.");
-          onUpdateAvailable?.(ev.info); // 🔔 toast aussi si le DL était déjà en cours
+          onUpdateAvailable?.(ev.info);
           break;
 
         case "error":
@@ -118,16 +127,14 @@ export default function UpdaterPanel({ variant = "panel", onBack, onUpdateAvaila
       }
     });
 
-    // cleanup si preload renvoie un unsubscribe
     return () => {
       if (typeof off === "function") try { off(); } catch {}
     };
   }, [onUpdateAvailable]);
 
-  const pct =
-    progress?.percent ? Math.max(0, Math.min(100, progress.percent)) : null;
-
+  const pct = progress?.percent ? Math.max(0, Math.min(100, progress.percent)) : null;
   const isPage = variant === "page";
+
   const wrapStyle = isPage
     ? {
         minHeight: "100vh",
@@ -180,10 +187,7 @@ export default function UpdaterPanel({ variant = "panel", onBack, onUpdateAvaila
       <Section isPage={isPage} title="Infos">
         <Row label="Version" value={`v${info.version}`} />
         <Row label="Plateforme" value={`${info.platform} ${info.arch}`} />
-        <Row
-          label="Mode"
-          value={info.isPackaged ? "Production (installée)" : "Dev/Unpacked"}
-        />
+        <Row label="Mode" value={info.isPackaged ? "Production (installée)" : "Dev/Unpacked"} />
       </Section>
 
       <Section isPage={isPage} title="Statut">
