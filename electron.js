@@ -1,9 +1,8 @@
-// electron.js — Auto‑update complet (Windows/Linux) + chargement dist/index.html
+// electron.js — Auto-update complet (Windows/Linux) + chargement dist/index.html
 // Déps requises: electron, electron-updater, electron-log (runtime), electron-builder (packaging NSIS)
 
-const { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, nativeTheme } = require('electron');
 const path = require('path');
-const url = require('url');
 const os = require('os');
 
 // ---- Logger robuste (fallback si electron-log absent) ----------------------
@@ -20,9 +19,7 @@ try {
 // ---- Auto Updater ----------------------------------------------------------
 const { autoUpdater } = require('electron-updater');
 autoUpdater.logger = log;
-autoUpdater.autoDownload = false; // on télécharge après détection
-// Si tu utilises un provider "generic", tu peux forcer l'URL ici :
-// autoUpdater.setFeedURL({ url: 'https://ton.cdn/updates/' });
+autoUpdater.autoDownload = false; // on déclenche le download quand une MAJ est trouvée
 
 // ---- Globals ---------------------------------------------------------------
 let mainWindow = null;
@@ -41,7 +38,7 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 if (process.platform === 'win32') {
-  app.setAppUserModelId('com.bento.budget'); // <- même que build.appId
+  app.setAppUserModelId('com.bento.budget'); // doit matcher build.appId
 }
 
 // Sécurité: bloque les navigations externes
@@ -77,7 +74,7 @@ function createMainWindow() {
       preload: preloadPath,
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,             // important pour que preload puisse require('electron')
+      sandbox: false,
       devTools: !app.isPackaged,
       spellcheck: false,
     },
@@ -103,89 +100,88 @@ function createMainWindow() {
 // ---- Auto-update flow ------------------------------------------------------
 function wireAutoUpdaterIpc() {
   const send = (payload) => {
-    try {
-      mainWindow?.webContents.send("update:event", payload);
-    } catch (e) {
-      log.warn("send fail", e);
-    }
+    try { mainWindow?.webContents.send('update:event', payload); }
+    catch (e) { log.warn('send fail', e); }
   };
 
-  autoUpdater.on("checking-for-update", () => {
-    log.info("checking-for-update");
-    send({ type: "checking" });
+  autoUpdater.on('checking-for-update', () => {
+    log.info('checking-for-update');
+    send({ type: 'checking' });
   });
 
-  autoUpdater.on("update-available", (info) => {
-    log.info("update-available", info?.version);
-    send({ type: "available", info });
+  autoUpdater.on('update-available', (info) => {
+    log.info('update-available', info?.version);
+    send({ type: 'available', info });
+    // télécharge immédiatement mais SANS installer
     autoUpdater.downloadUpdate().catch((err) => {
-      log.error("downloadUpdate", err);
-      send({ type: "error", error: String(err) });
+      log.error('downloadUpdate', err);
+      send({ type: 'error', error: String(err) });
     });
   });
 
-  autoUpdater.on("update-not-available", (info) => {
-    log.info("update-not-available", info?.version);
-    send({ type: "none", info });
+  autoUpdater.on('update-not-available', (info) => {
+    log.info('update-not-available', info?.version);
+    send({ type: 'none', info });
   });
 
-  autoUpdater.on("download-progress", (progress) =>
-    send({ type: "progress", progress })
-  );
-
-  autoUpdater.on("error", (err) => {
-    log.error("autoUpdater error", err);
-    send({ type: "error", error: err?.message || String(err) });
+  autoUpdater.on('download-progress', (progress) => {
+    send({ type: 'progress', progress });
   });
 
-  autoUpdater.on("update-downloaded", (info) => {
-    log.info("update-downloaded", info?.version);
-    // 👉 NE PAS redémarrer automatiquement !
-    send({ type: "downloaded", info });
+  autoUpdater.on('update-downloaded', (info) => {
+    log.info('update-downloaded', info?.version);
+    // ⚠️ NE PAS redémarrer automatiquement
+    send({ type: 'downloaded', info });
+  });
+
+  autoUpdater.on('error', (err) => {
+    log.error('autoUpdater error', err);
+    send({ type: 'error', error: err?.message || String(err) });
   });
 
   // IPC depuis le renderer
-  ipcMain.handle("update:check", async () => {
+  ipcMain.handle('update:check', async () => {
     try {
       const r = await autoUpdater.checkForUpdates();
       return { ok: true, result: r?.updateInfo };
     } catch (e) {
-      log.error("update:check", e);
+      log.error('update:check', e);
       return { ok: false, error: String(e) };
     }
   });
 
-  ipcMain.handle("update:download", async () => {
+  ipcMain.handle('update:download', async () => {
     try {
       await autoUpdater.downloadUpdate();
       return { ok: true };
     } catch (e) {
-      log.error("update:download", e);
+      log.error('update:download', e);
       return { ok: false, error: String(e) };
     }
   });
 
-  ipcMain.handle("update:install", async () => {
+  ipcMain.handle('update:install', async () => {
     try {
       updateInProgress = true;
-      autoUpdater.quitAndInstall(false, true);
+      autoUpdater.quitAndInstall(false, true); // l’UI choisit quand l’app redémarre
       return { ok: true };
     } catch (e) {
-      log.error("update:install", e);
+      log.error('update:install', e);
       return { ok: false, error: String(e) };
     }
   });
 }
 
 async function startAutoUpdateIfPackaged() {
-  // L'auto‑update ne marche qu'en version packagée **installée** (NSIS)
+  // L'auto-update ne marche qu'en version packagée **installée**
   if (!app.isPackaged) return;
   wireAutoUpdaterIpc();
-  try { await autoUpdater.checkForUpdates(); } catch (e) { log.error('checkForUpdates failed', e); }
+  try { await autoUpdater.checkForUpdates(); }
+  catch (e) { log.error('checkForUpdates failed', e); }
 }
 
 // ---- App lifecycle ---------------------------------------------------------
-app.on('ready', async () => {
+app.whenReady().then(async () => {
   process.on('unhandledRejection', (reason) => log.error('unhandledRejection', reason));
   process.on('uncaughtException', (err) => log.error('uncaughtException', err));
   createMainWindow();
