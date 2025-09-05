@@ -62,12 +62,12 @@ export default function UpdaterPanel({ variant = "panel", onBack, onUpdateAvaila
       }
     })();
 
-    // Journal helper
-    const push = (t) =>
-      setLogLines((lines) => [
+    const push = (t) => {
+      setLogLines((lines = []) => [
         ...lines.slice(-199),
         `${new Date().toLocaleTimeString()}  ${t}`,
       ]);
+    };
 
     // Écoute les événements envoyés par le main (electron.js -> preload -> renderer)
     const off = safeBento.onUpdateEvent((ev) => {
