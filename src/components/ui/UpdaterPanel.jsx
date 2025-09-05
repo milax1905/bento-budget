@@ -21,6 +21,24 @@ const safeBento =
         },
       };
 
+// Utilitaire pour gérer le stockage persistant
+function usePersistentState(key, initialValue) {
+  const [value, setValue] = React.useState(() => {
+    try {
+      const raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : initialValue;
+    } catch {
+      return initialValue;
+    }
+  });
+
+  React.useEffect(() => {
+    localStorage.setItem(key, JSON.stringify(value));
+  }, [key, value]);
+
+  return [value, setValue];
+}
+
 export default function UpdaterPanel({ variant = "panel", onBack, onUpdateAvailable }) {
   const [info, setInfo] = React.useState({
     version: "?",
@@ -28,11 +46,10 @@ export default function UpdaterPanel({ variant = "panel", onBack, onUpdateAvaila
     arch: "",
     isPackaged: false,
   });
-  const [status, setStatus] = React.useState("idle");
-  const [progress, setProgress] = React.useState(null);
-  const [availableVersion, setAvailableVersion] = React.useState(null);
-  const [error, setError] = React.useState("");
-  const [logLines, setLogLines] = React.useState([]);
+  const [status, setStatus] = usePersistentState("update_status", "idle");
+  const [progress, setProgress] = usePersistentState("update_progress", null);
+  const [availableVersion, setAvailableVersion] = usePersistentState("update_version", null);
+  const [logLines, setLogLines] = usePersistentState("update_logs", []);
 
   React.useEffect(() => {
     // Infos app
