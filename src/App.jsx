@@ -17,7 +17,7 @@ import {
 } from "recharts";
 import {
   TrendingDown, TrendingUp, PiggyBank, Wallet2, Trash2, Calendar,
-  Search, Settings, Download, Upload
+  Search, Settings, Download, Upload, LogIn, LogOut, CloudUpload, CloudDownload
 } from "lucide-react";
 
 /* ---------- Utils ---------- */
@@ -62,6 +62,41 @@ export default function App() {
     transactions: [],
   });
 
+  // --- Cloud helpers (renderer <-> preload) ---
+  async function cloudSignIn() {
+    const r = await window.cloud?.signIn?.();
+    if (!r?.ok) alert("Connexion Google échouée: " + (r?.error || ""));
+    else alert("Connecté à Google ✅");
+  }
+  async function cloudSignOut() {
+    const r = await window.cloud?.signOut?.();
+    if (!r?.ok) alert("Déconnexion Google échouée: " + (r?.error || ""));
+    else alert("Déconnecté de Google ✅");
+  }
+  async function cloudSaveCurrent(s = state) {
+    const r = await window.cloud?.save?.("bento-budget.json", JSON.stringify(s));
+    if (!r?.ok) console.warn("Sauvegarde Drive échouée:", r?.error || "");
+  }
+  async function cloudLoadIntoApp() {
+    const r = await window.cloud?.load?.("bento-budget.json");
+    if (r?.ok && r.data) {
+      try { setState(JSON.parse(r.data)); alert("Données restaurées depuis Drive ✅"); }
+      catch { alert("Fichier Drive invalide"); }
+    } else if (!r?.ok) {
+      alert("Chargement Drive échoué: " + (r?.error || ""));
+    } else {
+      alert("Aucun fichier bento-budget.json trouvé sur Drive.");
+    }
+  }
+
+  // --- Auto-save silencieux vers Drive (déclenche ~1s après chaque modif locale) ---
+  useEffect(() => {
+    // si l’API cloud n’est pas dispo, on ne tente rien
+    if (!window.cloud?.save) return;
+    const t = setTimeout(() => { cloudSaveCurrent(); }, 1000);
+    return () => clearTimeout(t);
+  }, [state]); // ← toute modif de state déclenche un save “debounced”
+
   // routing ultra léger via hash
   const [route, setRoute] = useState(() => window.location.hash || "#/");
   useEffect(() => {
@@ -77,15 +112,15 @@ export default function App() {
 
   // ----------- NEW: state maj dispo (toast)
   const [updateInfo, setUpdateInfo] = useState(null);
-    React.useEffect(() => {
-      if (typeof window === "undefined" || !window.bento?.onUpdateEvent) return;
-      const off = window.bento.onUpdateEvent((ev) => {
-        if (ev?.type === "available" || ev?.type === "downloaded") {
-          setUpdateInfo(ev.info || { version: "?" });
-        }
-      });
-      return () => { try { off?.(); } catch {} };
-    }, []);
+  React.useEffect(() => {
+    if (typeof window === "undefined" || !window.bento?.onUpdateEvent) return;
+    const off = window.bento.onUpdateEvent((ev) => {
+      if (ev?.type === "available" || ev?.type === "downloaded") {
+        setUpdateInfo(ev.info || { version: "?" });
+      }
+    });
+    return () => { try { off?.(); } catch {} };
+  }, []);
 
   /* --------- Tabs & date selections --------- */
   const [tab, setTab] = useState("month"); // "month" | "year"
@@ -270,6 +305,23 @@ export default function App() {
                 </Button>
               ))}
             </div>
+
+            {/* --- Cloud actions --- */}
+            <div className="flex items-center gap-2 rounded-2xl bg-slate-800/60 px-2 py-2">
+              <Button className="rounded-xl h-9" onClick={cloudSignIn} title="Se connecter à Google">
+                <LogIn className="h-4 w-4 mr-2"/> Google
+              </Button>
+              <Button variant="secondary" className="rounded-xl h-9" onClick={cloudLoadIntoApp} title="Charger depuis Drive">
+                <CloudDownload className="h-4 w-4 mr-2"/> Charger
+              </Button>
+              <Button variant="secondary" className="rounded-xl h-9" onClick={()=>cloudSaveCurrent()} title="Sauvegarder maintenant">
+                <CloudUpload className="h-4 w-4 mr-2"/> Sauver
+              </Button>
+              <Button variant="ghost" className="rounded-xl h-9" onClick={cloudSignOut} title="Se déconnecter de Google">
+                <LogOut className="h-4 w-4"/>
+              </Button>
+            </div>
+
             {/* Lien vers la page Mises à jour */}
             <a href="#/updates" className="rounded-xl px-3 py-2 bg-slate-800/60 hover:bg-slate-700/60 transition text-sm">
               Mises à jour
@@ -750,14 +802,8 @@ function QuickAdd({ onAdd, currency, budgets }) {
             type="number"
             className="rounded-xl mt-2"
             value={amount === 0 ? "" : amount}
-            onFocus={(e) => {
-              if (amount === 0) setAmount(""); // efface le 0 quand on clique
-            }}
-            onBlur={(e) => {
-              if (e.target.value === "" || isNaN(Number(e.target.value))) {
-                setAmount(0); // remet 0 si on sort du champ sans rien mettre
-              }
-            }}
+            onFocus={() => { if (amount === 0) setAmount(""); }}
+            onBlur={(e) => { if (e.target.value === "" || isNaN(Number(e.target.value))) setAmount(0); }}
             onChange={(e) => setAmount(Number(e.target.value))}
             placeholder="0"
           />

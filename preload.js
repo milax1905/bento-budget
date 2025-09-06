@@ -10,18 +10,21 @@ async function safeInvoke(channel, payload) {
   }
 }
 
+// --- API principale Bento ---
 contextBridge.exposeInMainWorld("bento", {
   // Infos application (version, plateforme, etc.)
   app: {
     getInfo: () => safeInvoke("app:getInfo"),
   },
 
-  // Événements d'auto-update envoyés par le main:
-  //  checking / available / none / progress / downloaded / error
+  // Événements d'auto-update envoyés par le main :
+  // checking / available / none / progress / downloaded / error
   onUpdateEvent: (callback) => {
     if (typeof callback !== "function") return () => {};
     const handler = (_event, data) => {
-      try { callback(data); } catch (err) { console.error("[bento.onUpdateEvent] callback error:", err); }
+      try { callback(data); } catch (err) {
+        console.error("[bento.onUpdateEvent] callback error:", err);
+      }
     };
     ipcRenderer.on("update:event", handler);
     // unsubscribe pour éviter les doublons
@@ -35,4 +38,12 @@ contextBridge.exposeInMainWorld("bento", {
     download:  () => safeInvoke("update:download"),
     install:   () => safeInvoke("update:install"), // l’app redémarre quand l’UI le demande
   },
+});
+
+// --- API Google Drive (Cloud) ---
+contextBridge.exposeInMainWorld("cloud", {
+  signIn: () => safeInvoke("cloud:signIn"),
+  signOut: () => safeInvoke("cloud:signOut"),
+  save: (filename, json) => safeInvoke("cloud:save", { filename, json }),
+  load: (filename) => safeInvoke("cloud:load", { filename }),
 });

@@ -5,7 +5,6 @@
   "private": true,
   "main": "electron.js",
   "author": "Axel",
-
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -13,11 +12,9 @@
     "dist": "cross-env NODE_ENV=production vite build && electron-builder",
     "publish": "cross-env NODE_ENV=production vite build && electron-builder --publish always"
   },
-
   "build": {
     "appId": "com.bento.budget",
     "productName": "Bento Budget",
-
     "files": [
       "dist/**/*",
       "electron.js",
@@ -28,7 +25,6 @@
     "directories": {
       "buildResources": "assets"
     },
-
     "win": {
       "target": "nsis",
       "icon": "assets/icon.ico",
@@ -40,7 +36,6 @@
       "allowElevation": true,
       "allowToChangeInstallationDirectory": false
     },
-
     "publish": [
       {
         "provider": "github",
@@ -50,17 +45,21 @@
       }
     ]
   },
-
   "repository": {
     "type": "git",
     "url": "https://github.com/milax1905/bento-budget.git"
   },
-
   "dependencies": {
+    "dotenv": "^17.2.2",
     "electron-log": "^5.4.3",
     "electron-updater": "^6.6.2",
+    "express": "^5.1.0",
     "framer-motion": "^12.23.12",
+    "google-auth-library": "^10.3.0",
+    "googleapis": "^159.0.0",
+    "keytar": "^7.9.0",
     "lucide-react": "^0.302.0",
+    "open": "^10.2.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "recharts": "^2.15.4"
