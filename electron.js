@@ -3,9 +3,11 @@ require("dotenv").config();
 
 const { app, BrowserWindow, ipcMain, shell, nativeTheme } = require("electron");
 const path = require("path");
-const { signIn, signOut, getAuthorizedClient } =
-  require(path.join(__dirname, "src", "googleAuth"));
 const os = require("os");
+
+// ⚠️ Ton googleAuth est dans src/googleAuth.js
+// (si tu le déplaces un jour dans cloud/googleAuth.js, adapte ce chemin)
+const googleAuth = require(path.join(__dirname, "src", "googleAuth"));
 
 // Logger (fallback si electron-log absent)
 let log;
@@ -211,10 +213,9 @@ async function startAutoUpdateIfPackaged() {
 
 // ---------- GOOGLE DRIVE (PKCE) ----------
 const { google } = require("googleapis");
-const { signIn, signOut, getAuthorizedClient } = require("./cloud/googleAuth");
 
 async function getDrive() {
-  const auth = await getAuthorizedClient();
+  const auth = await googleAuth.getAuthorizedClient();
   if (!auth) throw new Error("Non connecté à Google (signIn requis)");
   return google.drive({ version: "v3", auth });
 }
@@ -230,13 +231,8 @@ async function ensureAppFolder(drive) {
     corpora: "user",
     includeItemsFromAllDrives: false,
     supportsAllDrives: false,
-    // paramètre pour @name
-    // (googleapis n'a pas d'API directe pour parameters, on concatène)
   });
-  const existing =
-    data?.files?.find((f) => f.name === name) ||
-    null;
-
+  const existing = data?.files?.find((f) => f.name === name) || null;
   if (existing) return existing.id;
 
   const res = await drive.files.create({
@@ -250,8 +246,7 @@ async function ensureAppFolder(drive) {
 }
 
 async function findFileInFolder(drive, parentId, filename) {
-  const q =
-    `'${parentId}' in parents and trashed=false and name=@name`;
+  const q = `'${parentId}' in parents and trashed=false and name=@name`;
   const { data } = await drive.files.list({
     q,
     fields: "files(id,name)",
@@ -270,10 +265,7 @@ async function saveJsonToDrive(filename, json) {
   };
 
   if (existing) {
-    await drive.files.update({
-      fileId: existing.id,
-      media,
-    });
+    await drive.files.update({ fileId: existing.id, media });
     return existing.id;
   } else {
     const res = await drive.files.create({
@@ -305,7 +297,7 @@ async function loadJsonFromDrive(filename) {
 // ---------- IPC cloud ----------
 ipcMain.handle("cloud:signIn", async () => {
   try {
-    await signIn();
+    await googleAuth.signIn();
     return { ok: true };
   } catch (e) {
     log.error("cloud:signIn", e);
@@ -315,7 +307,7 @@ ipcMain.handle("cloud:signIn", async () => {
 
 ipcMain.handle("cloud:signOut", async () => {
   try {
-    await signOut();
+    await googleAuth.signOut();
     return { ok: true };
   } catch (e) {
     log.error("cloud:signOut", e);
