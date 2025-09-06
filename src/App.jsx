@@ -16,8 +16,20 @@ import {
   PieChart, Pie, Cell, BarChart, Bar, Legend
 } from "recharts";
 import {
-  TrendingDown, TrendingUp, PiggyBank, Wallet2, Trash2, Calendar,
-  Search, Settings, Download, Upload, LogIn, LogOut, CloudUpload, CloudDownload
+  TrendingDown,
+  TrendingUp,
+  PiggyBank,
+  Wallet as Wallet2,
+  Trash2,
+  Calendar,
+  Search,
+  Settings,
+  Download,
+  Upload,
+  LogIn,
+  LogOut,
+  DownloadCloud as CloudDownload,
+  UploadCloud as CloudUpload
 } from "lucide-react";
 
 /* ---------- Utils ---------- */
