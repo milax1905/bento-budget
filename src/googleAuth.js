@@ -57,7 +57,7 @@ async function signIn() {
   });
 
   const codePromise = new Promise((resolve, reject) => {
-    app.get("/", (req, res) => {
+    app.get("/callback", (req, res) => {
       try {
         const code = req.query.code;
         res.send("<script>window.close()</script>Connexion réussie, vous pouvez fermer cet onglet.");
