@@ -13,33 +13,19 @@ const safeBento =
             isPackaged: false,
           }),
         },
-        onUpdateEvent: () => {},
+        onUpdateEvent: () => () => {}, // retourne un unsubscribe no-op
         update: {
-          check: async () => {},
-          download: async () => {},
-          install: async () => {},
+          getState: async () => ({
+            status: "idle",
+            progress: null,
+            availableVersion: null,
+            error: "",
+          }),
+          check: async () => ({ ok: true }),
+          download: async () => ({ ok: true }),
+          install: async () => ({ ok: true }),
         },
       };
-
-// Hook custom pour stocker les données de façon persistante
-function usePersistentState(key, initialValue) {
-  const [value, setValue] = React.useState(() => {
-    try {
-      const raw = localStorage.getItem(key);
-      return raw ? JSON.parse(raw) : initialValue;
-    } catch {
-      return initialValue;
-    }
-  });
-
-  React.useEffect(() => {
-    try {
-      localStorage.setItem(key, JSON.stringify(value));
-    } catch {}
-  }, [key, value]);
-
-  return [value, setValue];
-}
 
 export default function UpdaterPanel({ variant = "panel", onBack, onUpdateAvailable }) {
   const [info, setInfo] = React.useState({
@@ -49,17 +35,15 @@ export default function UpdaterPanel({ variant = "panel", onBack, onUpdateAvaila
     isPackaged: false,
   });
 
-  // Ajout du state manquant pour corriger le bug
+  // --- États éphémères (plus de persistance localStorage) ---
   const [error, setError] = React.useState("");
-
-  // États persistants pour les mises à jour
-  const [status, setStatus] = usePersistentState("update_status", "idle");
-  const [progress, setProgress] = usePersistentState("update_progress", null);
-  const [availableVersion, setAvailableVersion] = usePersistentState("update_version", null);
-  const [logLines, setLogLines] = usePersistentState("update_logs", []);
+  const [status, setStatus] = React.useState("idle"); // idle | checking | available | none | downloading | downloaded | error
+  const [progress, setProgress] = React.useState(null); // { percent, transferred, total, bytesPerSecond }
+  const [availableVersion, setAvailableVersion] = React.useState(null);
+  const [logLines, setLogLines] = React.useState([]);
 
   React.useEffect(() => {
-    // Récupération des infos de l'application
+    // Infos app
     (async () => {
       try {
         const i = await safeBento.app.getInfo();
@@ -69,18 +53,36 @@ export default function UpdaterPanel({ variant = "panel", onBack, onUpdateAvaila
       }
     })();
 
-    // Fonction pour ajouter des logs en sécurité
+    // Ajout de lignes de log en sécurité
     const push = (t) => {
       setLogLines((lines) => {
-        const safeLines = Array.isArray(lines) ? lines : [];
-        return [
-          ...safeLines.slice(-199),
-          `${new Date().toLocaleTimeString()}  ${t}`,
-        ];
+        const safe = Array.isArray(lines) ? lines : [];
+        return [...safe.slice(-199), `${new Date().toLocaleTimeString()}  ${t}`];
       });
     };
 
-    // Écoute des événements envoyés par l'app principale
+    // --- Ré-hydratation depuis le process principal ---
+    (async () => {
+      try {
+        const s = await safeBento.update.getState(); // retourne le snapshot courant
+        if (s && typeof s === "object") {
+          setStatus(s.status || "idle");
+          setProgress(s.progress ?? null);
+          setAvailableVersion(s.availableVersion ?? null);
+          if (s.status && s.status !== "idle") {
+            const p =
+              typeof s.progress?.percent === "number"
+                ? ` (${Math.max(0, Math.min(100, s.progress.percent)).toFixed(1)}%)`
+                : "";
+            push(`Reprise : statut=${s.status}${p}`);
+          }
+        }
+      } catch (e) {
+        // non bloquant
+      }
+    })();
+
+    // --- Écoute des événements "live" envoyés par le main ---
     const off = safeBento.onUpdateEvent((ev) => {
       if (!ev?.type) return;
 
@@ -128,11 +130,16 @@ export default function UpdaterPanel({ variant = "panel", onBack, onUpdateAvaila
     });
 
     return () => {
-      if (typeof off === "function") try { off(); } catch {}
+      try { off?.(); } catch {}
     };
   }, [onUpdateAvailable]);
 
-  const pct = progress?.percent ? Math.max(0, Math.min(100, progress.percent)) : null;
+  // Affiche bien 0% (ne pas cacher la barre quand percent === 0)
+  const pct =
+    typeof progress?.percent === "number"
+      ? Math.max(0, Math.min(100, progress.percent))
+      : null;
+
   const isPage = variant === "page";
 
   const wrapStyle = isPage
@@ -187,7 +194,10 @@ export default function UpdaterPanel({ variant = "panel", onBack, onUpdateAvaila
       <Section isPage={isPage} title="Infos">
         <Row label="Version" value={`v${info.version}`} />
         <Row label="Plateforme" value={`${info.platform} ${info.arch}`} />
-        <Row label="Mode" value={info.isPackaged ? "Production (installée)" : "Dev/Unpacked"} />
+        <Row
+          label="Mode"
+          value={info.isPackaged ? "Production (installée)" : "Dev/Unpacked"}
+        />
       </Section>
 
       <Section isPage={isPage} title="Statut">

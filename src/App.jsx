@@ -77,6 +77,15 @@ export default function App() {
 
   // ----------- NEW: state maj dispo (toast)
   const [updateInfo, setUpdateInfo] = useState(null);
+    React.useEffect(() => {
+      if (typeof window === "undefined" || !window.bento?.onUpdateEvent) return;
+      const off = window.bento.onUpdateEvent((ev) => {
+        if (ev?.type === "available" || ev?.type === "downloaded") {
+          setUpdateInfo(ev.info || { version: "?" });
+        }
+      });
+      return () => { try { off?.(); } catch {} };
+    }, []);
 
   /* --------- Tabs & date selections --------- */
   const [tab, setTab] = useState("month"); // "month" | "year"
