@@ -3,6 +3,8 @@ require("dotenv").config();
 
 const { app, BrowserWindow, ipcMain, shell, nativeTheme } = require("electron");
 const path = require("path");
+const { signIn, signOut, getAuthorizedClient } =
+  require(path.join(__dirname, "src", "googleAuth"));
 const os = require("os");
 
 // Logger (fallback si electron-log absent)
