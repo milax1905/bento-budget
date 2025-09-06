@@ -9,7 +9,7 @@ const ACCOUNT = "google-oauth";
 
 // ⚠️ Mets ton Client ID OAuth dans .env (pas de secret à stocker)
 const CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "367731497005-e2tokhad2ff227r30jqb6navllickele.apps.googleusercontent.com";
-const REDIRECT_URI = "http://127.0.0.1:42813";
+const REDIRECT_URI = "http://127.0.0.1:42813/callback";
 
 // ---- Utils PKCE
 const b64url = (buf) =>
