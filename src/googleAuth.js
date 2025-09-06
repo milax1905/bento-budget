@@ -35,13 +35,16 @@ async function openUrl(url) {
 
 // ---- Sign-in (PKCE, sans client_secret)
 async function signIn() {
-  // 1) Serveur local pour récupérer le "code" OAuth
   const app = express();
+
+  // évite le 2e hit du navigateur sur /favicon.ico qui peut rejouer la route
+  app.get("/favicon.ico", (_req, res) => res.status(204).end());
+
   const server = await new Promise((resolve) => {
     const s = app.listen(42813, () => resolve(s));
   });
 
-  const client = await makeClient();
+  const client = await makeClient();              // <= UNE SEULE instance
   const codeVerifier  = genCodeVerifier();
   const codeChallenge = genCodeChallenge(codeVerifier);
 
@@ -49,11 +52,13 @@ async function signIn() {
     access_type: "offline",
     prompt: "consent",
     scope: [
-      "https://www.googleapis.com/auth/drive.file", // fichiers créés par l'app
+      "https://www.googleapis.com/auth/drive.file",
       "openid", "email", "profile",
     ],
     code_challenge_method: "S256",
     code_challenge: codeChallenge,
+    // explicite, même si client.redirectUri est déjà paramétré
+    redirect_uri: REDIRECT_URI,
   });
 
   const codePromise = new Promise((resolve, reject) => {
@@ -63,23 +68,22 @@ async function signIn() {
         res.send("<script>window.close()</script>Connexion réussie, vous pouvez fermer cet onglet.");
         resolve(code);
       } catch (e) { reject(e); }
-      finally { setTimeout(() => server.close(), 100); }
+      finally { setTimeout(() => server.close(), 200); } // un poil plus long
     });
   });
 
-  // 2) Ouvrir le navigateur système (ESM via import dynamique)
-  await openUrl(authUrl);
+  // ouvre le navigateur
+  await open(authUrl);
 
-  // 3) Échange du code (PKCE)
+  // échange code -> tokens avec le MÊME client et le MÊME verifier
   const code = await codePromise;
-  const { tokens } = await (await makeClient()).getToken({
+  const { tokens } = await client.getToken({
     code,
-    codeVerifier,
+    codeVerifier,                 // crucial pour PKCE
     redirect_uri: REDIRECT_URI,
-    client_id:    CLIENT_ID,
+    client_id: CLIENT_ID,
   });
 
-  // 4) Sauvegarde des tokens (sécurisée)
   await saveTokens(tokens);
   return tokens;
 }
