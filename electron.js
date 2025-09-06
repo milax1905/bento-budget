@@ -5,8 +5,6 @@ const { app, BrowserWindow, ipcMain, shell, nativeTheme } = require("electron");
 const path = require("path");
 const os = require("os");
 
-// ⚠️ Ton googleAuth est dans src/googleAuth.js
-// (si tu le déplaces un jour dans cloud/googleAuth.js, adapte ce chemin)
 const googleAuth = require(path.join(__dirname, "src", "googleAuth"));
 
 // Logger (fallback si electron-log absent)
@@ -24,7 +22,7 @@ try {
 // ---------- AUTO-UPDATER ----------
 const { autoUpdater } = require("electron-updater");
 autoUpdater.logger = log;
-autoUpdater.autoDownload = false; // on télécharge quand une MAJ est trouvée
+autoUpdater.autoDownload = false;
 
 let mainWindow = null;
 let updateInProgress = false;
