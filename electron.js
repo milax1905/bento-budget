@@ -1,4 +1,6 @@
-// electron.js — Auto-update + snapshot d'état
+// electron.js — Auto-update + Google Drive (PKCE) + IPC cloud
+require("dotenv").config();
+
 const { app, BrowserWindow, ipcMain, shell, nativeTheme } = require("electron");
 const path = require("path");
 const os = require("os");
@@ -9,21 +11,20 @@ try {
   log = require("electron-log");
   log.initialize?.();
   log.transports.file.maxSize = 10_485_760; // 10 MB
-  log.transports.file.resolvePathFn = () => path.join(app.getPath("userData"), "logs/main.log");
+  log.transports.file.resolvePathFn = () =>
+    path.join(app.getPath("userData"), "logs/main.log");
 } catch {
-  log = { info(){}, warn(){}, error(){}, debug(){} };
+  log = { info() {}, warn() {}, error() {}, debug() {} };
 }
 
-// Auto Updater
+// ---------- AUTO-UPDATER ----------
 const { autoUpdater } = require("electron-updater");
 autoUpdater.logger = log;
-autoUpdater.autoDownload = false; // on déclenche le download quand MAJ trouvée
+autoUpdater.autoDownload = false; // on télécharge quand une MAJ est trouvée
 
-// Globals
 let mainWindow = null;
 let updateInProgress = false;
 
-// --- Snapshot d'état renvoyé à la demande au renderer ---
 let updateState = {
   status: "idle",
   progress: null,
@@ -43,10 +44,10 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 if (process.platform === "win32") {
-  app.setAppUserModelId("com.bento.budget"); // doit matcher build.appId
+  app.setAppUserModelId("com.bento.budget");
 }
 
-// Sécurité: bloque les navigations externes
+// Sécurité navigation
 const applyWebContentsSecurity = (win) => {
   win.webContents.setWindowOpenHandler(({ url }) => {
     try {
@@ -88,7 +89,7 @@ function createMainWindow() {
   applyWebContentsSecurity(mainWindow);
   mainWindow.once("ready-to-show", () => mainWindow.show());
 
-  // Charge l'app
+  // Dev vs Build
   if (app.isPackaged) {
     mainWindow.loadFile(path.join(__dirname, "dist", "index.html"));
   } else {
@@ -97,15 +98,21 @@ function createMainWindow() {
     mainWindow.webContents.openDevTools({ mode: "detach" });
   }
 
-  mainWindow.on("closed", () => { mainWindow = null; });
+  mainWindow.on("closed", () => {
+    mainWindow = null;
+  });
+
   return mainWindow;
 }
 
 // -------- Auto-update: câblage des événements + IPC --------
 function wireAutoUpdaterIpc() {
   const send = (payload) => {
-    try { mainWindow?.webContents.send("update:event", payload); }
-    catch (e) { log.warn("send fail", e); }
+    try {
+      mainWindow?.webContents.send("update:event", payload);
+    } catch (e) {
+      log.warn("send fail", e);
+    }
   };
 
   autoUpdater.on("checking-for-update", () => {
@@ -115,10 +122,13 @@ function wireAutoUpdaterIpc() {
   });
 
   autoUpdater.on("update-available", (info) => {
-    updateState = { ...updateState, status: "available", availableVersion: info?.version || null };
+    updateState = {
+      ...updateState,
+      status: "available",
+      availableVersion: info?.version || null,
+    };
     log.info("update-available", info?.version);
     send({ type: "available", info });
-    // télécharge immédiatement mais SANS installer
     autoUpdater.downloadUpdate().catch((err) => {
       updateState = { ...updateState, status: "error", error: String(err) };
       log.error("downloadUpdate", err);
@@ -144,7 +154,11 @@ function wireAutoUpdaterIpc() {
   });
 
   autoUpdater.on("error", (err) => {
-    updateState = { ...updateState, status: "error", error: err?.message || String(err) };
+    updateState = {
+      ...updateState,
+      status: "error",
+      error: err?.message || String(err),
+    };
     log.error("autoUpdater error", err);
     send({ type: "error", error: err?.message || String(err) });
   });
@@ -186,23 +200,171 @@ function wireAutoUpdaterIpc() {
 async function startAutoUpdateIfPackaged() {
   if (!app.isPackaged) return;
   wireAutoUpdaterIpc();
-  try { await autoUpdater.checkForUpdates(); }
-  catch (e) { log.error("checkForUpdates failed", e); }
+  try {
+    await autoUpdater.checkForUpdates();
+  } catch (e) {
+    log.error("checkForUpdates failed", e);
+  }
 }
+
+// ---------- GOOGLE DRIVE (PKCE) ----------
+const { google } = require("googleapis");
+const { signIn, signOut, getAuthorizedClient } = require("./cloud/googleAuth");
+
+async function getDrive() {
+  const auth = await getAuthorizedClient();
+  if (!auth) throw new Error("Non connecté à Google (signIn requis)");
+  return google.drive({ version: "v3", auth });
+}
+
+async function ensureAppFolder(drive) {
+  const name = "Bento Budget";
+  const q =
+    "mimeType='application/vnd.google-apps.folder' and name=@name and trashed=false";
+  const { data } = await drive.files.list({
+    q,
+    spaces: "drive",
+    fields: "files(id,name)",
+    corpora: "user",
+    includeItemsFromAllDrives: false,
+    supportsAllDrives: false,
+    // paramètre pour @name
+    // (googleapis n'a pas d'API directe pour parameters, on concatène)
+  });
+  const existing =
+    data?.files?.find((f) => f.name === name) ||
+    null;
+
+  if (existing) return existing.id;
+
+  const res = await drive.files.create({
+    requestBody: {
+      name,
+      mimeType: "application/vnd.google-apps.folder",
+    },
+    fields: "id",
+  });
+  return res.data.id;
+}
+
+async function findFileInFolder(drive, parentId, filename) {
+  const q =
+    `'${parentId}' in parents and trashed=false and name=@name`;
+  const { data } = await drive.files.list({
+    q,
+    fields: "files(id,name)",
+  });
+  return data?.files?.find((f) => f.name === filename) || null;
+}
+
+async function saveJsonToDrive(filename, json) {
+  const drive = await getDrive();
+  const folderId = await ensureAppFolder(drive);
+  const existing = await findFileInFolder(drive, folderId, filename);
+
+  const media = {
+    mimeType: "application/json",
+    body: Buffer.from(typeof json === "string" ? json : JSON.stringify(json)),
+  };
+
+  if (existing) {
+    await drive.files.update({
+      fileId: existing.id,
+      media,
+    });
+    return existing.id;
+  } else {
+    const res = await drive.files.create({
+      requestBody: {
+        name: filename,
+        parents: [folderId],
+        mimeType: "application/json",
+      },
+      media,
+      fields: "id",
+    });
+    return res.data.id;
+  }
+}
+
+async function loadJsonFromDrive(filename) {
+  const drive = await getDrive();
+  const folderId = await ensureAppFolder(drive);
+  const existing = await findFileInFolder(drive, folderId, filename);
+  if (!existing) throw new Error(`Fichier introuvable: ${filename}`);
+
+  const res = await drive.files.get(
+    { fileId: existing.id, alt: "media" },
+    { responseType: "arraybuffer" }
+  );
+  return Buffer.from(res.data).toString("utf8");
+}
+
+// ---------- IPC cloud ----------
+ipcMain.handle("cloud:signIn", async () => {
+  try {
+    await signIn();
+    return { ok: true };
+  } catch (e) {
+    log.error("cloud:signIn", e);
+    return { ok: false, error: String(e) };
+  }
+});
+
+ipcMain.handle("cloud:signOut", async () => {
+  try {
+    await signOut();
+    return { ok: true };
+  } catch (e) {
+    log.error("cloud:signOut", e);
+    return { ok: false, error: String(e) };
+  }
+});
+
+ipcMain.handle("cloud:save", async (_e, { filename, json }) => {
+  try {
+    const id = await saveJsonToDrive(filename, json);
+    return { ok: true, id };
+  } catch (e) {
+    log.error("cloud:save", e);
+    return { ok: false, error: String(e) };
+  }
+});
+
+ipcMain.handle("cloud:load", async (_e, { filename }) => {
+  try {
+    const txt = await loadJsonFromDrive(filename);
+    return { ok: true, data: txt };
+  } catch (e) {
+    log.error("cloud:load", e);
+    return { ok: false, error: String(e) };
+  }
+});
 
 // ---- App lifecycle ----
 app.whenReady().then(async () => {
-  process.on("unhandledRejection", (reason) => log.error("unhandledRejection", reason));
-  process.on("uncaughtException", (err) => log.error("uncaughtException", err));
+  process.on("unhandledRejection", (reason) =>
+    log.error("unhandledRejection", reason)
+  );
+  process.on("uncaughtException", (err) =>
+    log.error("uncaughtException", err)
+  );
   createMainWindow();
   await startAutoUpdateIfPackaged();
 });
 
-app.on("before-quit", () => { if (updateInProgress) log.info("Quitting for update…"); });
-app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });
-app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createMainWindow(); });
+// Quit logic
+app.on("before-quit", () => {
+  if (updateInProgress) log.info("Quitting for update…");
+});
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") app.quit();
+});
+app.on("activate", () => {
+  if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
+});
 
-// Infos app exposées au renderer
+// Infos app pour renderer
 ipcMain.handle("app:getInfo", () => ({
   version: app.getVersion(),
   platform: process.platform,

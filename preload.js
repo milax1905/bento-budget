@@ -22,7 +22,9 @@ contextBridge.exposeInMainWorld("bento", {
   onUpdateEvent: (callback) => {
     if (typeof callback !== "function") return () => {};
     const handler = (_event, data) => {
-      try { callback(data); } catch (err) {
+      try {
+        callback(data);
+      } catch (err) {
         console.error("[bento.onUpdateEvent] callback error:", err);
       }
     };
@@ -34,9 +36,9 @@ contextBridge.exposeInMainWorld("bento", {
   // Actions d’auto-update déclenchées depuis le renderer
   update: {
     getState: () => safeInvoke("update:getState"),
-    check:     () => safeInvoke("update:check"),
-    download:  () => safeInvoke("update:download"),
-    install:   () => safeInvoke("update:install"), // l’app redémarre quand l’UI le demande
+    check: () => safeInvoke("update:check"),
+    download: () => safeInvoke("update:download"),
+    install: () => safeInvoke("update:install"), // l’app redémarre quand l’UI le demande
   },
 });
 
