@@ -1,9 +1,7 @@
 // preload.js — expose uniquement ce qui est nécessaire au renderer
 const { contextBridge, ipcRenderer } = require("electron");
 
-/**
- * Petit helper: invoke sécurisé (évite de planter le renderer si ça throw côté main)
- */
+// Helper: invoke sécurisé (retourne {ok:false,error} si ça throw côté main)
 async function safeInvoke(channel, payload) {
   try {
     return await ipcRenderer.invoke(channel, payload);
@@ -18,32 +16,23 @@ contextBridge.exposeInMainWorld("bento", {
     getInfo: () => safeInvoke("app:getInfo"),
   },
 
-  /**
-   * Écoute les événements d'auto-update envoyés par le main:
-   *  - checking / available / none / progress / downloaded / error
-   *
-   * @param {(evt: {type:string, [key:string]:any}) => void} callback
-   * @returns {() => void} unsubscribe function
-   */
+  // Événements d'auto-update envoyés par le main:
+  //  checking / available / none / progress / downloaded / error
   onUpdateEvent: (callback) => {
     if (typeof callback !== "function") return () => {};
     const handler = (_event, data) => {
-      try {
-        callback(data);
-      } catch (err) {
-        // ne bloque jamais le thread UI
-        console.error("[bento.onUpdateEvent] callback error:", err);
-      }
+      try { callback(data); } catch (err) { console.error("[bento.onUpdateEvent] callback error:", err); }
     };
     ipcRenderer.on("update:event", handler);
-    // renvoie une fonction pour se désabonner (important pour éviter les doublons)
+    // unsubscribe pour éviter les doublons
     return () => ipcRenderer.removeListener("update:event", handler);
   },
 
   // Actions d’auto-update déclenchées depuis le renderer
   update: {
-    check: () => safeInvoke("update:check"),
-    download: () => safeInvoke("update:download"),
-    install: () => safeInvoke("update:install"), // ne redémarre que quand l'UI le demande
+    getState: () => safeInvoke("update:getState"),
+    check:     () => safeInvoke("update:check"),
+    download:  () => safeInvoke("update:download"),
+    install:   () => safeInvoke("update:install"), // l’app redémarre quand l’UI le demande
   },
 });
