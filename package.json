@@ -1,6 +1,6 @@
 {
   "name": "bento-budget",
-  "version": "4.1.5",
+  "version": "4.1.6",
   "description": "Application de gestion de budget futuriste avec comptes, budgets et suivi en temps réel.",
   "private": true,
   "main": "electron.js",
@@ -30,11 +30,6 @@
       "target": "nsis",
       "icon": "assets/icon.ico",
       "verifyUpdateCodeSignature": false
-    },
-    "build": {
-      "extraResources": [
-        { "from": ".env", "to": "." }
-      ]
     },
     "nsis": {
       "oneClick": true,
