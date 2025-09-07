@@ -7,20 +7,17 @@ const { shell } = require("electron");
 
 // ========================= CONFIG ==========================================
 
-// 1) Ton Client ID Desktop (OBLIGATOIRE)
+// >>> Mets TON client_id Desktop ici (tu l'as dit être celui-ci) :
 const FALLBACK_CLIENT_ID = "367731497005-3ppb2npecdc9uau93mmhb89q7adv68op.apps.googleusercontent.com";
 
-// 2) Scopes
+// Scopes utiles (ajuste si besoin)
 const SCOPES = ["openid", "email", "profile", "https://www.googleapis.com/auth/drive.file"].join(" ");
 
-// 3) Logs verbeux
+// Logs verbeux si DEBUG_OAUTH=1
 const DEBUG = process.env.DEBUG_OAUTH === "1";
 
-// 4) Choix de l'ID à utiliser
-// → SI TU VEUX FORCER l’ID codé en dur :
+// on FORCE l'utilisation du client Desktop en dur (aucun .env, aucun secret)
 const CLIENT_ID = FALLBACK_CLIENT_ID;
-// → (si tu veux lire .env plus tard, remets :
-// const CLIENT_ID = process.env.GOOGLE_CLIENT_ID || FALLBACK_CLIENT_ID;
 console.log("[oauth] CLIENT_ID utilisé:", CLIENT_ID);
 
 // ========================= UTILS ===========================================
@@ -48,7 +45,6 @@ function startCallbackServer() {
         const error = url.searchParams.get("error");
         const error_description = url.searchParams.get("error_description");
 
-        // page visible dans le navigateur
         if (error) {
           res.statusCode = 400;
           res.setHeader("Content-Type", "text/html; charset=utf-8");
@@ -66,8 +62,6 @@ function startCallbackServer() {
              <script>window.close && window.close()</script>`
           );
         }
-
-        // Résout la promesse d'attente
         server._resolver?.({ code, error, error_description });
       } catch (e) {
         server._resolver?.({ error: "internal_error", error_description: e.message });
@@ -76,13 +70,12 @@ function startCallbackServer() {
 
     server.on("error", reject);
 
-    // écoute sur un port libre (0)
+    // écoute sur un port libre
     server.listen(0, "127.0.0.1", () => {
       const port = server.address().port;
       const redirectUri = `http://127.0.0.1:${port}/callback`;
       dbg("Callback server:", redirectUri);
 
-      // promesse qui sera résolue au premier /callback
       const waitForCallback = () =>
         new Promise((res) => { server._resolver = (v) => res(v); });
 
@@ -145,41 +138,32 @@ async function doRefreshToken(refresh_token) {
 
 // ========================= API PUBLIQUE ====================================
 
-/**
- * Ouvre Google, attend le callback, échange le code et renvoie { tokens, debug }
- */
 async function signIn() {
   try {
     if (!CLIENT_ID || CLIENT_ID === "REPLACE_ME.apps.googleusercontent.com") {
       throw new Error(
-        "GOOGLE_CLIENT_ID manquant. Utilise un .env (chargé côté main) ou remplace FALLBACK_CLIENT_ID par ton client_id (Desktop app)."
+        "GOOGLE_CLIENT_ID manquant. Remplace FALLBACK_CLIENT_ID par ton client_id (Desktop app)."
       );
     }
 
-    // 1) Démarre le serveur local de callback
     const { redirectUri, waitForCallback, close } = await startCallbackServer();
 
-    // 2) Prépare PKCE
     const code_verifier = genCodeVerifier();
     const code_challenge = codeChallengeFromVerifier(code_verifier);
 
-    // 3) URL d'autorisation
     const auth = new URL("https://accounts.google.com/o/oauth2/v2/auth");
     auth.searchParams.set("client_id", CLIENT_ID);
     auth.searchParams.set("redirect_uri", redirectUri);
     auth.searchParams.set("response_type", "code");
     auth.searchParams.set("scope", SCOPES);
-    auth.searchParams.set("access_type", "offline"); // refresh_token
-    auth.searchParams.set("prompt", "consent");      // force refresh_token
+    auth.searchParams.set("access_type", "offline");
+    auth.searchParams.set("prompt", "consent");
     auth.searchParams.set("code_challenge", code_challenge);
     auth.searchParams.set("code_challenge_method", "S256");
 
     dbg("Auth URL:", auth.toString());
-
-    // 4) Ouvre le navigateur
     await shell.openExternal(auth.toString());
 
-    // 5) Attend le retour /callback
     const { code, error, error_description } = await waitForCallback();
     setTimeout(close, 200);
 
@@ -191,7 +175,6 @@ async function signIn() {
     }
     if (!code) throw new Error("Authorization code non reçu.");
 
-    // 6) Échange code -> tokens
     const tokens = await exchangeCodeForTokens({ code, code_verifier, redirect_uri: redirectUri });
     dbg("Tokens:", {
       access_token: !!tokens.access_token,
@@ -212,9 +195,6 @@ async function signIn() {
   }
 }
 
-/**
- * Rafraîchit l'access_token à partir d'un refresh_token.
- */
 async function refreshToken(refresh_token) {
   try {
     if (!refresh_token) throw new Error("refresh_token manquant");
