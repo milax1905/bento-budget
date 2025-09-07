@@ -12,8 +12,8 @@ const { shell } = require("electron");
 
 // ========================= CONFIG ==========================================
 
-// 1) Si tu n'utilises pas .env, mets ici TON client_id (type "Desktop app")
-const FALLBACK_CLIENT_ID = "367731497005-3ppb2npecdc9uau93mmhb89q7adv68op.apps.googleusercontent.com";
+const CLIENT_ID = process.env.GOOGLE_CLIENT_ID || FALLBACK_CLIENT_ID;
+console.log("[oauth] CLIENT_ID utilisé:", CLIENT_ID);
 
 // 2) Scopes voulus (ajoute/supprime selon besoin)
 const SCOPES = [
@@ -25,9 +25,6 @@ const SCOPES = [
 
 // 3) Active les logs verbeux si tu lances avec DEBUG_OAUTH=1
 const DEBUG = process.env.DEBUG_OAUTH === "1";
-
-// Récupère le client id (.env si chargé dans electron.js) sinon fallback
-const CLIENT_ID = process.env.GOOGLE_CLIENT_ID || FALLBACK_CLIENT_ID;
 
 // ========================= UTILS ===========================================
 

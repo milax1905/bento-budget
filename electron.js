@@ -4,6 +4,13 @@ require("dotenv").config();
 const { app, BrowserWindow, ipcMain, shell, nativeTheme } = require("electron");
 const path = require("path");
 const os = require("os");
+const dotenv = require("dotenv");
+
+dotenv.config({
+  path: app.isPackaged
+    ? path.join(process.resourcesPath, ".env") // prod (app packagée)
+    : path.join(__dirname, ".env"),            // dev
+});
 
 const googleAuth = require(path.join(__dirname, "src", "googleAuth"));
 
