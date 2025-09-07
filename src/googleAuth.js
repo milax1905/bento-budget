@@ -9,7 +9,7 @@ const ACCOUNT = "google-oauth";
 
 // ⬇️ Remplace par TON ID CLIENT "Ordinateur de bureau"
 const DESKTOP_CLIENT_ID =
-  "367731497005-3pbp2npecdc9uua93mmhb89q7adv68op.apps.googleusercontent.com";
+  "367731497005-3ppb2npecdc9uau93mmhb89q7adv68op.apps.googleusercontent.com";
 const CLIENT_ID = process.env.GOOGLE_CLIENT_ID || DESKTOP_CLIENT_ID;
 
 // ---------- Helpers PKCE ----------
