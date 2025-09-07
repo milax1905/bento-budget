@@ -8,7 +8,7 @@ const { shell } = require("electron");
 // ========================= CONFIG ==========================================
 
 // 1) Ton Client ID Desktop (OBLIGATOIRE)
-const FALLBACK_CLIENT_ID = "TON_ID_DESKTOP.apps.googleusercontent.com";
+const FALLBACK_CLIENT_ID = "367731497005-3ppb2npecdc9uau93mmhb89q7adv68op.apps.googleusercontent.com";
 
 // 2) Scopes
 const SCOPES = ["openid", "email", "profile", "https://www.googleapis.com/auth/drive.file"].join(" ");
