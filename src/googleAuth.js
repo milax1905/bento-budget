@@ -2,6 +2,8 @@
 const express = require("express");
 const keytar = require("keytar");
 const crypto = require("crypto");
+// util ESM-safe pour ouvrir le navigateur
+const open = async (url) => (await import("open")).default(url);
 
 // ---- Config
 const SERVICE = "BentoBudget";
@@ -30,7 +32,7 @@ async function makeClient() {
 async function openUrl(url) {
   const mod = await import("open");             // ESM -> import()
   const open = mod.default || mod;              // compat default export
-  await open(url);
+  await open(authUrl);
 }
 
 // ---- Sign-in (PKCE, sans client_secret)
