@@ -13,7 +13,7 @@ const { shell } = require("electron");
 // ========================= CONFIG ==========================================
 
 // 1) Si tu n'utilises pas .env, mets ici TON client_id (type "Desktop app")
-const FALLBACK_CLIENT_ID = "367731497005-e2tokhad2ff227r30jqb6navllickele.apps.googleusercontent.com";
+const FALLBACK_CLIENT_ID = "367731497005-3ppb2npecdc9uau93mmhb89q7adv68op.apps.googleusercontent.com";
 
 // 2) Scopes voulus (ajoute/supprime selon besoin)
 const SCOPES = [
