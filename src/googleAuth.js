@@ -1,9 +1,4 @@
 // src/googleAuth.js
-// Google OAuth 2.0 (PKCE) pour Electron – version "debug+simple"
-// - Port de callback dynamique
-// - Propagation des erreurs (error + error_description)
-// - Logs détaillés côté processus principal
-// - Compatible Node 18+ (fetch natif)
 
 const http = require("http");
 const crypto = require("crypto");
@@ -12,19 +7,21 @@ const { shell } = require("electron");
 
 // ========================= CONFIG ==========================================
 
-const CLIENT_ID = process.env.GOOGLE_CLIENT_ID || FALLBACK_CLIENT_ID;
-console.log("[oauth] CLIENT_ID utilisé:", CLIENT_ID);
+// 1) Ton Client ID Desktop (OBLIGATOIRE)
+const FALLBACK_CLIENT_ID = "TON_ID_DESKTOP.apps.googleusercontent.com";
 
-// 2) Scopes voulus (ajoute/supprime selon besoin)
-const SCOPES = [
-  "openid",
-  "email",
-  "profile",
-  "https://www.googleapis.com/auth/drive.file",
-].join(" ");
+// 2) Scopes
+const SCOPES = ["openid", "email", "profile", "https://www.googleapis.com/auth/drive.file"].join(" ");
 
-// 3) Active les logs verbeux si tu lances avec DEBUG_OAUTH=1
+// 3) Logs verbeux
 const DEBUG = process.env.DEBUG_OAUTH === "1";
+
+// 4) Choix de l'ID à utiliser
+// → SI TU VEUX FORCER l’ID codé en dur :
+const CLIENT_ID = FALLBACK_CLIENT_ID;
+// → (si tu veux lire .env plus tard, remets :
+// const CLIENT_ID = process.env.GOOGLE_CLIENT_ID || FALLBACK_CLIENT_ID;
+console.log("[oauth] CLIENT_ID utilisé:", CLIENT_ID);
 
 // ========================= UTILS ===========================================
 
