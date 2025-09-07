@@ -1,6 +1,6 @@
 {
   "name": "bento-budget",
-  "version": "4.2.1",
+  "version": "4.2.2",
   "description": "Application de gestion de budget futuriste avec comptes, budgets et suivi en temps réel.",
   "private": true,
   "main": "electron.js",
