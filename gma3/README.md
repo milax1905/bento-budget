@@ -26,9 +26,12 @@ Layout grandMA3, en un clic.
   claires (*tints*) en haut, la **couleur pure** au milieu, des nuances
   foncées (*shades*) en bas — façon nuancier Photoshop.
 - **Une rampe de gris** blanc → noir.
-- Chaque case est un **preset couleur générique** (= « recipe »), donc
-  applicable à **n'importe quelle sélection**, quel que soit le système
-  de couleur du projecteur (RGB, RGBW, RGBA, CMY…).
+- Chaque case est un **preset couleur universel**, donc **non lié à une
+  machine** : la couleur est générique et s'applique à **n'importe quelle
+  sélection**, quel que soit le système de couleur (RGB, RGBW, RGBA, CMY…).
+- **Sécurité anti-écrasement** : avant d'écrire, le plugin vérifie si des
+  presets existent déjà dans la plage ciblée. Si oui, il **demande**
+  s'il faut tout écraser et regénérer à neuf ; sinon il génère directement.
 - Le **Layout est thémé** (couleur sombre) et chaque preset reçoit son
   **appearance** pour un rendu propre.
 
@@ -52,13 +55,17 @@ Layout grandMA3, en un clic.
 1. Lancer le plugin.
 2. Remplir la fenêtre de configuration :
 
-   | Champ                    | Défaut       | Description                                     |
-   |--------------------------|--------------|-------------------------------------------------|
-   | Fixtures (ex: 1 Thru 8)  | `1 Thru 8`   | Spots posés sur le layout (sélectionnés auto).  |
-   | Teintes (colonnes)       | `12`         | Nombre de teintes réparties sur 360°.           |
-   | Niveaux par teinte       | `5`          | Hauteur de chaque colonne (tints + pure + shades). |
-   | Preset départ (ID)       | `1`          | Premier ID de preset couleur.                   |
-   | Layout (No)              | `1`          | Numéro du Layout généré.                         |
+   | Champ                       | Défaut       | Description                                       |
+   |-----------------------------|--------------|---------------------------------------------------|
+   | Spots (optionnel)           | `1 Thru 8`   | Fixtures posées sur le layout (couleur live). Vide = pas de spots. |
+   | Teintes (colonnes)          | `12`         | Nombre de teintes réparties sur 360°.             |
+   | Niveaux par teinte          | `5`          | Hauteur de chaque colonne (tints + pure + shades). |
+   | Preset départ (ID)          | `1`          | Premier ID de preset couleur.                     |
+   | Layout (No)                 | `1`          | Numéro du Layout généré.                           |
+   | Universel (1/0)             | `1`          | `1` = presets universels (non liés aux machines). `0` = presets normaux. |
+
+   > Si la plage de presets est déjà occupée, une fenêtre demande
+   > confirmation **« Écraser »** avant de regénérer à neuf.
 
 3. **Générer**. Un récapitulatif s'affiche.
 

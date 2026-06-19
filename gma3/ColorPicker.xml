@@ -5,9 +5,8 @@
 			<![CDATA[
 -- =====================================================================
 --  Color Picker  -  Plugin Lua pour grandMA3 v2.x
---  Spots (live) + nuancier (tints/pure/shades) + rampe de gris,
---  presets couleur generiques (recipe) et Layout theme.
---  UX : indiquer une plage de fixtures (ex: "1 Thru 8") dans la config.
+--  Presets couleur UNIVERSELS + Layout (spots live + nuancier + gris).
+--  Demande confirmation/ecrasement si la plage de presets est occupee.
 -- =====================================================================
 
 local function hsv2rgb(h, s, v)
@@ -62,6 +61,18 @@ local function parseFixtures(str)
         end
     end
     return (#ids > 0) and ids or nil
+end
+
+local function presetUsed(pt, no)
+    local used, ok = false, false
+    ok = pcall(function()
+        local h = ObjectList(string.format("Preset %d.%d", pt, no))[1]
+        if h then
+            local ch = h:Children()
+            if ch and #ch > 0 then used = true end
+        end
+    end)
+    return used, ok
 end
 
 local function buildPalette(hues, levels)
@@ -132,31 +143,65 @@ local function main(display_handle)
 
     local cfg = MessageBox({
         title    = "Color Picker",
-        message  = "Genere un color picker complet (spots + nuancier) dans un Layout.",
+        message  = "Genere des presets couleur UNIVERSELS + un Layout (spots + nuancier).",
         commands = {
             { value = 1, name = "Generer" },
             { value = 0, name = "Annuler" },
         },
         inputs = {
-            { name = "Fixtures (ex: 1 Thru 8)", value = "1 Thru 8" },
-            { name = "Teintes (colonnes)",      value = "12" },
-            { name = "Niveaux par teinte",      value = "5"  },
-            { name = "Preset depart (ID)",      value = "1"  },
-            { name = "Layout (No)",             value = "1"  },
+            { name = "Spots (optionnel, ex: 1 Thru 8)", value = "1 Thru 8" },
+            { name = "Teintes (colonnes)",              value = "12" },
+            { name = "Niveaux par teinte",              value = "5"  },
+            { name = "Preset depart (ID)",              value = "1"  },
+            { name = "Layout (No)",                     value = "1"  },
+            { name = "Universel (1/0)",                 value = "1"  },
         },
     })
     if not cfg or cfg.result ~= 1 then return end
 
-    local fixStr  = cfg.inputs["Fixtures (ex: 1 Thru 8)"]
-    local hues    = toNum(cfg.inputs["Teintes (colonnes)"], 12, 1, 36)
-    local levels  = toNum(cfg.inputs["Niveaux par teinte"],  5, 1, 11)
-    local startId = toNum(cfg.inputs["Preset depart (ID)"],  1, 1, 100000)
-    local layNo   = toNum(cfg.inputs["Layout (No)"],         1, 1, 100000)
+    local fixStr    = cfg.inputs["Spots (optionnel, ex: 1 Thru 8)"]
+    local hues      = toNum(cfg.inputs["Teintes (colonnes)"], 12, 1, 36)
+    local levels    = toNum(cfg.inputs["Niveaux par teinte"],  5, 1, 11)
+    local startId   = toNum(cfg.inputs["Preset depart (ID)"],  1, 1, 100000)
+    local layNo     = toNum(cfg.inputs["Layout (No)"],         1, 1, 100000)
+    local universal = toNum(cfg.inputs["Universel (1/0)"],     1, 0, 1) == 1
+
+    local swatches = buildPalette(hues, levels)
+    local greys    = buildGreys(hues)
+    local nPresets = #swatches + #greys
+    local endId    = startId + nPresets - 1
+
+    local occupied, detectOk = false, true
+    for no = startId, endId do
+        local used, ok = presetUsed(PT, no)
+        if not ok then detectOk = false; break end
+        if used then occupied = true; break end
+    end
+
+    if occupied or not detectOk then
+        local confirm = MessageBox({
+            title    = "Color Picker",
+            message  = string.format(
+                "Des presets existent peut-etre dans Preset %d.%d ... %d.%d\n"
+             .. "(et le Layout %d sera (re)cree).\n\n"
+             .. "Tout ecraser et regenerer a neuf ?",
+                PT, startId, PT, endId, layNo),
+            commands = {
+                { value = 1, name = "Ecraser" },
+                { value = 0, name = "Annuler" },
+            },
+        })
+        if not confirm or confirm.result ~= 1 then return end
+        Cmd(string.format('Delete Preset %d.%d Thru %d.%d /NoConfirm', PT, startId, PT, endId))
+        Cmd(string.format('Delete Layout %d /NoConfirm', layNo))
+    end
 
     local fixIds = parseFixtures(fixStr)
+    Cmd("ClearAll")
     if fixIds then
-        Cmd("ClearAll")
         Cmd("Fixture " .. fixStr)
+    else
+        Cmd("Fixture Thru")
     end
 
     local selCount, hasSelApi = 0, false
@@ -164,22 +209,21 @@ local function main(display_handle)
     if hasSelApi and selCount == 0 then
         MessageBox({
             title = "Color Picker",
-            message = "Aucune fixture selectionnee.\nIndique une plage valide (ex: 1 Thru 8).",
+            message = "Aucune fixture disponible pour ecrire les couleurs.\n"
+                   .. "Patche au moins un projecteur RGB, ou indique une plage de spots.",
             commands = { { value = 1, name = "OK" } },
         })
         return
     end
 
-    local swatches = buildPalette(hues, levels)
-    local greys    = buildGreys(hues)
-
+    local uniOpt = universal and " /Universal" or ""
     local id = startId
     local function makePreset(item)
         item.no = id
         Cmd(string.format('Attribute "ColorRGB_R" At %d', math.floor(item.r / 255 * 100 + 0.5)))
         Cmd(string.format('Attribute "ColorRGB_G" At %d', math.floor(item.g / 255 * 100 + 0.5)))
         Cmd(string.format('Attribute "ColorRGB_B" At %d', math.floor(item.b / 255 * 100 + 0.5)))
-        Cmd(string.format('Store Preset %d.%d /Merge /NoConfirm', PT, item.no))
+        Cmd(string.format('Store Preset %d.%d /Merge /NoConfirm%s', PT, item.no, uniOpt))
         Cmd(string.format('Label Preset %d.%d "%s"', PT, item.no, item.name))
         Cmd(string.format('Appearance Preset %d.%d /R=%d /G=%d /B=%d', PT, item.no, item.r, item.g, item.b))
         id = id + 1
@@ -209,7 +253,7 @@ local function main(display_handle)
         fixRows = math.ceil(#fixIds / hues)
     end
 
-    local gridTop = fixRows + 1
+    local gridTop = fixRows + (fixRows > 0 and 1 or 0)
     for _, s in ipairs(swatches) do
         elements[#elements + 1] = {
             object = string.format("Preset %d.%d", PT, s.no),
@@ -229,16 +273,16 @@ local function main(display_handle)
 
     Cmd("ClearAll")
 
-    local nPresets = #swatches + #greys
     local msg = string.format(
         "Color Picker pret !\n\n"
+     .. "Presets %s : %d  (Preset %d.%d -> %d.%d)\n"
+     .. "Nuancier : %d teintes x %d niveaux + rampe de gris\n"
      .. "Spots places : %d\n"
-     .. "Presets couleur : %d  (Preset %d.%d -> %d.%d)\n"
-     .. "Nuancier : %d teintes x %d niveaux  + rampe de gris\n"
      .. "Layout %d : %d cases placees%s",
-        fixIds and #fixIds or 0,
-        nPresets, PT, startId, PT, startId + nPresets - 1,
-        hues, levels, layNo, placed,
+        universal and "UNIVERSELS" or "generiques",
+        nPresets, PT, startId, PT, endId,
+        hues, levels, fixIds and #fixIds or 0,
+        layNo, placed,
         (failed > 0) and string.format("\nATTENTION : %d non placees.", failed) or "")
 
     MessageBox({
@@ -246,8 +290,8 @@ local function main(display_handle)
         message = msg,
         commands = { { value = 1, name = "Super !" } },
     })
-    Printf("[ColorPicker] %d presets, layout %d (%d/%d cases).",
-        nPresets, layNo, placed, placed + failed)
+    Printf("[ColorPicker] %d presets (universal=%s), layout %d (%d/%d cases).",
+        nPresets, tostring(universal), layNo, placed, placed + failed)
 end
 
 return main
