@@ -1,25 +1,35 @@
 -- =====================================================================
---  Color Picker Generator  -  Plugin Lua pour grandMA3 (v1.9+ / v2)
+--  Color Picker  -  Plugin Lua pour grandMA3 v2.x
 -- ---------------------------------------------------------------------
---  Genere automatiquement :
---    * une grille de presets couleur (Pool 4 / Color), construits a
---      partir d'une rampe HSV (teintes x niveaux de luminosite + gris) ;
---    * l'appearance (couleur d'affichage) de chaque preset ;
---    * un Layout qui place tous ces presets dans une grille cliquable.
+--  Construit un color picker complet et soigne dans un Layout :
 --
---  Les presets couleur de grandMA3 sont stockes de maniere generique
---  (= "recipe" couleur) : ils s'appliquent a n'importe quel projecteur
---  selectionne, quel que soit son systeme de couleur (RGB, RGBW, CMY...).
+--    [ Spots ]   -> les fixtures choisies, en haut du layout. Elles
+--                   affichent leur couleur EN LIVE : taper un swatch
+--                   ci-dessous les colore immediatement.
 --
---  Pre-requis : avoir une selection de fixtures disposant d'attributs
---  de couleur (ColorRGB) AVANT de lancer le plugin.
+--    [ Nuancier] -> une grille facon nuancier : pour chaque teinte, une
+--                   colonne avec des teintes claires (tints) en haut, la
+--                   couleur pure au milieu, des teintes foncees (shades)
+--                   en bas. Chaque case = un preset couleur generique
+--                   (recipe) applicable a n'importe quelle selection.
+--
+--    [ Gris ]    -> une rampe blanc -> noir.
+--
+--  Le Layout et les presets recoivent une appearance coherente, et le
+--  Layout est colore (theme sombre) pour un rendu propre.
+--
+--  UX : indique simplement une plage de fixtures dans la fenetre de
+--  config (ex : "1 Thru 8"). Le plugin les selectionne, genere tout,
+--  puis nettoie le programmer. Aucune selection prealable requise.
 --
 --  Auteur : genere pour Axel - libre d'utilisation / modification.
 -- =====================================================================
 
--- Conversion HSV -> RGB.
--- h : 0..360 (teinte), s : 0..1 (saturation), v : 0..1 (valeur)
--- retourne r,g,b dans la plage 0..255
+----------------------------------------------------------------------
+-- Outils couleur
+----------------------------------------------------------------------
+
+-- HSV -> RGB.  h:0..360  s,v:0..1  -> r,g,b:0..255
 local function hsv2rgb(h, s, v)
     h = h % 360
     local c = v * s
@@ -37,8 +47,25 @@ local function hsv2rgb(h, s, v)
            math.floor((b + m) * 255 + 0.5)
 end
 
--- Petit utilitaire : lit un nombre depuis une saisie texte, avec
--- valeur par defaut et bornes mini/maxi.
+-- Nom lisible d'une teinte (pour des labels propres).
+local NAMES = {
+    [0]="Red", [30]="Orange", [60]="Yellow", [90]="Lime",
+    [120]="Green", [150]="Mint", [180]="Cyan", [210]="Azure",
+    [240]="Blue", [270]="Violet", [300]="Magenta", [330]="Pink",
+}
+local function hueName(h)
+    local best, bestKey = 1e9, 0
+    for key, _ in pairs(NAMES) do
+        local d = math.min(math.abs(h - key), 360 - math.abs(h - key))
+        if d < best then best, bestKey = d, key end
+    end
+    return NAMES[bestKey]
+end
+
+----------------------------------------------------------------------
+-- Outils divers
+----------------------------------------------------------------------
+
 local function toNum(value, default, min, max)
     local n = tonumber(value) or default
     if min and n < min then n = min end
@@ -46,167 +73,235 @@ local function toNum(value, default, min, max)
     return math.floor(n)
 end
 
--- Construit la liste des couleurs a generer.
--- Renvoie un tableau d'entrees : { name, r, g, b, col, row }
-local function buildPalette(hues, rows, greyscale)
-    local palette = {}
-    local row = 0
-
-    -- Lignes de teintes : chaque ligne fait varier la luminosite (V)
-    -- de 100% (haut) vers ~25% (bas), saturation pleine.
-    for r = 0, rows - 1 do
-        local v = 1.0 - (r * (0.75 / math.max(rows - 1, 1)))
-        for c = 0, hues - 1 do
-            local hue = (c / hues) * 360
-            local red, green, blue = hsv2rgb(hue, 1.0, v)
-            palette[#palette + 1] = {
-                name = string.format("H%d V%d", math.floor(hue), math.floor(v * 100)),
-                r = red, g = green, b = blue, col = c, row = row,
-            }
+-- Convertit une plage texte ("1 Thru 8", "1 + 3 + 5", "1 Thru 4 + 9")
+-- en liste d'IDs de fixtures. Renvoie nil si rien d'exploitable.
+local function parseFixtures(str)
+    if not str or str:match("^%s*$") then return nil end
+    local ids = {}
+    for token in (str .. "+"):gmatch("([^+]+)") do
+        token = token:gsub("^%s+", ""):gsub("%s+$", "")
+        local a, b = token:lower():match("^(%d+)%s*thru%s*(%d+)$")
+        if a then
+            for i = tonumber(a), tonumber(b) do ids[#ids + 1] = i end
+        else
+            local n = token:match("^(%d+)$")
+            if n then ids[#ids + 1] = tonumber(n) end
         end
-        row = row + 1
     end
-
-    -- Ligne de degrades de gris (du blanc au noir) + ligne optionnelle.
-    if greyscale then
-        for c = 0, hues - 1 do
-            local level = math.floor((1 - (c / math.max(hues - 1, 1))) * 255 + 0.5)
-            palette[#palette + 1] = {
-                name = string.format("Grey %d", math.floor(level / 255 * 100)),
-                r = level, g = level, b = level, col = c, row = row,
-            }
-        end
-        row = row + 1
-    end
-
-    return palette, row
+    return (#ids > 0) and ids or nil
 end
 
--- Place les presets dans le Layout via l'API objet (guardee par pcall
--- pour rester compatible entre versions). Retourne nb place, nb erreurs.
-local function fillLayout(layoutNo, presetType, palette)
+----------------------------------------------------------------------
+-- Generation de la palette (style nuancier)
+----------------------------------------------------------------------
+-- Renvoie une liste de swatches : { name, r, g, b, col, level }
+-- col   = index de teinte (colonne)
+-- level = index vertical (0 = plus clair ... L-1 = plus fonce)
+local function buildPalette(hues, levels)
+    local sw = {}
+    local mid = math.floor((levels - 1) / 2)
+    for c = 0, hues - 1 do
+        local hue  = (c / hues) * 360
+        local name = hueName(hue)
+        for r = 0, levels - 1 do
+            local s, v, suffix
+            if r == mid then                 -- couleur pure
+                s, v, suffix = 1.0, 1.0, ""
+            elseif r < mid then              -- tints (plus clair)
+                local t = (mid - r) / mid    -- 0..1
+                s, v   = 1 - t * 0.85, 1.0
+                suffix = string.rep("+", mid - r)
+            else                             -- shades (plus fonce)
+                local d = (r - mid) / (levels - 1 - mid)
+                s, v   = 1.0, 1 - d * 0.80
+                suffix = string.rep("-", r - mid)
+            end
+            local red, green, blue = hsv2rgb(hue, s, v)
+            sw[#sw + 1] = {
+                name = name .. suffix,
+                r = red, g = green, b = blue, col = c, level = r,
+            }
+        end
+    end
+    return sw
+end
+
+-- Rampe de gris blanc -> noir, sur "hues" cases.
+local function buildGreys(hues)
+    local g = {}
+    for c = 0, hues - 1 do
+        local v = 1 - (c / math.max(hues - 1, 1))
+        local lvl = math.floor(v * 255 + 0.5)
+        local name
+        if     c == 0        then name = "White"
+        elseif c == hues - 1 then name = "Black"
+        else                      name = string.format("Grey %d", math.floor(v * 100)) end
+        g[#g + 1] = { name = name, r = lvl, g = lvl, b = lvl, col = c }
+    end
+    return g
+end
+
+----------------------------------------------------------------------
+-- Placement dans le Layout (API objet, protege par pcall)
+----------------------------------------------------------------------
+-- elements : liste de { object="Preset 4.12"|"Fixture 5", x, y, w, h }
+local function fillLayout(layoutNo, elements)
     local placed, failed = 0, 0
     local layout
-    local ok = pcall(function()
-        layout = ObjectList("Layout " .. layoutNo)[1]
-    end)
-    if not ok or not layout then
-        return 0, #palette
-    end
+    local ok = pcall(function() layout = ObjectList("Layout " .. layoutNo)[1] end)
+    if not ok or not layout then return 0, #elements end
 
-    for _, item in ipairs(palette) do
+    for _, e in ipairs(elements) do
         local done = pcall(function()
             local ele = layout:Append()
-            ele:Set("SizeH", "1")
-            ele:Set("SizeV", "1")
-            ele:Set("PosX",  tostring(item.col))
-            ele:Set("PosY",  tostring(-item.row)) -- Y descend vers le bas
-            -- Reference l'objet preset par son adresse de ligne de commande.
-            ele:Set("Object", string.format("Preset %d.%d", presetType, item.no))
+            ele:Set("SizeH",  tostring(e.w or 1))
+            ele:Set("SizeV",  tostring(e.h or 1))
+            ele:Set("PosX",   tostring(e.x))
+            ele:Set("PosY",   tostring(e.y))   -- Y descend = valeurs negatives
+            ele:Set("Object", e.object)
         end)
         if done then placed = placed + 1 else failed = failed + 1 end
     end
     return placed, failed
 end
 
--- ---------------------------------------------------------------------
---  Fonction principale appelee par grandMA3.
--- ---------------------------------------------------------------------
+----------------------------------------------------------------------
+-- Programme principal
+----------------------------------------------------------------------
 local function main(display_handle)
-    local PRESET_TYPE = 4 -- Pool de presets "Color"
+    local PT = 4 -- Pool de presets "Color"
 
-    -- 1) Boite de dialogue de configuration -----------------------------
+    -- 1) Configuration -------------------------------------------------
     local cfg = MessageBox({
-        title    = "Color Picker Generator",
-        message  = "Genere une grille de presets couleur + un Layout.\n"
-                .. "Selectionne d'abord des fixtures RGB.",
+        title    = "Color Picker",
+        message  = "Genere un color picker complet (spots + nuancier) dans un Layout.",
         commands = {
             { value = 1, name = "Generer" },
             { value = 0, name = "Annuler" },
         },
         inputs = {
-            { name = "Teintes (colonnes)",  value = "12" },
-            { name = "Niveaux (lignes)",    value = "4"  },
-            { name = "Preset depart (ID)",  value = "1"  },
-            { name = "Layout (No)",         value = "1"  },
-            { name = "Ligne de gris (1/0)", value = "1"  },
+            { name = "Fixtures (ex: 1 Thru 8)", value = "1 Thru 8" },
+            { name = "Teintes (colonnes)",      value = "12" },
+            { name = "Niveaux par teinte",      value = "5"  },
+            { name = "Preset depart (ID)",      value = "1"  },
+            { name = "Layout (No)",             value = "1"  },
         },
     })
+    if not cfg or cfg.result ~= 1 then return end
 
-    if not cfg or cfg.result ~= 1 then
-        return -- annule par l'utilisateur
+    local fixStr  = cfg.inputs["Fixtures (ex: 1 Thru 8)"]
+    local hues    = toNum(cfg.inputs["Teintes (colonnes)"], 12, 1, 36)
+    local levels  = toNum(cfg.inputs["Niveaux par teinte"],  5, 1, 11)
+    local startId = toNum(cfg.inputs["Preset depart (ID)"],  1, 1, 100000)
+    local layNo   = toNum(cfg.inputs["Layout (No)"],         1, 1, 100000)
+
+    -- 2) Selection des fixtures ---------------------------------------
+    local fixIds = parseFixtures(fixStr)
+    if fixIds then
+        Cmd("ClearAll")
+        Cmd("Fixture " .. fixStr)
     end
 
-    local hues      = toNum(cfg.inputs["Teintes (colonnes)"], 12, 1, 36)
-    local rows      = toNum(cfg.inputs["Niveaux (lignes)"],    4, 1, 12)
-    local startId   = toNum(cfg.inputs["Preset depart (ID)"],  1, 1, 10000)
-    local layoutNo  = toNum(cfg.inputs["Layout (No)"],         1, 1, 10000)
-    local greyscale = toNum(cfg.inputs["Ligne de gris (1/0)"], 1, 0, 1) == 1
-
-    -- 2) Verifie qu'une selection existe (si l'API le permet) ----------
     local selCount, hasSelApi = 0, false
-    pcall(function()
-        selCount  = SelectionCount()
-        hasSelApi = true
-    end)
+    pcall(function() selCount = SelectionCount(); hasSelApi = true end)
     if hasSelApi and selCount == 0 then
         MessageBox({
-            title    = "Color Picker",
-            message  = "Aucune fixture selectionnee.\n"
-                    .. "Selectionne des projecteurs RGB puis relance.",
+            title = "Color Picker",
+            message = "Aucune fixture selectionnee.\nIndique une plage valide (ex: 1 Thru 8).",
             commands = { { value = 1, name = "OK" } },
         })
         return
     end
 
-    -- 3) Construit la palette ------------------------------------------
-    local palette, totalRows = buildPalette(hues, rows, greyscale)
+    -- 3) Construction des couleurs ------------------------------------
+    local swatches = buildPalette(hues, levels)
+    local greys    = buildGreys(hues)
 
-    -- 4) Cree chaque preset couleur ------------------------------------
-    --    On fixe la couleur dans le programmer (ColorRGB en %), on
-    --    stocke le preset (generique = recipe couleur), on l'etiquette
-    --    et on lui donne son appearance.
-    for i, item in ipairs(palette) do
-        item.no = startId + (i - 1)
-
+    -- 4) Creation des presets (couleur generique = recipe) ------------
+    local id = startId
+    local function makePreset(item)
+        item.no = id
         Cmd(string.format('Attribute "ColorRGB_R" At %d', math.floor(item.r / 255 * 100 + 0.5)))
         Cmd(string.format('Attribute "ColorRGB_G" At %d', math.floor(item.g / 255 * 100 + 0.5)))
         Cmd(string.format('Attribute "ColorRGB_B" At %d', math.floor(item.b / 255 * 100 + 0.5)))
+        Cmd(string.format('Store Preset %d.%d /Merge /NoConfirm', PT, item.no))
+        Cmd(string.format('Label Preset %d.%d "%s"', PT, item.no, item.name))
+        Cmd(string.format('Appearance Preset %d.%d /R=%d /G=%d /B=%d', PT, item.no, item.r, item.g, item.b))
+        id = id + 1
+    end
+    for _, s in ipairs(swatches) do makePreset(s) end
+    for _, g in ipairs(greys)    do makePreset(g) end
 
-        Cmd(string.format('Store Preset %d.%d /Merge /NoConfirm', PRESET_TYPE, item.no))
-        Cmd(string.format('Label Preset %d.%d "%s"', PRESET_TYPE, item.no, item.name))
-        Cmd(string.format('Appearance Preset %d.%d /R=%d /G=%d /B=%d',
-            PRESET_TYPE, item.no, item.r, item.g, item.b))
+    -- 5) Creation et theme du Layout ----------------------------------
+    Cmd(string.format('Store Layout %d "Color Picker" /NoConfirm', layNo))
+    Cmd(string.format('Label Layout %d "Color Picker"', layNo))
+    -- couleur d'identite du layout (theme sombre / accent)
+    Cmd(string.format('Appearance Layout %d /R=18 /G=22 /B=30', layNo))
+    -- tentative de fond de layout (selon build) - sans danger si ignore
+    pcall(function()
+        local lh = ObjectList("Layout " .. layNo)[1]
+        lh:Set("BackR", "18"); lh:Set("BackG", "22"); lh:Set("BackB", "30")
+    end)
+
+    -- 6) Composition du Layout ----------------------------------------
+    local elements = {}
+
+    -- 6a) Les spots en haut (affichent la couleur live), avec wrap.
+    local fixRows = 0
+    if fixIds then
+        for i, fid in ipairs(fixIds) do
+            local col = (i - 1) % hues
+            local row = math.floor((i - 1) / hues)
+            elements[#elements + 1] = {
+                object = "Fixture " .. fid, x = col, y = -row, w = 1, h = 1,
+            }
+        end
+        fixRows = math.ceil(#fixIds / hues)
     end
 
-    -- 5) Cree le Layout et y place tous les presets --------------------
-    Cmd(string.format('Store Layout %d "Color Picker" /NoConfirm', layoutNo))
-    Cmd(string.format('Label Layout %d "Color Picker"', layoutNo))
-    local placed, failed = fillLayout(layoutNo, PRESET_TYPE, palette)
+    -- 6b) Le nuancier (1 ligne de gap sous les spots).
+    local gridTop = fixRows + 1
+    for _, s in ipairs(swatches) do
+        elements[#elements + 1] = {
+            object = string.format("Preset %d.%d", PT, s.no),
+            x = s.col, y = -(gridTop + s.level), w = 1, h = 1,
+        }
+    end
 
-    -- 6) Nettoyage du programmer ---------------------------------------
+    -- 6c) La rampe de gris (1 ligne de gap sous le nuancier).
+    local greyRow = gridTop + levels + 1
+    for _, g in ipairs(greys) do
+        elements[#elements + 1] = {
+            object = string.format("Preset %d.%d", PT, g.no),
+            x = g.col, y = -greyRow, w = 1, h = 1,
+        }
+    end
+
+    local placed, failed = fillLayout(layNo, elements)
+
+    -- 7) Nettoyage -----------------------------------------------------
     Cmd("ClearAll")
 
-    -- 7) Compte rendu ---------------------------------------------------
+    -- 8) Compte rendu --------------------------------------------------
+    local nPresets = #swatches + #greys
     local msg = string.format(
-        "Termine !\n\n"
-     .. "Presets couleur crees : %d (Preset %d.%d -> %d.%d)\n"
-     .. "Grille : %d colonnes x %d lignes\n"
-     .. "Layout %d : %d boutons places%s",
-        #palette, PRESET_TYPE, startId, PRESET_TYPE, startId + #palette - 1,
-        hues, totalRows, layoutNo, placed,
-        (failed > 0)
-            and string.format("\nATTENTION : %d non places (placez-les a la main si besoin).", failed)
-            or "")
+        "Color Picker pret !\n\n"
+     .. "Spots places : %d\n"
+     .. "Presets couleur : %d  (Preset %d.%d -> %d.%d)\n"
+     .. "Nuancier : %d teintes x %d niveaux  + rampe de gris\n"
+     .. "Layout %d : %d cases placees%s",
+        fixIds and #fixIds or 0,
+        nPresets, PT, startId, PT, startId + nPresets - 1,
+        hues, levels, layNo, placed,
+        (failed > 0) and string.format("\nATTENTION : %d non placees.", failed) or "")
 
     MessageBox({
-        title    = "Color Picker",
-        message  = msg,
-        commands = { { value = 1, name = "OK" } },
+        title = "Color Picker",
+        message = msg,
+        commands = { { value = 1, name = "Super !" } },
     })
-
-    Printf("[ColorPicker] %d presets, layout %d (%d places, %d erreurs).",
-        #palette, layoutNo, placed, failed)
+    Printf("[ColorPicker] %d presets, layout %d (%d/%d cases).",
+        nPresets, layNo, placed, placed + failed)
 end
 
 return main
