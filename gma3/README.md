@@ -14,6 +14,8 @@ Layout grandMA3, en un clic.
 │  ▦ ▦ ▦ ▦ ▦ ▦ ▦ ▦ ▦ ▦ ▦ ▦   shades (foncé)       │
 │                                                │
 │  ◻ ▦ ▦ ▦ ▦ ▦ ▦ ▦ ▦ ▦ ▦ ◼   rampe de GRIS         │
+│                                                │
+│  [Clear] [White] [Full] [Highlight]  ← BOUTONS │
 └───────────────────────────────────────────────┘
 ```
 
@@ -26,6 +28,10 @@ Layout grandMA3, en un clic.
   claires (*tints*) en haut, la **couleur pure** au milieu, des nuances
   foncées (*shades*) en bas — façon nuancier Photoshop.
 - **Une rampe de gris** blanc → noir.
+- **Des boutons utilitaires** (optionnels) sous le nuancier : **Clear**
+  (vide le programmateur), **White** (sélection en blanc plein), **Full**
+  (dimmer à 100 %), **Highlight**. Ce sont de vraies **macros** — donc
+  persistantes et éditables si une commande diffère sur ta version.
 - Chaque case est un **preset couleur universel**, donc **non lié à une
   machine** : la couleur est générique et s'applique à **n'importe quelle
   sélection**, quel que soit le système de couleur (RGB, RGBW, RGBA, CMY…).
@@ -63,9 +69,11 @@ Layout grandMA3, en un clic.
    | Preset départ (ID)          | `1`          | Premier ID de preset couleur.                     |
    | Layout (No)                 | `1`          | Numéro du Layout généré.                           |
    | Universel (1/0)             | `1`          | `1` = presets universels (non liés aux machines). `0` = presets normaux. |
+   | Boutons utilitaires (1/0)   | `1`          | `1` = ajoute les macros Clear/White/Full/Highlight. `0` = aucun bouton. |
+   | Macro départ (ID)           | `1`          | Premier ID de macro pour les boutons.             |
 
-   > Si la plage de presets est déjà occupée, une fenêtre demande
-   > confirmation **« Écraser »** avant de regénérer à neuf.
+   > Si la plage de presets **ou de macros** est déjà occupée, une fenêtre
+   > demande confirmation **« Écraser »** avant de regénérer à neuf.
 
 3. **Générer**. Un récapitulatif s'affiche.
 
