@@ -50,8 +50,8 @@ end
 local function parseFixtures(str)
     if not str or str:match("^%s*$") then return nil end
     local ids = {}
-    for token in (str .. "+"):gmatch("([^+]+)") do
-        token = token:gsub("^%s+", ""):gsub("%s+$", "")
+    for raw in (str .. "+"):gmatch("([^+]+)") do
+        local token = raw:gsub("^%s+", ""):gsub("%s+$", "")
         local a, b = token:lower():match("^(%d+)%s*thru%s*(%d+)$")
         if a then
             for i = tonumber(a), tonumber(b) do ids[#ids + 1] = i end
