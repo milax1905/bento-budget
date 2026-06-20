@@ -51,10 +51,16 @@ Layout grandMA3, en un clic.
 
 ## Installation
 
-1. Copier `ColorPicker.xml` dans `gma3_library/datapools/plugins/`
-   (ou, via USB : `gma3/library/datapools/plugins/`).
+> ⚠️ **Deux fichiers obligatoires** : `ColorPicker.xml` **et** `ColorPicker.lua`
+> doivent être ensemble dans le **même dossier**. Le XML référence le `.lua`
+> (`FileName="ColorPicker.lua"`) — c'est le format natif de grandMA3.
+
+1. Copier **les deux fichiers** dans le dossier plugins :
+   - onPC (Mac) : `~/MALightingTechnology/gma3_library/datapools/plugins/`
+   - onPC (Windows) : `C:\ProgramData\MALightingTechnology\gma3_library\datapools\plugins\`
+   - via USB : `gma3/library/datapools/plugins/`
 2. Console : pool **Plugins** → emplacement vide → **Import** →
-   choisir `ColorPicker`.
+   choisir `ColorPicker` (il charge automatiquement le `.lua` à côté).
 
 ## Utilisation
 
