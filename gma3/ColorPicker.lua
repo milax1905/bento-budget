@@ -15,13 +15,7 @@
 --
 --  Securite : avant d'ecrire, verifie si la plage de presets (et de
 --  macros) est occupee. Si oui -> demande avant d'ecraser/regenerer.
---
---  Auteur : genere pour Axel - libre d'utilisation / modification.
 -- =====================================================================
-
-----------------------------------------------------------------------
--- Outils couleur
-----------------------------------------------------------------------
 
 local function hsv2rgb(h, s, v)
     h = h % 360
@@ -54,10 +48,6 @@ local function hueName(h)
     return NAMES[bestKey]
 end
 
-----------------------------------------------------------------------
--- Outils divers
-----------------------------------------------------------------------
-
 local function toNum(value, default, min, max)
     local n = tonumber(value) or default
     if min and n < min then n = min end
@@ -81,8 +71,6 @@ local function parseFixtures(str)
     return (#ids > 0) and ids or nil
 end
 
--- Best-effort : un objet (preset, macro...) est-il deja utilise ?
--- Renvoie (used, detectionOk)
 local function objectUsed(addr)
     local used, ok = false, false
     ok = pcall(function()
@@ -95,11 +83,6 @@ local function objectUsed(addr)
     return used, ok
 end
 
-----------------------------------------------------------------------
--- Boutons utilitaires (macros)
-----------------------------------------------------------------------
--- Commandes editables : si une syntaxe differe sur ta version, edite
--- simplement la macro concernee dans le pool Macro.
 local BUTTONS = {
     { name = "Clear",     r =  70, g =  70, b =  80, lines = { "ClearAll" } },
     { name = "White",     r = 255, g = 255, b = 255, lines = {
@@ -110,9 +93,6 @@ local BUTTONS = {
     { name = "Highlight", r = 255, g = 110, b =   0, lines = { "Highlight On" } },
 }
 
-----------------------------------------------------------------------
--- Generation de la palette
-----------------------------------------------------------------------
 local function buildPalette(hues, levels)
     local sw = {}
     local mid = math.floor((levels - 1) / 2)
@@ -156,9 +136,8 @@ local function buildGreys(hues)
     return g
 end
 
-----------------------------------------------------------------------
--- Placement dans le Layout (API objet, protege par pcall)
-----------------------------------------------------------------------
+-- Place les elements dans le layout via l'API objet.
+-- Coordonnees : X = colonne (gauche->droite), Y = ligne (haut->bas, POSITIF).
 local function fillLayout(layoutNo, elements)
     local placed, failed = 0, 0
     local layout
@@ -168,41 +147,43 @@ local function fillLayout(layoutNo, elements)
     for _, e in ipairs(elements) do
         local done = pcall(function()
             local ele = layout:Append()
-            ele:Set("SizeH",  tostring(e.w or 1))
-            ele:Set("SizeV",  tostring(e.h or 1))
-            ele:Set("PosX",   tostring(e.x))
-            ele:Set("PosY",   tostring(e.y))
-            ele:Set("Object", e.object)
+            -- Dimensions
+            pcall(function() ele:Set("SizeH", tostring(e.w or 1)) end)
+            pcall(function() ele:Set("SizeV", tostring(e.h or 1)) end)
+            -- Position (Y positif = vers le bas dans grandMA3)
+            pcall(function() ele:Set("PosX",  tostring(e.x)) end)
+            pcall(function() ele:Set("PosY",  tostring(e.y)) end)
+            -- Assignation de l'objet cible : via handle d'abord, sinon string
+            local assigned = false
+            pcall(function()
+                local target = ObjectList(e.object)[1]
+                if target then ele:Assign(target); assigned = true end
+            end)
+            if not assigned then
+                pcall(function() ele:Set("Object", e.object) end)
+            end
         end)
         if done then placed = placed + 1 else failed = failed + 1 end
     end
     return placed, failed
 end
 
-----------------------------------------------------------------------
--- Creation d'une macro utilitaire (API objet pour les lignes)
-----------------------------------------------------------------------
 local function makeMacro(no, btn)
     Cmd(string.format('Store Macro %d /NoConfirm', no))
     Cmd(string.format('Label Macro %d "%s"', no, btn.name))
     Cmd(string.format('Appearance Macro %d /R=%d /G=%d /B=%d', no, btn.r, btn.g, btn.b))
-    local ok = pcall(function()
+    pcall(function()
         local m = ObjectList("Macro " .. no)[1]
         for _, cmd in ipairs(btn.lines) do
             local ml = m:Append()
             ml:Set("Command", cmd)
         end
     end)
-    return ok
 end
 
-----------------------------------------------------------------------
--- Programme principal
-----------------------------------------------------------------------
 local function main(display_handle)
-    local PT = 4 -- Pool de presets "Color"
+    local PT = 4
 
-    -- 1) Configuration -------------------------------------------------
     local cfg = MessageBox({
         title    = "Color Picker",
         message  = "Genere des presets couleur UNIVERSELS + un Layout (spots, nuancier, boutons).",
@@ -211,7 +192,7 @@ local function main(display_handle)
             { value = 0, name = "Annuler" },
         },
         inputs = {
-            { name = "Spots (optionnel, ex: 1 Thru 8)", value = "1 Thru 8" },
+            { name = "Spots (optionnel, ex: 1 Thru 8)", value = "" },
             { name = "Teintes (colonnes)",              value = "12" },
             { name = "Niveaux par teinte",              value = "5"  },
             { name = "Preset depart (ID)",              value = "1"  },
@@ -236,10 +217,9 @@ local function main(display_handle)
     local greys    = buildGreys(hues)
     local nPresets = #swatches + #greys
     local endId    = startId + nPresets - 1
-    local nBtns    = utilities and #BUTTONS or 0
-    local macEnd   = macStart + nBtns - 1
+    local macEnd   = macStart + (utilities and #BUTTONS - 1 or -1)
 
-    -- 2) Verifie l'occupation des plages ciblees ----------------------
+    -- Verification occupation des plages
     local occupied, detectOk = false, true
     for no = startId, endId do
         local used, ok = objectUsed(string.format("Preset %d.%d", PT, no))
@@ -278,7 +258,7 @@ local function main(display_handle)
         end
     end
 
-    -- 3) Selection "scratch" pour ecrire les couleurs -----------------
+    -- Selection scratch pour ecrire les couleurs
     local fixIds = parseFixtures(fixStr)
     Cmd("ClearAll")
     if fixIds then
@@ -292,14 +272,13 @@ local function main(display_handle)
     if hasSelApi and selCount == 0 then
         MessageBox({
             title = "Color Picker",
-            message = "Aucune fixture disponible pour ecrire les couleurs.\n"
-                   .. "Patche au moins un projecteur RGB, ou indique une plage de spots.",
+            message = "Aucune fixture disponible.\nPatche au moins un projecteur RGB.",
             commands = { { value = 1, name = "OK" } },
         })
         return
     end
 
-    -- 4) Creation des presets UNIVERSELS ------------------------------
+    -- Creation des presets universels
     local uniOpt = universal and " /Universal" or ""
     local id = startId
     local function makePreset(item)
@@ -315,97 +294,90 @@ local function main(display_handle)
     for _, s in ipairs(swatches) do makePreset(s) end
     for _, g in ipairs(greys)    do makePreset(g) end
 
-    -- 5) Creation des macros utilitaires ------------------------------
+    -- Creation des macros utilitaires
     local macList = {}
     if utilities then
         for i, btn in ipairs(BUTTONS) do
             local no = macStart + i - 1
             makeMacro(no, btn)
-            macList[#macList + 1] = { no = no, name = btn.name }
+            macList[#macList + 1] = { no = no }
         end
     end
 
-    -- 6) Creation et theme du Layout ----------------------------------
-    Cmd(string.format('Store Layout %d "Color Picker" /NoConfirm', layNo))
+    -- Creation du layout
+    Cmd(string.format('Store Layout %d /NoConfirm', layNo))
     Cmd(string.format('Label Layout %d "Color Picker"', layNo))
     Cmd(string.format('Appearance Layout %d /R=18 /G=22 /B=30', layNo))
-    pcall(function()
-        local lh = ObjectList("Layout " .. layNo)[1]
-        lh:Set("BackR", "18"); lh:Set("BackG", "22"); lh:Set("BackB", "30")
-    end)
 
-    -- 7) Composition du Layout ----------------------------------------
+    -- Construction des elements a placer
+    -- IMPORTANT : Y positif = vers le bas dans grandMA3
     local elements = {}
 
-    -- 7a) Spots en haut (couleur live), avec retour a la ligne.
+    -- Spots (ligne 0, 1, ...)
     local fixRows = 0
     if fixIds then
         for i, fid in ipairs(fixIds) do
             local col = (i - 1) % hues
             local row = math.floor((i - 1) / hues)
             elements[#elements + 1] = {
-                object = "Fixture " .. fid, x = col, y = -row, w = 1, h = 1,
+                object = "Fixture " .. fid, x = col, y = row, w = 1, h = 1,
             }
         end
         fixRows = math.ceil(#fixIds / hues)
     end
 
-    -- 7b) Nuancier (1 ligne de gap sous les spots).
+    -- Nuancier (1 ligne de gap apres les spots)
     local gridTop = fixRows + (fixRows > 0 and 1 or 0)
     for _, s in ipairs(swatches) do
         elements[#elements + 1] = {
             object = string.format("Preset %d.%d", PT, s.no),
-            x = s.col, y = -(gridTop + s.level), w = 1, h = 1,
+            x = s.col, y = gridTop + s.level, w = 1, h = 1,
         }
     end
 
-    -- 7c) Rampe de gris (1 ligne de gap sous le nuancier).
+    -- Rampe de gris (1 ligne de gap apres le nuancier)
     local greyRow = gridTop + levels + 1
     for _, g in ipairs(greys) do
         elements[#elements + 1] = {
             object = string.format("Preset %d.%d", PT, g.no),
-            x = g.col, y = -greyRow, w = 1, h = 1,
+            x = g.col, y = greyRow, w = 1, h = 1,
         }
     end
 
-    -- 7d) Boutons utilitaires (1 ligne de gap sous les gris).
+    -- Boutons utilitaires (1 ligne de gap apres les gris)
     if utilities and #macList > 0 then
-        local btnW  = math.max(2, math.floor(hues / #macList))
+        local btnW   = math.max(2, math.floor(hues / #macList))
         local btnRow = greyRow + 2
         for i, m in ipairs(macList) do
             elements[#elements + 1] = {
                 object = "Macro " .. m.no,
-                x = (i - 1) * btnW, y = -btnRow, w = btnW, h = 1,
+                x = (i - 1) * btnW, y = btnRow, w = btnW, h = 1,
             }
         end
     end
 
     local placed, failed = fillLayout(layNo, elements)
 
-    -- 8) Nettoyage -----------------------------------------------------
     Cmd("ClearAll")
 
-    -- 9) Compte rendu --------------------------------------------------
     local msg = string.format(
         "Color Picker pret !\n\n"
      .. "Presets %s : %d  (Preset %d.%d -> %d.%d)\n"
-     .. "Nuancier : %d teintes x %d niveaux + rampe de gris\n"
-     .. "Spots places : %d\n"
-     .. "Boutons : %d  (Macro %d -> %d)\n"
-     .. "Layout %d : %d cases placees%s",
+     .. "Nuancier : %d teintes x %d niveaux + gris\n"
+     .. "Boutons : %d macros\n"
+     .. "Layout %d : %d/%d cases placees%s",
         universal and "UNIVERSELS" or "generiques",
         nPresets, PT, startId, PT, endId,
-        hues, levels, fixIds and #fixIds or 0,
-        #macList, macStart, macEnd,
-        layNo, placed,
-        (failed > 0) and string.format("\nATTENTION : %d non placees.", failed) or "")
+        hues, levels, #macList,
+        layNo, placed, placed + failed,
+        (failed > 0) and string.format("\n(%d non placees)", failed) or "")
 
     MessageBox({
         title = "Color Picker",
         message = msg,
         commands = { { value = 1, name = "Super !" } },
     })
-    Printf("[ColorPicker] %d presets, %d macros, layout %d (%d/%d cases).",
+    Printf("[ColorPicker] %d presets, %d macros, layout %d : %d/%d places.",
         nPresets, #macList, layNo, placed, placed + failed)
 end
 
