@@ -45,9 +45,14 @@ Layout grandMA3, en un clic.
 
 | Fichier            | Rôle                                                   |
 |--------------------|--------------------------------------------------------|
-| `ColorPicker.xml`  | Plugin prêt à importer (Lua embarqué).                 |
-| `ColorPicker.lua`  | Code source Lua, lisible / modifiable.                 |
+| `ColorPicker.xml`  | Manifest du plugin (format natif 2 fichiers).          |
+| `ColorPicker.lua`  | Code source Lua, référencé par le XML (`ComponentLua`).|
 | `README.md`        | Ce fichier.                                            |
+
+> 💡 **Après chaque modification du `.lua`** : taper **`ReloadAllPlugins`**
+> (raccourci `RP`) dans la ligne de commande grandMA3. La console ne recharge
+> **pas** automatiquement les fichiers Lua externes — sans ça tu continues
+> d'exécuter l'ancienne version en cache.
 
 ## Installation
 
@@ -95,12 +100,18 @@ la couleur. Les spots du haut reflètent la sortie en temps réel.
 
 - Couleurs écrites via `ColorRGB_R/G/B` (en %) puis `Store Preset 4.x` ;
   grandMA3 convertit automatiquement vers les autres systèmes de couleur.
-- Placement layout via l'API objet (`ObjectList`, `Layout:Append`),
-  protégé par `pcall` : en cas d'écart d'API selon le build, les presets
-  restent créés et le message final l'indique.
-- Le fond de layout est tenté via des propriétés d'objet (sans danger si
-  ignorées) ; la couleur d'identité du tile de layout est posée via
-  `Appearance Layout`.
+- Placement layout : on récupère le handle `DataPool().Layouts[n]` **une
+  seule fois**, puis après chaque `Assign … At Layout` on prend le dernier
+  élément (`layout[#layout]`) et on règle sa position/taille — accès direct
+  `posx/posy/positionw/positionh` + `:Set("PositionX"/"PositionY"/`
+  `"DimensionW"/"DimensionH")` en filet de sécurité, le tout sous `pcall`.
+- **Coordonnées ≥ 0 obligatoires** : les positions de layout sont des
+  entiers non signés (une valeur négative déborde, `-5` → `65531`, et envoie
+  la case hors champ). La grille part donc de `(0,0)`.
+- **Échelle auto-mesurée** : la taille native d'un élément fraîchement
+  assigné sert de pas de grille, ce qui rend le nuancier visible quelle que
+  soit l'unité interne du layout.
+- La couleur d'identité du tile de layout est posée via `Appearance Layout`.
 
 ## Nettoyage
 
