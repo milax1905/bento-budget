@@ -137,90 +137,85 @@ local function buildGreys(hues)
 end
 
 -- Place les elements dans le layout.
--- Essaie plusieurs methodes pour trouver le dernier element ajoute,
--- puis plusieurs noms de proprietes pour regler sa position.
+-- Pattern eprouve (gabe927/gma3-subfixture-layout) : on recupere le handle
+-- du layout UNE SEULE FOIS, on le reutilise, et apres chaque "Assign ... At
+-- Layout" on prend le DERNIER enfant (layout[#layout]) pour regler sa
+-- position. Re-fetcher DataPool().Layouts[n] a chaque tour renvoie un handle
+-- temporaire dont le compteur live (#) peut etre faux -> elements empiles.
+--
+-- Proprietes confirmees :
+--   acces direct lowercase  : posx / posy / positionw / positionh
+--   noms officiels (Set)    : PositionX / PositionY / DimensionW / DimensionH
 local function fillLayout(layoutNo, elements)
     local placed, failed = 0, 0
-    local diagDone  = false   -- impression une seule fois dans le log MA3
-    local firstErr  = nil
 
-    for _, e in ipairs(elements) do
-        Cmd(string.format("Assign %s At Layout %d", e.object, layoutNo))
+    -- 1) Handle du layout, recupere une fois.
+    local layout
+    pcall(function() layout = DataPool().Layouts[layoutNo] end)
+    if layout == nil then
+        return 0, #elements,
+            string.format("DataPool().Layouts[%d] = nil (layout introuvable)", layoutNo)
+    end
 
-        local ok, errMsg = pcall(function()
-            local layout = DataPool().Layouts[layoutNo]
-            if not layout then
-                error("Layouts[" .. layoutNo .. "] est nil")
-            end
+    -- Compteur d'elements vivant.
+    local function liveCount()
+        local n = 0
+        if not pcall(function() n = #layout end) then n = 0 end
+        return n or 0
+    end
 
-            -- ---- Trouver le nombre d'elements dans le layout ----
-            local n = 0
-            -- Methode A : Count()
-            pcall(function() n = layout:Count() end)
-            -- Methode B : operateur #
-            if n == 0 then pcall(function()
-                local tmp = #layout
-                if tmp and tmp > 0 then n = tmp end
-            end) end
-            -- Methode C : scan sequentiel
-            if n == 0 then pcall(function()
-                for i = 1, 999999 do
-                    if layout[i] == nil then break end
-                    n = i
-                end
-            end) end
-
-            if n == 0 then error("layout vide apres Assign") end
-            local elem = layout[n]
-            if not elem then error("elem[" .. n .. "] est nil") end
-
-            -- Diagnostic (premier element uniquement)
-            if not diagDone then
-                diagDone = true
-                Printf("[CP-diag] layout=%s n=%d elem=%s posx=%s PosX=%s X=%s",
-                    type(layout), n, type(elem),
-                    tostring(elem.posx), tostring(elem.PosX), tostring(elem.X))
-            end
-
-            -- ---- Regler la position (essaie 4 formats de noms) ----
-            local posOk = false
-            -- 1) noms lowercase directs (reference gabe927)
-            if not posOk then posOk = pcall(function()
-                elem.posx      = e.x;     elem.posy      = e.y
-                elem.positionw = e.w or 1; elem.positionh = e.h or 1
-            end) end
-            -- 2) PascalCase directs
-            if not posOk then posOk = pcall(function()
-                elem.PosX  = e.x;     elem.PosY  = e.y
-                elem.SizeX = e.w or 1; elem.SizeY = e.h or 1
-            end) end
-            -- 3) :Set() lowercase
-            if not posOk then posOk = pcall(function()
-                elem:Set("posx", e.x);     elem:Set("posy", e.y)
-                elem:Set("positionw", e.w or 1); elem:Set("positionh", e.h or 1)
-            end) end
-            -- 4) :Set() PascalCase
-            if not posOk then posOk = pcall(function()
-                elem:Set("PosX", e.x);     elem:Set("PosY", e.y)
-                elem:Set("SizeX", e.w or 1); elem:Set("SizeY", e.h or 1)
-            end) end
-            -- (Lua cree une propriete locale si aucun des :Set ne lance d'erreur
-            --  => posOk=true mais position inchangee dans MA3 — c'est le cas a diagnostiquer)
+    -- Regle position + taille d'un element (essaie les deux conventions).
+    local function place(elem, e)
+        local ok = pcall(function()
+            elem.posx      = e.x
+            elem.posy      = e.y
+            elem.positionw = e.w or 1
+            elem.positionh = e.h or 1
         end)
+        -- Filet de securite : noms officiels via Set (ignore si absent).
+        pcall(function()
+            elem:Set("PositionX",  e.x)
+            elem:Set("PositionY",  e.y)
+            elem:Set("DimensionW", e.w or 1)
+            elem:Set("DimensionH", e.h or 1)
+        end)
+        return ok
+    end
 
-        if ok then
-            placed = placed + 1
-        else
-            failed = failed + 1
-            if not firstErr then firstErr = tostring(errMsg) end
+    -- 2) Diagnostic terrain (capture sur le 1er element, montre dans le bilan).
+    local diag = { start = liveCount() }
+
+    for idx, e in ipairs(elements) do
+        local before = liveCount()
+        Cmd(string.format("Assign %s At Layout %d", e.object, layoutNo))
+        local after = liveCount()
+
+        local elem
+        pcall(function() elem = layout[after] end)
+
+        local ok = false
+        if elem ~= nil then ok = place(elem, e) end
+
+        if idx == 1 then
+            diag.before1 = before
+            diag.after1  = after
+            diag.elemNil = (elem == nil)
+            diag.posxLu  = "?"
+            if elem ~= nil then
+                pcall(function() diag.posxLu = tostring(elem.posx) end)
+            end
         end
+
+        if ok then placed = placed + 1 else failed = failed + 1 end
     end
 
-    if firstErr then
-        Printf("[CP] erreur placement layout: %s", firstErr)
-    end
+    local diagStr = string.format(
+        "start=%s  assign1:%s->%s  elemNil=%s  posxLu=%s",
+        tostring(diag.start), tostring(diag.before1), tostring(diag.after1),
+        tostring(diag.elemNil), tostring(diag.posxLu))
+    Printf("[CP-diag] %s", diagStr)
 
-    return placed, failed
+    return placed, failed, diagStr
 end
 
 local function makeMacro(no, btn)
@@ -418,16 +413,12 @@ local function main(display_handle)
         end
     end
 
-    local placed, failed = fillLayout(layNo, elements)
+    local placed, failed, diagStr = fillLayout(layNo, elements)
 
     Cmd("ClearAll")
 
-    local layoutNote = ""
-    if placed == 0 then
-        layoutNote = "\n\n** Layout : 0 element place **\nRegarde le log MA3 (ligne [CP-diag]).\nEnvoie le log a l'auteur pour diagnostiquer."
-    elseif failed > 0 then
-        layoutNote = string.format("\n(%d cases non placees — voir log [CP-diag])", failed)
-    end
+    -- Ligne de diagnostic visible directement dans le bilan (a recopier si KO).
+    local layoutNote = string.format("\n\n[diag] %s", tostring(diagStr))
 
     local msg = string.format(
         "Color Picker pret !\n\n"
