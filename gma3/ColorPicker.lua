@@ -164,14 +164,26 @@ local function fillLayout(layoutNo, elements)
         return n or 0
     end
 
-    -- Regle position + taille d'un element (essaie les deux conventions).
-    -- Coordonnees forcees >= 0 : les valeurs negatives deborderaient en
-    -- unsigned (-5 -> 65531) et enverraient la case hors champ.
+    local function rdnum(elem, prop)
+        local v
+        pcall(function() v = tonumber(elem[prop]) end)
+        return v
+    end
+
+    -- Echelle (pitch) d'une case = taille native d'un element fraichement
+    -- assigne, MESUREE sur le 1er element. On tuile la grille a cette echelle
+    -- -> visible quelle que soit l'unite interne du layout. 32 = repli si la
+    -- mesure echoue (les coords de layout sont en centaines, pas en 0..11).
+    local pitchX, pitchY = 32, 32
+
+    -- Regle position + taille (coords en CASES, multipliees par le pitch).
+    -- Coordonnees forcees >= 0 : une valeur negative deborderait en unsigned
+    -- (-5 -> 65531) et enverrait la case hors champ.
     local function place(elem, e)
-        local px = math.max(0, math.floor(e.x))
-        local py = math.max(0, math.floor(e.y))
-        local pw = math.max(1, math.floor(e.w or 1))
-        local ph = math.max(1, math.floor(e.h or 1))
+        local px = math.max(0, math.floor((e.x or 0) * pitchX))
+        local py = math.max(0, math.floor((e.y or 0) * pitchY))
+        local pw = math.max(1, math.floor((e.w or 1) * pitchX))
+        local ph = math.max(1, math.floor((e.h or 1) * pitchY))
         local ok = pcall(function()
             elem.posx      = px
             elem.posy      = py
@@ -188,52 +200,46 @@ local function fillLayout(layoutNo, elements)
         return ok
     end
 
-    local function rd(elem, prop)
-        local v = "?"
-        pcall(function() v = tostring(elem[prop]) end)
-        return v
-    end
-
-    -- 2) Diagnostic terrain (capture sur le 1er element, montre dans le bilan).
+    -- 2) Diagnostic terrain (montre dans le bilan + Command Line History).
     local diag = { start = liveCount() }
 
     for idx, e in ipairs(elements) do
-        local before = liveCount()
         Cmd(string.format("Assign %s At Layout %d", e.object, layoutNo))
         local after = liveCount()
 
         local elem
         pcall(function() elem = layout[after] end)
 
-        -- Sonde complete sur le 1er element : taille/position natives + relecture
+        -- 1er element : mesure la taille native -> fixe le pitch de la grille.
         if idx == 1 and elem ~= nil then
-            diag.before1 = before
-            diag.after1  = after
-            diag.def = string.format("x=%s y=%s w=%s h=%s",
-                rd(elem,"posx"), rd(elem,"posy"),
-                rd(elem,"positionw"), rd(elem,"positionh"))
-            -- valeurs de test distinctives
-            pcall(function()
-                elem.posx = 11; elem.posy = 7
-                elem.positionw = 2; elem.positionh = 2
-            end)
-            diag.got = string.format("x=%s y=%s w=%s h=%s",
-                rd(elem,"posx"), rd(elem,"posy"),
-                rd(elem,"positionw"), rd(elem,"positionh"))
+            local w0 = rdnum(elem, "positionw")
+            local h0 = rdnum(elem, "positionh")
+            if w0 and w0 >= 2 and w0 <= 5000 then pitchX = math.floor(w0) end
+            if h0 and h0 >= 2 and h0 <= 5000 then pitchY = math.floor(h0) end
+            diag.after1 = after
+            diag.native = string.format("w0=%s h0=%s", tostring(w0), tostring(h0))
+            diag.pitch  = string.format("%dx%d", pitchX, pitchY)
         end
 
         local ok = false
         if elem ~= nil then ok = place(elem, e) end
         if ok then placed = placed + 1 else failed = failed + 1 end
+
+        if idx == 1 and elem ~= nil then
+            diag.sample = string.format("x=%s y=%s w=%s h=%s",
+                tostring(rdnum(elem,"posx")), tostring(rdnum(elem,"posy")),
+                tostring(rdnum(elem,"positionw")), tostring(rdnum(elem,"positionh")))
+        end
     end
 
-    if not diag.def then diag.def = "(aucun element)" end
-    if not diag.got then diag.got = "-" end
+    diag.native = diag.native or "(aucun element)"
+    diag.pitch  = diag.pitch  or string.format("%dx%d", pitchX, pitchY)
+    diag.sample = diag.sample or "-"
 
     local diagStr = string.format(
-        "start=%s assign1:%s->%s\ndefaut: %s\nprobe(11,7,2,2)-> %s",
-        tostring(diag.start), tostring(diag.before1), tostring(diag.after1),
-        diag.def, diag.got)
+        "start=%s after1=%s | native %s -> pitch %s | elem1: %s",
+        tostring(diag.start), tostring(diag.after1),
+        diag.native, diag.pitch, diag.sample)
     Printf("[CP-diag] %s", diagStr)
 
     return placed, failed, diagStr
