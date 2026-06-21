@@ -165,19 +165,25 @@ local function fillLayout(layoutNo, elements)
     end
 
     -- Regle position + taille d'un element (essaie les deux conventions).
+    -- Coordonnees forcees >= 0 : les valeurs negatives deborderaient en
+    -- unsigned (-5 -> 65531) et enverraient la case hors champ.
     local function place(elem, e)
+        local px = math.max(0, math.floor(e.x))
+        local py = math.max(0, math.floor(e.y))
+        local pw = math.max(1, math.floor(e.w or 1))
+        local ph = math.max(1, math.floor(e.h or 1))
         local ok = pcall(function()
-            elem.posx      = e.x
-            elem.posy      = e.y
-            elem.positionw = e.w or 1
-            elem.positionh = e.h or 1
+            elem.posx      = px
+            elem.posy      = py
+            elem.positionw = pw
+            elem.positionh = ph
         end)
         -- Filet de securite : noms officiels via Set (ignore si absent).
         pcall(function()
-            elem:Set("PositionX",  e.x)
-            elem:Set("PositionY",  e.y)
-            elem:Set("DimensionW", e.w or 1)
-            elem:Set("DimensionH", e.h or 1)
+            elem:Set("PositionX",  px)
+            elem:Set("PositionY",  py)
+            elem:Set("DimensionW", pw)
+            elem:Set("DimensionH", ph)
         end)
         return ok
     end
@@ -367,9 +373,13 @@ local function main(display_handle)
     local btnRow  = greyRow + 2
     local lastRow = (utilities and #macList > 0) and btnRow or greyRow
 
-    -- Centrage autour de l'origine (0,0 = centre du layout dans grandMA3)
-    local colOff = -math.floor((hues - 1) / 2)
-    local rowOff = -math.floor(lastRow / 2)
+    -- IMPORTANT : les coordonnees de layout sont des entiers NON SIGNES.
+    -- Une valeur negative deborde a ~65531 (65536 + x) et envoie la case
+    -- hors champ. On pose donc tout depuis (0,0) vers le bas/la droite,
+    -- coordonnees >= 0 uniquement. (lastRow non utilise pour le centrage.)
+    local colOff = 0
+    local rowOff = 0
+    local _ = lastRow
 
     -- Construction de la liste des elements a placer
     local elements = {}
