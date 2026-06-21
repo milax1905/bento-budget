@@ -136,34 +136,24 @@ local function buildGreys(hues)
     return g
 end
 
--- Place les elements dans le layout via l'API objet.
--- Coordonnees : X = colonne (gauche->droite), Y = ligne (haut->bas, POSITIF).
+-- Place les elements dans le layout.
+-- Methode native : "Assign <objet> At Layout <n>" ajoute l'element, puis on
+-- recupere le dernier element cree et on regle ses proprietes directement.
+--   element.posx / posy        -> position (unites de grille)
+--   element.positionw / positionh -> taille
 local function fillLayout(layoutNo, elements)
     local placed, failed = 0, 0
-    local layout
-    local ok = pcall(function() layout = ObjectList("Layout " .. layoutNo)[1] end)
-    if not ok or not layout then return 0, #elements end
-
     for _, e in ipairs(elements) do
-        local done = pcall(function()
-            local ele = layout:Append()
-            -- Dimensions
-            pcall(function() ele:Set("SizeH", tostring(e.w or 1)) end)
-            pcall(function() ele:Set("SizeV", tostring(e.h or 1)) end)
-            -- Position (Y positif = vers le bas dans grandMA3)
-            pcall(function() ele:Set("PosX",  tostring(e.x)) end)
-            pcall(function() ele:Set("PosY",  tostring(e.y)) end)
-            -- Assignation de l'objet cible : via handle d'abord, sinon string
-            local assigned = false
-            pcall(function()
-                local target = ObjectList(e.object)[1]
-                if target then ele:Assign(target); assigned = true end
-            end)
-            if not assigned then
-                pcall(function() ele:Set("Object", e.object) end)
-            end
+        Cmd(string.format("Assign %s At Layout %d", e.object, layoutNo))
+        local ok = pcall(function()
+            local layout  = DataPool().Layouts[layoutNo]
+            local element = layout[#layout]   -- le dernier ajoute
+            element.posx       = e.x
+            element.posy       = e.y
+            element.positionw  = e.w or 1
+            element.positionh  = e.h or 1
         end)
-        if done then placed = placed + 1 else failed = failed + 1 end
+        if ok then placed = placed + 1 else failed = failed + 1 end
     end
     return placed, failed
 end
@@ -304,54 +294,61 @@ local function main(display_handle)
         end
     end
 
-    -- Creation du layout
+    -- Creation d'un layout frais (on repart toujours d'un layout vide)
+    Cmd(string.format('Delete Layout %d /NoConfirm', layNo))
     Cmd(string.format('Store Layout %d /NoConfirm', layNo))
     Cmd(string.format('Label Layout %d "Color Picker"', layNo))
     Cmd(string.format('Appearance Layout %d /R=18 /G=22 /B=30', layNo))
 
-    -- Construction des elements a placer
-    -- IMPORTANT : Y positif = vers le bas dans grandMA3
+    -- Calcul des lignes (Y augmente vers le bas)
+    local fixRows = fixIds and math.ceil(#fixIds / hues) or 0
+    local gridTop = fixRows + (fixRows > 0 and 1 or 0)
+    local greyRow = gridTop + levels + 1
+    local btnRow  = greyRow + 2
+    local lastRow = (utilities and #macList > 0) and btnRow or greyRow
+
+    -- Centrage autour de l'origine (0,0 = centre du layout dans grandMA3)
+    local colOff = -math.floor((hues - 1) / 2)
+    local rowOff = -math.floor(lastRow / 2)
+
+    -- Construction de la liste des elements a placer
     local elements = {}
 
-    -- Spots (ligne 0, 1, ...)
-    local fixRows = 0
+    -- Spots (en haut)
     if fixIds then
         for i, fid in ipairs(fixIds) do
             local col = (i - 1) % hues
             local row = math.floor((i - 1) / hues)
             elements[#elements + 1] = {
-                object = "Fixture " .. fid, x = col, y = row, w = 1, h = 1,
+                object = "Fixture " .. fid,
+                x = col + colOff, y = row + rowOff, w = 1, h = 1,
             }
         end
-        fixRows = math.ceil(#fixIds / hues)
     end
 
-    -- Nuancier (1 ligne de gap apres les spots)
-    local gridTop = fixRows + (fixRows > 0 and 1 or 0)
+    -- Nuancier
     for _, s in ipairs(swatches) do
         elements[#elements + 1] = {
             object = string.format("Preset %d.%d", PT, s.no),
-            x = s.col, y = gridTop + s.level, w = 1, h = 1,
+            x = s.col + colOff, y = gridTop + s.level + rowOff, w = 1, h = 1,
         }
     end
 
-    -- Rampe de gris (1 ligne de gap apres le nuancier)
-    local greyRow = gridTop + levels + 1
+    -- Rampe de gris
     for _, g in ipairs(greys) do
         elements[#elements + 1] = {
             object = string.format("Preset %d.%d", PT, g.no),
-            x = g.col, y = greyRow, w = 1, h = 1,
+            x = g.col + colOff, y = greyRow + rowOff, w = 1, h = 1,
         }
     end
 
-    -- Boutons utilitaires (1 ligne de gap apres les gris)
+    -- Boutons utilitaires
     if utilities and #macList > 0 then
-        local btnW   = math.max(2, math.floor(hues / #macList))
-        local btnRow = greyRow + 2
+        local btnW = math.max(2, math.floor(hues / #macList))
         for i, m in ipairs(macList) do
             elements[#elements + 1] = {
                 object = "Macro " .. m.no,
-                x = (i - 1) * btnW, y = btnRow, w = btnW, h = 1,
+                x = (i - 1) * btnW + colOff, y = btnRow + rowOff, w = btnW, h = 1,
             }
         end
     end
