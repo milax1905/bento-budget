@@ -445,11 +445,17 @@ local function main(display_handle)
     end
 
     local placed, failed, diagStr = fillLayout(layNo, elements)
+    local _ = diagStr   -- detail complet dispo dans la Command Line History
 
     Cmd("ClearAll")
 
-    -- Ligne de diagnostic visible directement dans le bilan (a recopier si KO).
-    local layoutNote = string.format("\n\n[diag] %s", tostring(diagStr))
+    -- Note seulement si des cases n'ont pas pu etre placees.
+    local layoutNote = ""
+    if failed > 0 then
+        layoutNote = string.format(
+            "\n\n(%d case(s) non placee(s) — voir [CP-diag] dans la"
+         .. " Command Line History)", failed)
+    end
 
     local msg = string.format(
         "Color Picker pret !\n\n"
