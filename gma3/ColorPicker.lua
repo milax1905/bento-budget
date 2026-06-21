@@ -188,6 +188,12 @@ local function fillLayout(layoutNo, elements)
         return ok
     end
 
+    local function rd(elem, prop)
+        local v = "?"
+        pcall(function() v = tostring(elem[prop]) end)
+        return v
+    end
+
     -- 2) Diagnostic terrain (capture sur le 1er element, montre dans le bilan).
     local diag = { start = liveCount() }
 
@@ -199,26 +205,35 @@ local function fillLayout(layoutNo, elements)
         local elem
         pcall(function() elem = layout[after] end)
 
-        local ok = false
-        if elem ~= nil then ok = place(elem, e) end
-
-        if idx == 1 then
+        -- Sonde complete sur le 1er element : taille/position natives + relecture
+        if idx == 1 and elem ~= nil then
             diag.before1 = before
             diag.after1  = after
-            diag.elemNil = (elem == nil)
-            diag.posxLu  = "?"
-            if elem ~= nil then
-                pcall(function() diag.posxLu = tostring(elem.posx) end)
-            end
+            diag.def = string.format("x=%s y=%s w=%s h=%s",
+                rd(elem,"posx"), rd(elem,"posy"),
+                rd(elem,"positionw"), rd(elem,"positionh"))
+            -- valeurs de test distinctives
+            pcall(function()
+                elem.posx = 11; elem.posy = 7
+                elem.positionw = 2; elem.positionh = 2
+            end)
+            diag.got = string.format("x=%s y=%s w=%s h=%s",
+                rd(elem,"posx"), rd(elem,"posy"),
+                rd(elem,"positionw"), rd(elem,"positionh"))
         end
 
+        local ok = false
+        if elem ~= nil then ok = place(elem, e) end
         if ok then placed = placed + 1 else failed = failed + 1 end
     end
 
+    if not diag.def then diag.def = "(aucun element)" end
+    if not diag.got then diag.got = "-" end
+
     local diagStr = string.format(
-        "start=%s  assign1:%s->%s  elemNil=%s  posxLu=%s",
+        "start=%s assign1:%s->%s\ndefaut: %s\nprobe(11,7,2,2)-> %s",
         tostring(diag.start), tostring(diag.before1), tostring(diag.after1),
-        tostring(diag.elemNil), tostring(diag.posxLu))
+        diag.def, diag.got)
     Printf("[CP-diag] %s", diagStr)
 
     return placed, failed, diagStr
