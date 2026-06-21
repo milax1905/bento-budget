@@ -1,45 +1,51 @@
-# Color Picker — Plugin grandMA3 (v2.x)
+# Color Board — Plugin grandMA3 (v2.x)
 
-Plugin Lua qui construit un **color picker complet et soigné** dans un
-Layout grandMA3, en un clic.
+Plugin Lua qui construit une **table de couleurs** dans un Layout grandMA3,
+pensée pour **peindre des tableaux** (looks) — donner une couleur différente
+à chaque groupe / machine — au lieu de mettre une seule couleur partout.
 
 ```
-┌───────────────────────────────────────────────┐
-│  ● ● ● ● ● ● ● ●        ← les SPOTS (live)      │
-│                                                │
-│  ▦ ▦ ▦ ▦ ▦ ▦ ▦ ▦ ▦ ▦ ▦ ▦   tints (clair)       │
-│  ▦ ▦ ▦ ▦ ▦ ▦ ▦ ▦ ▦ ▦ ▦ ▦                        │
-│  ■ ■ ■ ■ ■ ■ ■ ■ ■ ■ ■ ■   teintes PURES         │
-│  ▦ ▦ ▦ ▦ ▦ ▦ ▦ ▦ ▦ ▦ ▦ ▦                        │
-│  ▦ ▦ ▦ ▦ ▦ ▦ ▦ ▦ ▦ ▦ ▦ ▦   shades (foncé)       │
-│                                                │
-│  ◻ ▦ ▦ ▦ ▦ ▦ ▦ ▦ ▦ ▦ ▦ ◼   rampe de GRIS         │
-│                                                │
-│  [Clear] [White] [Full] [Highlight]  ← BOUTONS │
-└───────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────┐
+│  GROUPES                                                  │
+│  [G1] [G2] [G3] [G4] [G5] [G6] [G7] [G8]    ← sélection   │
+│                                                           │
+│  MACHINES (option)                                        │
+│  [1] [2] [3] [4] [5] [6] [7] [8] ...                      │
+│                                                           │
+│  COULEURS                                                 │
+│  [Red][Orange][Yellow][Green][Cyan][Blue][Violet]...      │
+│                                                           │
+│  OUTILS                                                   │
+│  [Clear] [All] [Highlight] [Full]                         │
+└─────────────────────────────────────────────────────────┘
 ```
+
+## Le workflow
+
+1. Tape un **Groupe** (ou une **Machine**, ou **All**) → ça sélectionne.
+2. Tape une **Couleur** → elle s'applique à la sélection.
+3. Passe au groupe suivant, autre couleur… tu **construis ton tableau**
+   multicolore dans le programmer.
+4. **Store** le programmer en cue / preset quand le look te plaît.
+
+`All` sélectionne toutes les machines (pour tout colorer d'un coup),
+`Clear` vide le programmer.
 
 ## Ce qui est généré
 
-- **Les spots en haut** : les fixtures choisies sont posées sur le layout.
-  Elles **affichent leur couleur en live** — tape un swatch et elles
-  changent immédiatement de couleur.
-- **Le nuancier** : pour chaque teinte, une colonne avec des nuances
-  claires (*tints*) en haut, la **couleur pure** au milieu, des nuances
-  foncées (*shades*) en bas — façon nuancier Photoshop.
-- **Une rampe de gris** blanc → noir.
-- **Des boutons utilitaires** (optionnels) sous le nuancier : **Clear**
-  (vide le programmateur), **White** (sélection en blanc plein), **Full**
-  (dimmer à 100 %), **Highlight**. Ce sont de vraies **macros** — donc
-  persistantes et éditables si une commande diffère sur ta version.
-- Chaque case est un **preset couleur universel**, donc **non lié à une
-  machine** : la couleur est générique et s'applique à **n'importe quelle
-  sélection**, quel que soit le système de couleur (RGB, RGBW, RGBA, CMY…).
-- **Sécurité anti-écrasement** : avant d'écrire, le plugin vérifie si des
-  presets existent déjà dans la plage ciblée. Si oui, il **demande**
-  s'il faut tout écraser et regénérer à neuf ; sinon il génère directement.
-- Le **Layout est thémé** (couleur sombre) et chaque preset reçoit son
-  **appearance** pour un rendu propre.
+- **Groupes** : tes groupes de machines, posés sur le layout. Vide dans la
+  config = **auto-détection** des groupes existants (change ton patch, le
+  board suit).
+- **Machines** (optionnel) : des fixtures une à une, pour choisir **par
+  machine**.
+- **Palette de couleurs principales** : une dizaine de couleurs (max 12),
+  chacune un **preset couleur universel** — non lié à une machine, s'applique
+  à n'importe quelle sélection (RGB, RGBW, RGBA, CMY…).
+- **Outils** : macros **Clear / All / Highlight / Full** — persistantes et
+  éditables.
+- **Sécurité anti-écrasement** : si la plage de presets/macros est déjà
+  occupée, le plugin **demande** avant d'écraser et regénérer.
+- Layout thémé sombre + **appearance** sur chaque preset.
 
 ## Fichiers
 
@@ -74,48 +80,42 @@ Layout grandMA3, en un clic.
 
    | Champ                       | Défaut       | Description                                       |
    |-----------------------------|--------------|---------------------------------------------------|
-   | Spots (optionnel)           | `1 Thru 8`   | Fixtures posées sur le layout (couleur live). Vide = pas de spots. |
-   | Teintes (colonnes)          | `12`         | Nombre de teintes réparties sur 360°.             |
-   | Niveaux par teinte          | `5`          | Hauteur de chaque colonne (tints + pure + shades). |
-   | Preset départ (ID)          | `1`          | Premier ID de preset couleur.                     |
-   | Layout (No)                 | `1`          | Numéro du Layout généré.                           |
-   | Universel (1/0)             | `1`          | `1` = presets universels (non liés aux machines). `0` = presets normaux. |
-   | Boutons utilitaires (1/0)   | `1`          | `1` = ajoute les macros Clear/White/Full/Highlight. `0` = aucun bouton. |
-   | Macro départ (ID)           | `1`          | Premier ID de macro pour les boutons.             |
+   | Groupes                     | *(vide)*     | `1 Thru 8`, `1 + 3`, … Vide = auto-détection.      |
+   | Machines (par fixture)      | *(vide)*     | Fixtures une à une, ex. `1 Thru 12`. Vide = aucune.|
+   | Nb couleurs                 | `10`         | Nombre de couleurs principales (max 12).           |
+   | Preset départ (ID)          | `1`          | Premier ID de preset couleur.                      |
+   | Layout (No)                 | `1`          | Numéro du Layout généré.                            |
+   | Universel (1/0)             | `1`          | `1` = presets universels (recommandé).             |
+   | Boutons utilitaires (1/0)   | `1`          | `1` = ajoute Clear/All/Highlight/Full.             |
+   | Macro départ (ID)           | `1`          | Premier ID de macro pour les boutons.              |
 
    > Si la plage de presets **ou de macros** est déjà occupée, une fenêtre
-   > demande confirmation **« Écraser »** avant de regénérer à neuf.
+   > demande confirmation **« Écraser »** avant de regénérer.
 
-3. **Générer**. Un récapitulatif s'affiche.
+3. **Générer**, puis ouvrir le **Layout View** sur le numéro choisi.
 
-Ouvrir le **Layout View** sur le numéro choisi : sélectionner des
-fixtures (ou utiliser les spots affichés) puis taper un swatch applique
-la couleur. Les spots du haut reflètent la sortie en temps réel.
+## Palette par défaut (12 couleurs, 10 utilisées)
 
-> Le champ *Fixtures* accepte `1 Thru 8`, `1 + 3 + 5`, ou un mélange
-> `1 Thru 4 + 9`. Laisser vide pour utiliser la sélection courante
-> (les spots ne seront alors pas posés sur le layout).
+`Red · Orange · Yellow · Green · Cyan · Blue · Violet · Magenta · Pink ·
+White` — puis `Amber · Warm` si tu montes à 12.
 
 ## Notes techniques
 
 - Couleurs écrites via `ColorRGB_R/G/B` (en %) puis `Store Preset 4.x` ;
   grandMA3 convertit automatiquement vers les autres systèmes de couleur.
-- Placement layout : on récupère le handle `DataPool().Layouts[n]` **une
-  seule fois**, puis après chaque `Assign … At Layout` on prend le dernier
-  élément (`layout[#layout]`) et on règle sa position/taille — accès direct
-  `posx/posy/positionw/positionh` + `:Set("PositionX"/"PositionY"/`
-  `"DimensionW"/"DimensionH")` en filet de sécurité, le tout sous `pcall`.
+- Placement layout : handle `DataPool().Layouts[n]` récupéré **une seule
+  fois**, puis après chaque `Assign … At Layout` on prend `layout[#layout]`
+  et on règle position/taille (`posx/posy/positionw/positionh` +
+  `:Set("PositionX"/"PositionY"/"DimensionW"/"DimensionH")`, sous `pcall`).
 - **Coordonnées ≥ 0 obligatoires** : les positions de layout sont des
-  entiers non signés (une valeur négative déborde, `-5` → `65531`, et envoie
-  la case hors champ). La grille part donc de `(0,0)`.
-- **Échelle auto-mesurée** : la taille native d'un élément fraîchement
-  assigné sert de pas de grille, ce qui rend le nuancier visible quelle que
-  soit l'unité interne du layout.
-- La couleur d'identité du tile de layout est posée via `Appearance Layout`.
+  entiers non signés (`-5` → `65531` = hors champ). La grille part de `(0,0)`.
+- **Échelle auto-mesurée** : la taille native du premier élément assigné sert
+  de pas de grille → visible quelle que soit l'unité interne du layout.
 
 ## Nettoyage
 
 ```
 Delete Preset 4.1 Thru   (adapter à la plage générée)
+Delete Macro 1 Thru 4    (adapter à la plage générée)
 Delete Layout 1          (adapter le numéro)
 ```

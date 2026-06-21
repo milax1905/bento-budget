@@ -1,52 +1,54 @@
 -- =====================================================================
---  Color Picker  -  Plugin Lua pour grandMA3 v2.x
+--  Color Board  -  Plugin Lua pour grandMA3 v2.x
 -- ---------------------------------------------------------------------
---  Construit un color picker complet et soigne dans un Layout :
+--  Construit une TABLE DE COULEURS dans un Layout, pensee pour PEINDRE
+--  des tableaux (looks) plutot que mettre une seule couleur partout :
 --
---    [ Spots ]    -> (optionnel) les fixtures choisies, couleur LIVE.
---    [ Nuancier ] -> grille tints / pure / shades par teinte.
---    [ Gris ]     -> rampe blanc -> noir.
---    [ Boutons ]  -> (optionnel) macros utilitaires : Clear / White /
---                    Full / Highlight, posees sous le nuancier.
+--    [ Groupes ]  -> tes groupes de machines (selectionne le groupe).
+--    [ Machines ] -> (option) fixtures une a une (selection par machine).
+--    [ Couleurs ] -> une palette resserree de couleurs PRINCIPALES.
+--    [ Outils ]   -> Clear / All / Highlight / Full.
 --
---  Presets stockes en UNIVERSEL : couleur generique, non liee a une
---  machine -> s'applique a n'importe quelle selection (RGB, RGBW, CMY).
---  Ideal pour un workflow "recipe" : tes cues = Groupe x Preset couleur.
+--  Workflow : tape un Groupe (ou une Machine, ou All) puis une Couleur,
+--  passe au groupe suivant, etc. -> tu construis un tableau multicolore
+--  dans le programmer, que tu stores ensuite en cue / preset.
 --
---  Securite : avant d'ecrire, verifie si la plage de presets (et de
---  macros) est occupee. Si oui -> demande avant d'ecraser/regenerer.
+--  Les couleurs sont des presets UNIVERSELS : generiques, non liees a une
+--  machine -> s'appliquent a n'importe quelle selection (RGB, RGBW, CMY).
+--
+--  Securite : avant d'ecrire, verifie si la plage de presets / macros est
+--  occupee. Si oui -> demande avant d'ecraser et regenerer a neuf.
+--
+--  NB : apres avoir edite ce fichier, taper "ReloadAllPlugins" (RP) dans
+--  la ligne de commande MA3 -- la console ne recharge pas le Lua tout seul.
 -- =====================================================================
 
-local function hsv2rgb(h, s, v)
-    h = h % 360
-    local c = v * s
-    local x = c * (1 - math.abs((h / 60) % 2 - 1))
-    local m = v - c
-    local r, g, b = 0, 0, 0
-    if     h < 60  then r, g, b = c, x, 0
-    elseif h < 120 then r, g, b = x, c, 0
-    elseif h < 180 then r, g, b = 0, c, x
-    elseif h < 240 then r, g, b = 0, x, c
-    elseif h < 300 then r, g, b = x, 0, c
-    else                r, g, b = c, 0, x end
-    return math.floor((r + m) * 255 + 0.5),
-           math.floor((g + m) * 255 + 0.5),
-           math.floor((b + m) * 255 + 0.5)
-end
-
-local NAMES = {
-    [0]="Red", [30]="Orange", [60]="Yellow", [90]="Lime",
-    [120]="Green", [150]="Mint", [180]="Cyan", [210]="Azure",
-    [240]="Blue", [270]="Violet", [300]="Magenta", [330]="Pink",
+-- ---------------------------------------------------------------------
+--  Palette de couleurs PRINCIPALES (les N premieres sont utilisees).
+--  L'ordre met le blanc en 10e pour qu'un reglage "10 couleurs" l'inclue.
+-- ---------------------------------------------------------------------
+local COLORS = {
+    { name = "Red",     r = 255, g =   0, b =   0 },
+    { name = "Orange",  r = 255, g =  90, b =   0 },
+    { name = "Yellow",  r = 255, g = 225, b =   0 },
+    { name = "Green",   r =   0, g = 200, b =  40 },
+    { name = "Cyan",    r =   0, g = 200, b = 200 },
+    { name = "Blue",    r =   0, g =  40, b = 255 },
+    { name = "Violet",  r = 120, g =   0, b = 255 },
+    { name = "Magenta", r = 255, g =   0, b = 200 },
+    { name = "Pink",    r = 255, g =  90, b = 150 },
+    { name = "White",   r = 255, g = 255, b = 255 },
+    { name = "Amber",   r = 255, g = 150, b =   0 },
+    { name = "Warm",    r = 255, g = 170, b =  90 },
 }
-local function hueName(h)
-    local best, bestKey = 1e9, 0
-    for key, _ in pairs(NAMES) do
-        local d = math.min(math.abs(h - key), 360 - math.abs(h - key))
-        if d < best then best, bestKey = d, key end
-    end
-    return NAMES[bestKey]
-end
+
+-- Macros utilitaires (selection + programmer).
+local BUTTONS = {
+    { name = "Clear",     r =  60, g =  60, b =  70, lines = { "ClearAll" } },
+    { name = "All",       r =  40, g = 110, b = 180, lines = { "Fixture Thru" } },
+    { name = "Highlight", r = 255, g = 110, b =   0, lines = { "Highlight On" } },
+    { name = "Full",      r = 255, g = 200, b =  40, lines = { "Full" } },
+}
 
 local function toNum(value, default, min, max)
     local n = tonumber(value) or default
@@ -55,7 +57,8 @@ local function toNum(value, default, min, max)
     return math.floor(n)
 end
 
-local function parseFixtures(str)
+-- Parse "1 Thru 8", "1 + 3 + 5", ou un melange "1 Thru 4 + 9".
+local function parseRange(str)
     if not str or str:match("^%s*$") then return nil end
     local ids = {}
     for raw in (str .. "+"):gmatch("([^+]+)") do
@@ -71,6 +74,7 @@ local function parseFixtures(str)
     return (#ids > 0) and ids or nil
 end
 
+-- Un objet existe-t-il et contient-il quelque chose ? (used, ok)
 local function objectUsed(addr)
     local used, ok = false, false
     ok = pcall(function()
@@ -83,73 +87,28 @@ local function objectUsed(addr)
     return used, ok
 end
 
-local BUTTONS = {
-    { name = "Clear",     r =  70, g =  70, b =  80, lines = { "ClearAll" } },
-    { name = "White",     r = 255, g = 255, b = 255, lines = {
-        'Attribute "ColorRGB_R" At 100',
-        'Attribute "ColorRGB_G" At 100',
-        'Attribute "ColorRGB_B" At 100' } },
-    { name = "Full",      r = 255, g = 200, b =  40, lines = { "Full" } },
-    { name = "Highlight", r = 255, g = 110, b =   0, lines = { "Highlight On" } },
-}
-
-local function buildPalette(hues, levels)
-    local sw = {}
-    local mid = math.floor((levels - 1) / 2)
-    for c = 0, hues - 1 do
-        local hue  = (c / hues) * 360
-        local name = hueName(hue)
-        for r = 0, levels - 1 do
-            local s, v, suffix
-            if r == mid then
-                s, v, suffix = 1.0, 1.0, ""
-            elseif r < mid then
-                local t = (mid - r) / mid
-                s, v   = 1 - t * 0.85, 1.0
-                suffix = string.rep("+", mid - r)
-            else
-                local d = (r - mid) / (levels - 1 - mid)
-                s, v   = 1.0, 1 - d * 0.80
-                suffix = string.rep("-", r - mid)
-            end
-            local red, green, blue = hsv2rgb(hue, s, v)
-            sw[#sw + 1] = {
-                name = name .. suffix,
-                r = red, g = green, b = blue, col = c, level = r,
-            }
-        end
+-- Detecte automatiquement les groupes existants (1..maxNo).
+local function scanGroups(maxNo)
+    local ids = {}
+    for no = 1, maxNo do
+        local used = objectUsed("Group " .. no)
+        if used then ids[#ids + 1] = no end
     end
-    return sw
+    return (#ids > 0) and ids or nil
 end
 
-local function buildGreys(hues)
-    local g = {}
-    for c = 0, hues - 1 do
-        local v = 1 - (c / math.max(hues - 1, 1))
-        local lvl = math.floor(v * 255 + 0.5)
-        local name
-        if     c == 0        then name = "White"
-        elseif c == hues - 1 then name = "Black"
-        else                      name = string.format("Grey %d", math.floor(v * 100)) end
-        g[#g + 1] = { name = name, r = lvl, g = lvl, b = lvl, col = c }
-    end
-    return g
-end
-
--- Place les elements dans le layout.
--- Pattern eprouve (gabe927/gma3-subfixture-layout) : on recupere le handle
--- du layout UNE SEULE FOIS, on le reutilise, et apres chaque "Assign ... At
--- Layout" on prend le DERNIER enfant (layout[#layout]) pour regler sa
--- position. Re-fetcher DataPool().Layouts[n] a chaque tour renvoie un handle
--- temporaire dont le compteur live (#) peut etre faux -> elements empiles.
---
--- Proprietes confirmees :
---   acces direct lowercase  : posx / posy / positionw / positionh
---   noms officiels (Set)    : PositionX / PositionY / DimensionW / DimensionH
+-- ---------------------------------------------------------------------
+--  Placement des elements dans le layout.
+--  Pattern eprouve : handle du layout recupere UNE fois, puis apres chaque
+--  "Assign ... At Layout" on prend le dernier enfant (layout[#layout]) et
+--  on regle position/taille. Coordonnees en CASES, multipliees par le pas
+--  (pitch) = taille native d'une case, MESUREE sur le 1er element -> grille
+--  visible quelle que soit l'unite interne du layout.
+--  Coordonnees forcees >= 0 (une valeur negative deborde en unsigned).
+-- ---------------------------------------------------------------------
 local function fillLayout(layoutNo, elements)
     local placed, failed = 0, 0
 
-    -- 1) Handle du layout, recupere une fois.
     local layout
     pcall(function() layout = DataPool().Layouts[layoutNo] end)
     if layout == nil then
@@ -157,7 +116,6 @@ local function fillLayout(layoutNo, elements)
             string.format("DataPool().Layouts[%d] = nil (layout introuvable)", layoutNo)
     end
 
-    -- Compteur d'elements vivant.
     local function liveCount()
         local n = 0
         if not pcall(function() n = #layout end) then n = 0 end
@@ -170,15 +128,8 @@ local function fillLayout(layoutNo, elements)
         return v
     end
 
-    -- Echelle (pitch) d'une case = taille native d'un element fraichement
-    -- assigne, MESUREE sur le 1er element. On tuile la grille a cette echelle
-    -- -> visible quelle que soit l'unite interne du layout. 32 = repli si la
-    -- mesure echoue (les coords de layout sont en centaines, pas en 0..11).
-    local pitchX, pitchY = 32, 32
+    local pitchX, pitchY = 32, 32   -- repli si la mesure echoue
 
-    -- Regle position + taille (coords en CASES, multipliees par le pitch).
-    -- Coordonnees forcees >= 0 : une valeur negative deborderait en unsigned
-    -- (-5 -> 65531) et enverrait la case hors champ.
     local function place(elem, e)
         local px = math.max(0, math.floor((e.x or 0) * pitchX))
         local py = math.max(0, math.floor((e.y or 0) * pitchY))
@@ -190,7 +141,6 @@ local function fillLayout(layoutNo, elements)
             elem.positionw = pw
             elem.positionh = ph
         end)
-        -- Filet de securite : noms officiels via Set (ignore si absent).
         pcall(function()
             elem:Set("PositionX",  px)
             elem:Set("PositionY",  py)
@@ -200,7 +150,6 @@ local function fillLayout(layoutNo, elements)
         return ok
     end
 
-    -- 2) Diagnostic terrain (montre dans le bilan + Command Line History).
     local diag = { start = liveCount() }
 
     for idx, e in ipairs(elements) do
@@ -210,7 +159,6 @@ local function fillLayout(layoutNo, elements)
         local elem
         pcall(function() elem = layout[after] end)
 
-        -- 1er element : mesure la taille native -> fixe le pitch de la grille.
         if idx == 1 and elem ~= nil then
             local w0 = rdnum(elem, "positionw")
             local h0 = rdnum(elem, "positionh")
@@ -224,22 +172,13 @@ local function fillLayout(layoutNo, elements)
         local ok = false
         if elem ~= nil then ok = place(elem, e) end
         if ok then placed = placed + 1 else failed = failed + 1 end
-
-        if idx == 1 and elem ~= nil then
-            diag.sample = string.format("x=%s y=%s w=%s h=%s",
-                tostring(rdnum(elem,"posx")), tostring(rdnum(elem,"posy")),
-                tostring(rdnum(elem,"positionw")), tostring(rdnum(elem,"positionh")))
-        end
     end
 
     diag.native = diag.native or "(aucun element)"
     diag.pitch  = diag.pitch  or string.format("%dx%d", pitchX, pitchY)
-    diag.sample = diag.sample or "-"
-
     local diagStr = string.format(
-        "start=%s after1=%s | native %s -> pitch %s | elem1: %s",
-        tostring(diag.start), tostring(diag.after1),
-        diag.native, diag.pitch, diag.sample)
+        "start=%s after1=%s | native %s -> pitch %s",
+        tostring(diag.start), tostring(diag.after1), diag.native, diag.pitch)
     Printf("[CP-diag] %s", diagStr)
 
     return placed, failed, diagStr
@@ -259,44 +198,51 @@ local function makeMacro(no, btn)
 end
 
 local function main(display_handle)
-    local PT = 4
+    local PT = 4   -- pool de presets Color
 
     local cfg = MessageBox({
-        title    = "Color Picker",
-        message  = "Genere des presets couleur UNIVERSELS + un Layout (spots, nuancier, boutons).",
+        title    = "Color Board",
+        message  = "Genere une table de couleurs (groupes + machines + palette)\n"
+                .. "pour peindre des tableaux. Couleurs = presets UNIVERSELS.",
         commands = {
             { value = 1, name = "Generer" },
             { value = 0, name = "Annuler" },
         },
         inputs = {
-            { name = "Spots (optionnel, ex: 1 Thru 8)", value = "" },
-            { name = "Teintes (colonnes)",              value = "12" },
-            { name = "Niveaux par teinte",              value = "5"  },
-            { name = "Preset depart (ID)",              value = "1"  },
-            { name = "Layout (No)",                     value = "1"  },
-            { name = "Universel (1/0)",                 value = "1"  },
-            { name = "Boutons utilitaires (1/0)",       value = "1"  },
-            { name = "Macro depart (ID)",               value = "1"  },
+            { name = "Groupes (ex: 1 Thru 8 / vide = auto)", value = "" },
+            { name = "Machines (par fixture, optionnel)",     value = "" },
+            { name = "Nb couleurs (max 12)",                  value = "10" },
+            { name = "Preset depart (ID)",                    value = "1"  },
+            { name = "Layout (No)",                           value = "1"  },
+            { name = "Universel (1/0)",                        value = "1"  },
+            { name = "Boutons utilitaires (1/0)",             value = "1"  },
+            { name = "Macro depart (ID)",                     value = "1"  },
         },
     })
     if not cfg or cfg.result ~= 1 then return end
 
-    local fixStr    = cfg.inputs["Spots (optionnel, ex: 1 Thru 8)"]
-    local hues      = toNum(cfg.inputs["Teintes (colonnes)"], 12, 1, 36)
-    local levels    = toNum(cfg.inputs["Niveaux par teinte"],  5, 1, 11)
-    local startId   = toNum(cfg.inputs["Preset depart (ID)"],  1, 1, 100000)
-    local layNo     = toNum(cfg.inputs["Layout (No)"],         1, 1, 100000)
-    local universal = toNum(cfg.inputs["Universel (1/0)"],     1, 0, 1) == 1
+    local grpStr    = cfg.inputs["Groupes (ex: 1 Thru 8 / vide = auto)"]
+    local fixStr    = cfg.inputs["Machines (par fixture, optionnel)"]
+    local nColors   = toNum(cfg.inputs["Nb couleurs (max 12)"], 10, 1, #COLORS)
+    local startId   = toNum(cfg.inputs["Preset depart (ID)"], 1, 1, 100000)
+    local layNo     = toNum(cfg.inputs["Layout (No)"], 1, 1, 100000)
+    local universal = toNum(cfg.inputs["Universel (1/0)"], 1, 0, 1) == 1
     local utilities = toNum(cfg.inputs["Boutons utilitaires (1/0)"], 1, 0, 1) == 1
-    local macStart  = toNum(cfg.inputs["Macro depart (ID)"],   1, 1, 100000)
+    local macStart  = toNum(cfg.inputs["Macro depart (ID)"], 1, 1, 100000)
 
-    local swatches = buildPalette(hues, levels)
-    local greys    = buildGreys(hues)
-    local nPresets = #swatches + #greys
+    -- Couleurs retenues (les N premieres de la palette).
+    local colors = {}
+    for i = 1, nColors do colors[i] = COLORS[i] end
+
+    -- Groupes : explicites, sinon auto-detection.
+    local groupIds = parseRange(grpStr) or scanGroups(100)
+    local fixIds   = parseRange(fixStr)
+
+    local nPresets = nColors
     local endId    = startId + nPresets - 1
     local macEnd   = macStart + (utilities and #BUTTONS - 1 or -1)
 
-    -- Verification occupation des plages
+    -- Verification occupation des plages.
     local occupied, detectOk = false, true
     for no = startId, endId do
         local used, ok = objectUsed(string.format("Preset %d.%d", PT, no))
@@ -315,7 +261,7 @@ local function main(display_handle)
         local extra = utilities
             and string.format("\nMacros %d -> %d  (boutons utilitaires)", macStart, macEnd) or ""
         local confirm = MessageBox({
-            title    = "Color Picker",
+            title    = "Color Board",
             message  = string.format(
                 "Des objets existent peut-etre ici :\n"
              .. "Preset %d.%d -> %d.%d%s\n"
@@ -335,43 +281,35 @@ local function main(display_handle)
         end
     end
 
-    -- Selection scratch pour ecrire les couleurs
-    local fixIds = parseFixtures(fixStr)
+    -- Selection scratch pour ecrire les couleurs.
     Cmd("ClearAll")
-    if fixIds then
-        Cmd("Fixture " .. fixStr)
-    else
-        Cmd("Fixture Thru")
-    end
-
+    Cmd("Fixture Thru")
     local selCount, hasSelApi = 0, false
     pcall(function() selCount = SelectionCount(); hasSelApi = true end)
     if hasSelApi and selCount == 0 then
         MessageBox({
-            title = "Color Picker",
+            title = "Color Board",
             message = "Aucune fixture disponible.\nPatche au moins un projecteur RGB.",
             commands = { { value = 1, name = "OK" } },
         })
         return
     end
 
-    -- Creation des presets universels
+    -- Creation des presets de couleur universels.
     local uniOpt = universal and " /Universal" or ""
     local id = startId
-    local function makePreset(item)
-        item.no = id
-        Cmd(string.format('Attribute "ColorRGB_R" At %d', math.floor(item.r / 255 * 100 + 0.5)))
-        Cmd(string.format('Attribute "ColorRGB_G" At %d', math.floor(item.g / 255 * 100 + 0.5)))
-        Cmd(string.format('Attribute "ColorRGB_B" At %d', math.floor(item.b / 255 * 100 + 0.5)))
-        Cmd(string.format('Store Preset %d.%d /Merge /NoConfirm%s', PT, item.no, uniOpt))
-        Cmd(string.format('Label Preset %d.%d "%s"', PT, item.no, item.name))
-        Cmd(string.format('Appearance Preset %d.%d /R=%d /G=%d /B=%d', PT, item.no, item.r, item.g, item.b))
+    for _, c in ipairs(colors) do
+        c.no = id
+        Cmd(string.format('Attribute "ColorRGB_R" At %d', math.floor(c.r / 255 * 100 + 0.5)))
+        Cmd(string.format('Attribute "ColorRGB_G" At %d', math.floor(c.g / 255 * 100 + 0.5)))
+        Cmd(string.format('Attribute "ColorRGB_B" At %d', math.floor(c.b / 255 * 100 + 0.5)))
+        Cmd(string.format('Store Preset %d.%d /Merge /NoConfirm%s', PT, c.no, uniOpt))
+        Cmd(string.format('Label Preset %d.%d "%s"', PT, c.no, c.name))
+        Cmd(string.format('Appearance Preset %d.%d /R=%d /G=%d /B=%d', PT, c.no, c.r, c.g, c.b))
         id = id + 1
     end
-    for _, s in ipairs(swatches) do makePreset(s) end
-    for _, g in ipairs(greys)    do makePreset(g) end
 
-    -- Creation des macros utilitaires
+    -- Creation des macros utilitaires.
     local macList = {}
     if utilities then
         for i, btn in ipairs(BUTTONS) do
@@ -381,101 +319,92 @@ local function main(display_handle)
         end
     end
 
-    -- Creation d'un layout frais (on repart toujours d'un layout vide)
+    -- Layout frais.
     Cmd(string.format('Delete Layout %d /NoConfirm', layNo))
     Cmd(string.format('Store Layout %d /NoConfirm', layNo))
-    Cmd(string.format('Label Layout %d "Color Picker"', layNo))
+    Cmd(string.format('Label Layout %d "Color Board"', layNo))
     Cmd(string.format('Appearance Layout %d /R=18 /G=22 /B=30', layNo))
 
-    -- Calcul des lignes (Y augmente vers le bas)
-    local fixRows = fixIds and math.ceil(#fixIds / hues) or 0
-    local gridTop = fixRows + (fixRows > 0 and 1 or 0)
-    local greyRow = gridTop + levels + 1
-    local btnRow  = greyRow + 2
-    local lastRow = (utilities and #macList > 0) and btnRow or greyRow
+    -- Largeur de grille commune (alignement des sections).
+    local gridW = nColors
+    if groupIds then gridW = math.max(gridW, #groupIds) end
+    gridW = math.min(math.max(gridW, 4), 24)
 
-    -- IMPORTANT : les coordonnees de layout sont des entiers NON SIGNES.
-    -- Une valeur negative deborde a ~65531 (65536 + x) et envoie la case
-    -- hors champ. On pose donc tout depuis (0,0) vers le bas/la droite,
-    -- coordonnees >= 0 uniquement. (lastRow non utilise pour le centrage.)
-    local colOff = 0
-    local rowOff = 0
-    local _ = lastRow
-
-    -- Construction de la liste des elements a placer
+    -- Construction des elements, section par section, de haut en bas.
     local elements = {}
+    local y = 0
+    local function addSection(objs)
+        if not objs or #objs == 0 then return end
+        for i, o in ipairs(objs) do
+            local col = (i - 1) % gridW
+            local row = math.floor((i - 1) / gridW)
+            elements[#elements + 1] = { object = o, x = col, y = y + row, w = 1, h = 1 }
+        end
+        y = y + math.ceil(#objs / gridW) + 1   -- +1 = ligne vide entre sections
+    end
 
-    -- Spots (en haut)
+    -- Groupes (selection par groupe de machines).
+    if groupIds then
+        local objs = {}
+        for _, gid in ipairs(groupIds) do objs[#objs + 1] = "Group " .. gid end
+        addSection(objs)
+    end
+
+    -- Machines (selection par fixture, optionnel).
     if fixIds then
-        for i, fid in ipairs(fixIds) do
-            local col = (i - 1) % hues
-            local row = math.floor((i - 1) / hues)
-            elements[#elements + 1] = {
-                object = "Fixture " .. fid,
-                x = col + colOff, y = row + rowOff, w = 1, h = 1,
-            }
-        end
+        local objs = {}
+        for _, fid in ipairs(fixIds) do objs[#objs + 1] = "Fixture " .. fid end
+        addSection(objs)
     end
 
-    -- Nuancier
-    for _, s in ipairs(swatches) do
-        elements[#elements + 1] = {
-            object = string.format("Preset %d.%d", PT, s.no),
-            x = s.col + colOff, y = gridTop + s.level + rowOff, w = 1, h = 1,
-        }
+    -- Palette de couleurs.
+    do
+        local objs = {}
+        for _, c in ipairs(colors) do objs[#objs + 1] = string.format("Preset %d.%d", PT, c.no) end
+        addSection(objs)
     end
 
-    -- Rampe de gris
-    for _, g in ipairs(greys) do
-        elements[#elements + 1] = {
-            object = string.format("Preset %d.%d", PT, g.no),
-            x = g.col + colOff, y = greyRow + rowOff, w = 1, h = 1,
-        }
-    end
-
-    -- Boutons utilitaires
+    -- Outils.
     if utilities and #macList > 0 then
-        local btnW = math.max(2, math.floor(hues / #macList))
-        for i, m in ipairs(macList) do
-            elements[#elements + 1] = {
-                object = "Macro " .. m.no,
-                x = (i - 1) * btnW + colOff, y = btnRow + rowOff, w = btnW, h = 1,
-            }
-        end
+        local objs = {}
+        for _, m in ipairs(macList) do objs[#objs + 1] = "Macro " .. m.no end
+        addSection(objs)
     end
 
     local placed, failed, diagStr = fillLayout(layNo, elements)
-    local _ = diagStr   -- detail complet dispo dans la Command Line History
+    local _ = diagStr   -- detail complet dans la Command Line History
 
     Cmd("ClearAll")
 
-    -- Note seulement si des cases n'ont pas pu etre placees.
-    local layoutNote = ""
+    local note = ""
     if failed > 0 then
-        layoutNote = string.format(
+        note = string.format(
             "\n\n(%d case(s) non placee(s) — voir [CP-diag] dans la"
          .. " Command Line History)", failed)
     end
 
     local msg = string.format(
-        "Color Picker pret !\n\n"
-     .. "Presets %s : %d  (Preset %d.%d -> %d.%d)\n"
-     .. "Nuancier : %d teintes x %d niveaux + gris\n"
-     .. "Boutons : %d macros\n"
-     .. "Layout %d : %d/%d cases placees%s",
-        universal and "UNIVERSELS" or "generiques",
-        nPresets, PT, startId, PT, endId,
-        hues, levels, #macList,
-        layNo, placed, placed + failed,
-        layoutNote)
+        "Color Board pret !\n\n"
+     .. "Groupes : %d   Machines : %d\n"
+     .. "Couleurs %s : %d  (Preset %d.%d -> %d.%d)\n"
+     .. "Outils : %d macros\n"
+     .. "Layout %d : %d/%d cases placees%s\n\n"
+     .. "Workflow : tape un Groupe (ou une Machine, ou All)\n"
+     .. "puis une Couleur. Repete pour peindre ton tableau,\n"
+     .. "puis store le programmer en cue / preset.",
+        groupIds and #groupIds or 0,
+        fixIds and #fixIds or 0,
+        universal and "UNIVERSELLES" or "generiques",
+        nColors, PT, startId, PT, endId,
+        #macList, layNo, placed, placed + failed, note)
 
     MessageBox({
-        title = "Color Picker",
+        title = "Color Board",
         message = msg,
         commands = { { value = 1, name = "Super !" } },
     })
-    Printf("[ColorPicker] %d presets, %d macros, layout %d : %d/%d places.",
-        nPresets, #macList, layNo, placed, placed + failed)
+    Printf("[ColorBoard] %d couleurs, %d groupes, %d macros, layout %d : %d/%d places.",
+        nColors, groupIds and #groupIds or 0, #macList, layNo, placed, placed + failed)
 end
 
 return main
