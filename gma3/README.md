@@ -1,51 +1,47 @@
-# Color Board — Plugin grandMA3 (v2.x)
+# Color Picker LIVE — Plugin grandMA3 (v2.x)
 
-Plugin Lua qui construit une **table de couleurs** dans un Layout grandMA3,
-pensée pour **peindre des tableaux** (looks) — donner une couleur différente
-à chaque groupe / machine — au lieu de mettre une seule couleur partout.
+Un **color picker pensé pour le live** : tu tapes une couleur, ton groupe
+passe à cette couleur **en restitution** (playback, LTP), avec un fondu, et
+**sans jamais toucher au programmer**. Fait pour busker des couleurs proprement.
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│  GROUPES                                                  │
-│  [G1] [G2] [G3] [G4] [G5] [G6] [G7] [G8]    ← sélection   │
-│                                                           │
-│  MACHINES (option)                                        │
-│  [1] [2] [3] [4] [5] [6] [7] [8] ...                      │
-│                                                           │
-│  COULEURS                                                 │
-│  [Red][Orange][Yellow][Green][Cyan][Blue][Violet]...      │
-│                                                           │
-│  OUTILS                                                   │
-│  [Clear] [All] [Highlight] [Full]                         │
-└─────────────────────────────────────────────────────────┘
+            Red  Orange Yellow Green Cyan Blue Violet Magenta Pink White
+Off Spots  [▮]  [▮]    [▮]    [▮]   [▮]  [▮]  [▮]    [▮]     [▮]  [▮]
+Off Wash   [▮]  [▮]    [▮]    [▮]   [▮]  [▮]  [▮]    [▮]     [▮]  [▮]
+Off All    [▮]  [▮]    ...
+                                            [Off All] [Highlight] [Full]
 ```
 
-## Le workflow
+## Pourquoi pas le programmer ?
 
-1. Tape un **Groupe** (ou une **Machine**, ou **All**) → ça sélectionne.
-2. Tape une **Couleur** → elle s'applique à la sélection.
-3. Passe au groupe suivant, autre couleur… tu **construis ton tableau**
-   multicolore dans le programmer.
-4. **Store** le programmer en cue / preset quand le look te plaît.
+Sur grandMA3, taper un preset/couleur écrit dans le **programmer** (valeurs
+manuelles). En live on ne veut pas ça : il faut clear/store en permanence.
+Ici chaque couleur est une **cue de séquence** jouée en `Goto` → elle part
+direct en sortie (LTP), se mélange au reste du show, et ne laisse **rien**
+dans le programmer. `Off` relâche.
 
-`All` sélectionne toutes les machines (pour tout colorer d'un coup),
-`Clear` vide le programmer.
+## Comment ça marche
 
-## Ce qui est généré
+- **1 séquence par cible** : `All` (toutes les fixtures) + une par groupe
+  détecté. Chaque séquence a **une cue par couleur**. Très peu d'objets.
+- **Matrice de macros** sur le Layout :
+  - **Colonne de gauche** = `Off <groupe>` (relâche ce groupe ; sert aussi
+    d'étiquette de ligne).
+  - **Pastilles couleur** = `Goto Sequence <groupe> Cue <couleur> Fade <t>`
+    → le groupe passe à la couleur, **en live, avec fondu**.
+- **Outils** : `Off All`, `Highlight`, `Full`.
 
-- **Groupes** : tes groupes de machines, posés sur le layout. Vide dans la
-  config = **auto-détection** des groupes existants (change ton patch, le
-  board suit).
-- **Machines** (optionnel) : des fixtures une à une, pour choisir **par
-  machine**.
-- **Palette de couleurs principales** : une dizaine de couleurs (max 12),
-  chacune un **preset couleur universel** — non lié à une machine, s'applique
-  à n'importe quelle sélection (RGB, RGBW, RGBA, CMY…).
-- **Outils** : macros **Clear / All / Highlight / Full** — persistantes et
-  éditables.
-- **Sécurité anti-écrasement** : si la plage de presets/macros est déjà
-  occupée, le plugin **demande** avant d'écraser et regénérer.
-- Layout thémé sombre + **appearance** sur chaque preset.
+> 🔆 **Intensité** : le picker ne touche **que la couleur**. Tes fixtures
+> doivent avoir de l'intensité (autre playback, ou `Full`) pour qu'on voie
+> la couleur. C'est volontaire — tu gardes ton dimmer indépendant.
+
+## Le workflow live
+
+1. (Les spots/wash sont allumés par ton show, ou tape `Full`.)
+2. Tape une **pastille couleur** sur la ligne du groupe → il passe à cette
+   couleur avec un fondu.
+3. Autre couleur = ça refond (LTP). `Off <groupe>` = relâche ce groupe.
+4. `Off All` = relâche tout. **Zéro programmer à gérer.**
 
 ## Fichiers
 
@@ -57,65 +53,55 @@ pensée pour **peindre des tableaux** (looks) — donner une couleur différente
 
 > 💡 **Après chaque modification du `.lua`** : taper **`ReloadAllPlugins`**
 > (raccourci `RP`) dans la ligne de commande grandMA3. La console ne recharge
-> **pas** automatiquement les fichiers Lua externes — sans ça tu continues
-> d'exécuter l'ancienne version en cache.
+> **pas** automatiquement les fichiers Lua externes.
 
 ## Installation
 
-> ⚠️ **Deux fichiers obligatoires** : `ColorPicker.xml` **et** `ColorPicker.lua`
-> doivent être ensemble dans le **même dossier**. Le XML référence le `.lua`
-> (`FileName="ColorPicker.lua"`) — c'est le format natif de grandMA3.
+> ⚠️ `ColorPicker.xml` **et** `ColorPicker.lua` ensemble dans le **même
+> dossier** (le XML référence le `.lua`).
 
-1. Copier **les deux fichiers** dans le dossier plugins :
+1. Copier les deux fichiers dans le dossier plugins :
    - onPC (Mac) : `~/MALightingTechnology/gma3_library/datapools/plugins/`
    - onPC (Windows) : `C:\ProgramData\MALightingTechnology\gma3_library\datapools\plugins\`
-   - via USB : `gma3/library/datapools/plugins/`
-2. Console : pool **Plugins** → emplacement vide → **Import** →
-   choisir `ColorPicker` (il charge automatiquement le `.lua` à côté).
+2. Console : pool **Plugins** → emplacement vide → **Import** → `ColorPicker`.
 
-## Utilisation
+## Configuration (fenêtre au lancement)
 
-1. Lancer le plugin.
-2. Remplir la fenêtre de configuration :
+| Champ                       | Défaut       | Description                                       |
+|-----------------------------|--------------|---------------------------------------------------|
+| Groupes                     | *(vide)*     | `1 Thru 8`, … Vide = **auto-détection** des groupes.|
+| Nb couleurs                 | `10`         | Couleurs principales (max 12).                     |
+| Fade couleur (s)            | `1`          | Fondu au changement / lancement de couleur.        |
+| Fade arrêt (s)              | `2`          | Fondu au relâché (best-effort selon le build).     |
+| Preset départ (ID)          | `1`          | Premier ID de preset couleur (palette universelle).|
+| Sequence départ (ID)        | `1`          | Premier ID de séquence.                            |
+| Macro départ (ID)           | `1`          | Premier ID de macro.                               |
+| Layout (No)                 | `1`          | Numéro du Layout généré.                            |
 
-   | Champ                       | Défaut       | Description                                       |
-   |-----------------------------|--------------|---------------------------------------------------|
-   | Groupes                     | *(vide)*     | `1 Thru 8`, `1 + 3`, … Vide = auto-détection.      |
-   | Machines (par fixture)      | *(vide)*     | Fixtures une à une, ex. `1 Thru 12`. Vide = aucune.|
-   | Nb couleurs                 | `10`         | Nombre de couleurs principales (max 12).           |
-   | Preset départ (ID)          | `1`          | Premier ID de preset couleur.                      |
-   | Layout (No)                 | `1`          | Numéro du Layout généré.                            |
-   | Universel (1/0)             | `1`          | `1` = presets universels (recommandé).             |
-   | Boutons utilitaires (1/0)   | `1`          | `1` = ajoute Clear/All/Highlight/Full.             |
-   | Macro départ (ID)           | `1`          | Premier ID de macro pour les boutons.              |
+> **Sécurité** : si une plage de presets / séquences / macros est déjà
+> occupée, le plugin **demande confirmation** avant d'écraser et regénérer.
 
-   > Si la plage de presets **ou de macros** est déjà occupée, une fenêtre
-   > demande confirmation **« Écraser »** avant de regénérer.
-
-3. **Générer**, puis ouvrir le **Layout View** sur le numéro choisi.
-
-## Palette par défaut (12 couleurs, 10 utilisées)
+## Palette par défaut (12, 10 utilisées)
 
 `Red · Orange · Yellow · Green · Cyan · Blue · Violet · Magenta · Pink ·
-White` — puis `Amber · Warm` si tu montes à 12.
+White` (+ `Amber · Warm` si tu montes à 12).
 
 ## Notes techniques
 
-- Couleurs écrites via `ColorRGB_R/G/B` (en %) puis `Store Preset 4.x` ;
-  grandMA3 convertit automatiquement vers les autres systèmes de couleur.
-- Placement layout : handle `DataPool().Layouts[n]` récupéré **une seule
-  fois**, puis après chaque `Assign … At Layout` on prend `layout[#layout]`
-  et on règle position/taille (`posx/posy/positionw/positionh` +
-  `:Set("PositionX"/"PositionY"/"DimensionW"/"DimensionH")`, sous `pcall`).
-- **Coordonnées ≥ 0 obligatoires** : les positions de layout sont des
-  entiers non signés (`-5` → `65531` = hors champ). La grille part de `(0,0)`.
-- **Échelle auto-mesurée** : la taille native du premier élément assigné sert
-  de pas de grille → visible quelle que soit l'unité interne du layout.
+- Les couleurs sont écrites dans les cues via `ColorRGB_R/G/B` (en %) — la
+  console convertit vers les autres systèmes (RGBW, CMY…).
+- Déclenchement live : `Goto Sequence X Cue Y Fade Z` (les séquences se
+  jouent **sans executor**). Aucune écriture programmer.
+- Une palette de **presets couleur universels** est aussi créée (réutilisable
+  à la main).
+- Placement layout : handle récupéré une fois, coordonnées ≥ 0 (entiers non
+  signés), pas de grille = taille native auto-mesurée.
 
 ## Nettoyage
 
 ```
-Delete Preset 4.1 Thru   (adapter à la plage générée)
-Delete Macro 1 Thru 4    (adapter à la plage générée)
-Delete Layout 1          (adapter le numéro)
+Delete Preset 4.1 Thru 4.10   (adapter aux plages générées)
+Delete Sequence 1 Thru …
+Delete Macro 1 Thru …
+Delete Layout 1
 ```
