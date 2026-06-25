@@ -4,13 +4,21 @@ Un **color picker pensé pour le live** : tu tapes une couleur, ton groupe
 passe à cette couleur **en restitution** (playback, LTP), avec un fondu, et
 **sans jamais toucher au programmer**. Fait pour busker des couleurs proprement.
 
+Chaque **ligne** = une cible (ALL, un groupe, ou une machine). La case de
+gauche **montre la machine** (icône / faisceau + couleur en direct). Chaque
+**colonne** = une couleur, en vraie **pastille colorée** (pas d'icône de macro).
+
 ```
-            Red  Orange Yellow Green Cyan Blue Violet Magenta Pink White
-Off Spots  [▮]  [▮]    [▮]    [▮]   [▮]  [▮]  [▮]    [▮]     [▮]  [▮]
-Off Wash   [▮]  [▮]    [▮]    [▮]   [▮]  [▮]  [▮]    [▮]     [▮]  [▮]
-Off All    [▮]  [▮]    ...
-                                            [Off All] [Highlight] [Full]
+          Red Org Yel Grn Cya Blu Vio Mag Pnk Wht   Off
+[ALL]    [🟥][🟧][🟨][🟩][🟦][🟦][🟪][🟪][🟪][⬜]  [✕]
+[Spot1]🔦[🟥][🟧][🟨][🟩][🟦][🟦][🟪][🟪][🟪][⬜]  [✕]   ← icône machine à gauche
+[Spot2]🔦[🟥][🟧][🟨][🟩][🟦][🟦][🟪][🟪][🟪][⬜]  [✕]
+[Off All] [Highlight] [Full]
 ```
+
+- **Pastilles colorées** : on voit la couleur directement (appearance de fond).
+- **Case de gauche** = la machine/groupe (son icône + sa couleur live).
+- **Case de droite** = `Off` de la ligne. En bas : `Off All` / `Highlight` / `Full`.
 
 ## Pourquoi pas le programmer ?
 
