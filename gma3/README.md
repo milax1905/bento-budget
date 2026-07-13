@@ -100,16 +100,22 @@ White` (+ `Amber · Warm` si tu montes à 12).
   console convertit vers les autres systèmes (RGBW, CMY…).
 - Déclenchement live : `Goto Sequence X Cue Y Fade Z` (les séquences se
   jouent **sans executor**). Aucune écriture programmer.
-- Une palette de **presets couleur universels** est aussi créée (réutilisable
-  à la main).
-- Placement layout : handle récupéré une fois, coordonnées ≥ 0 (entiers non
-  signés), pas de grille = taille native auto-mesurée.
+- Placement layout (mécanisme validé sur console) : handle
+  `DataPool().Layouts[n]` récupéré **une seule fois**, dernier enfant après
+  chaque `Assign … At Layout`, position via `posx/posy/positionw/positionh`,
+  coordonnées ≥ 0 (entiers non signés), pas de grille = taille native
+  **auto-mesurée** + petit écart entre cases.
+- Fond coloré des cases : une **Appearance** par couleur (`BackR/G/B`),
+  assignée à l'élément de layout (best-effort — si ton build l'ignore, les
+  cases restent des macros colorées fonctionnelles).
+- Objets par défaut rangés à partir du **101** (séquences, macros,
+  appearances) pour ne pas toucher tes objets 1–100.
 
 ## Nettoyage
 
 ```
-Delete Preset 4.1 Thru 4.10   (adapter aux plages générées)
-Delete Sequence 1 Thru …
-Delete Macro 1 Thru …
+Delete Sequence 101 Thru …    (adapter aux plages affichées au bilan)
+Delete Macro 101 Thru …
+Delete Appearance 101 Thru …
 Delete Layout 1
 ```
