@@ -1,25 +1,28 @@
 -- =====================================================================
 --  Color Picker LIVE  -  Plugin Lua pour grandMA3 v2.x
 -- ---------------------------------------------------------------------
---  Un color picker propre pour le LIVE :
+--  Un color picker de busking, construit comme le font les pupitreurs :
 --
---      MACHINE      couleurs ->                                OFF
---    [ Fixture 1 ] [Red][Orange][Yellow] ... [White]          [Off]
---    [ Fixture 2 ] [Red][Orange][Yellow] ... [White]          [Off]
---    [ ALL       ] [Red][Orange][Yellow] ... [White]          [Off]
---    [ Off All ] [Highlight] [Full]
+--      MACHINE          COULEURS (tuiles colorees, tappables) ->
+--    [ ALL        ]   [Red][Orange][Yellow][Green] ... [White]
+--    [ Fixture 1  ]   [Red][Orange][Yellow][Green] ... [White]
+--    [ Fixture 2  ]   [Red][Orange][Yellow][Green] ... [White]
+--    [Off All] [Highlight] [Full]
 --
---  - Chaque LIGNE = une cible : la case de gauche est la VRAIE fixture
---    (ou le groupe) -> on voit son icone, son nom et sa couleur en direct.
---  - Chaque case couleur declenche "Goto Sequence <cible> Cue <couleur>"
---    avec un fondu -> la couleur part EN RESTITUTION (LTP), sans jamais
---    toucher au programmer. [Off] relache la cible (fondu d'arret).
---  - Peu d'objets : 1 sequence par cible, cues = couleurs.
+--  - Chaque tuile couleur est une MINI-SEQUENCE (1 cue) posee sur le
+--    layout : taper = la couleur part EN RESTITUTION (LTP), sans jamais
+--    toucher au programmer. C'est le pattern busking standard de MA3.
+--  - Chaque sequence recoit une vraie APPEARANCE ("Assign Appearance N
+--    At Sequence M") -> tuile pleine couleur, propre.
+--  - La case de gauche est la VRAIE fixture (ou le groupe) : icone,
+--    nom, couleur live. La taper selectionne la machine.
+--  - "Off When Overridden" : changer de couleur relache l'ancienne ->
+--    une seule tuile allumee par ligne (comportement radio).
 --
---  Fiabilite : le placement utilise UNIQUEMENT le mecanisme deja valide
---  sur console (handle du layout recupere une fois, position via
---  posx/posy/positionw/positionh, echelle auto-mesuree, coordonnees >= 0).
---  La coloration des cases (Appearance) est appliquee en best-effort.
+--  Objets crees (a partir de l'ID de depart, defaut 101) :
+--    Appearances : 1 par couleur + 1 sombre.
+--    Sequences   : 1 par (ligne x couleur), label "<machine> <couleur>".
+--    Macros      : Off All / Highlight / Full / ALL (4 seulement).
 --
 --  NB : apres toute modification de ce fichier -> "ReloadAllPlugins" (RP).
 -- =====================================================================
@@ -66,7 +69,6 @@ local function parseRange(str)
     return (#ids > 0) and ids or nil
 end
 
--- Objet avec du contenu (sequences, macros, groupes...).
 local function objectUsed(addr)
     local used, ok = false, false
     ok = pcall(function()
@@ -79,7 +81,6 @@ local function objectUsed(addr)
     return used, ok
 end
 
--- Objet qui existe simplement (fixtures).
 local function objectExists(addr)
     local exists = false
     pcall(function()
@@ -119,10 +120,15 @@ end
 
 -- --------------------------- constructeurs ---------------------------
 
--- Appearance pleine couleur (fond). Echelle 0-255 (format natif MA3).
+-- Appearance pleine couleur (fond). Proprietes BackR/G/B/Alpha en 0-255,
+-- ecrites via la commande "Set ... Property" ET via le handle objet.
 local function makeAppearance(no, name, r, g, b)
     Cmd(string.format('Store Appearance %d /NoConfirm', no))
     Cmd(string.format('Label Appearance %d "%s"', no, name))
+    Cmd(string.format('Set Appearance %d Property "BackR" "%d"', no, r))
+    Cmd(string.format('Set Appearance %d Property "BackG" "%d"', no, g))
+    Cmd(string.format('Set Appearance %d Property "BackB" "%d"', no, b))
+    Cmd(string.format('Set Appearance %d Property "BackAlpha" "255"', no))
     pcall(function()
         local a = ObjectList("Appearance " .. no)[1]
         if a then
@@ -134,10 +140,12 @@ local function makeAppearance(no, name, r, g, b)
     end)
 end
 
-local function makeMacro(no, name, r, g, b, lines)
+local function makeMacro(no, name, appNo, lines)
     Cmd(string.format('Store Macro %d /NoConfirm', no))
     Cmd(string.format('Label Macro %d "%s"', no, name))
-    Cmd(string.format('Appearance Macro %d /R=%d /G=%d /B=%d', no, r, g, b))
+    if appNo then
+        Cmd(string.format('Assign Appearance %d At Macro %d', appNo, no))
+    end
     pcall(function()
         local m = ObjectList("Macro " .. no)[1]
         if m then
@@ -150,13 +158,9 @@ local function makeMacro(no, name, r, g, b, lines)
 end
 
 -- ------------------------ placement layout ---------------------------
---  Mecanisme VALIDE sur console :
---   - handle du layout recupere UNE fois, dernier enfant apres Assign ;
---   - position/taille via posx/posy/positionw/positionh (+ :Set officiel) ;
---   - echelle = taille native mesuree sur le 1er element (repli 32) ;
---   - coordonnees >= 0 uniquement (entiers non signes : -5 -> 65531).
---  En plus (best-effort) : Appearance assignee a la CASE pour un fond
---  colore plein, via handle puis via commande Assign.
+--  Mecanisme VALIDE sur console : handle du layout recupere UNE fois,
+--  dernier enfant apres chaque Assign, position via posx/posy/positionw/
+--  positionh, echelle auto-mesuree, coordonnees >= 0 uniquement.
 local function fillLayout(layoutNo, elements)
     local placed, failed = 0, 0
 
@@ -175,15 +179,16 @@ local function fillLayout(layoutNo, elements)
         return v
     end
 
-    local pitchX, pitchY = 32, 32     -- pas d'une case (auto-mesure)
-    local GAP = 0.14                  -- ecart entre cases (fraction de case)
+    local pitchX, pitchY = 32, 32
+    local GAP = 0.14
 
     local function place(elem, e)
         local stepX = pitchX * (1 + GAP)
         local stepY = pitchY * (1 + GAP)
+        local w = e.w or 1
         local px = math.max(0, math.floor((e.x or 0) * stepX))
         local py = math.max(0, math.floor((e.y or 0) * stepY))
-        local pw = math.max(1, math.floor((e.w or 1) * pitchX + (((e.w or 1) - 1) * pitchX * GAP)))
+        local pw = math.max(1, math.floor(w * pitchX + (w - 1) * pitchX * GAP))
         local ph = math.max(1, math.floor((e.h or 1) * pitchY))
         local ok = pcall(function()
             elem.posx = px; elem.posy = py
@@ -214,14 +219,10 @@ local function fillLayout(layoutNo, elements)
         local ok = false
         if elem ~= nil then
             ok = place(elem, e)
-            -- Fond colore de la case (3 formes, sans consequence si KO).
-            if e.app then
-                pcall(function() elem:Set("Appearance", "Appearance " .. e.app) end)
-                pcall(function() elem:Set("Appearance", tostring(e.app)) end)
-                pcall(function()
-                    Cmd(string.format("Assign Appearance %d At Layout %d.%d",
-                        e.app, layoutNo, after))
-                end)
+            -- Tuile sequence : comportement de restitution au tap (best-effort).
+            if e.play then
+                pcall(function() elem:Set("PlaybackFunction", "Go+") end)
+                pcall(function() elem:Set("Function", "Go+") end)
             end
         end
         if ok then placed = placed + 1 else failed = failed + 1 end
@@ -235,7 +236,7 @@ end
 local function main(display_handle)
     local cfg = MessageBox({
         title    = "Color Picker LIVE",
-        message  = "Une ligne par machine/groupe, des cases couleur ->\n"
+        message  = "Busking : chaque tuile couleur est une mini-sequence ->\n"
                 .. "couleur en restitution (fondu), sans programmer.",
         commands = {
             { value = 1, name = "Generer" },
@@ -247,8 +248,7 @@ local function main(display_handle)
             { name = "Nb couleurs (max 12)",                   value = "10"  },
             { name = "Fade couleur (s)",                       value = "1"   },
             { name = "Fade arret (s)",                         value = "2"   },
-            { name = "Sequence depart (ID)",                   value = "101" },
-            { name = "Macro depart (ID)",                      value = "101" },
+            { name = "ID de depart (seq/macro/appearance)",    value = "101" },
             { name = "Layout (No)",                            value = "1"   },
         },
     })
@@ -259,10 +259,8 @@ local function main(display_handle)
     local nColors   = math.floor(toNum(cfg.inputs["Nb couleurs (max 12)"], 10, 1, #COLORS))
     local colorFade = toNum(cfg.inputs["Fade couleur (s)"], 1, 0, 600)
     local offFade   = toNum(cfg.inputs["Fade arret (s)"], 2, 0, 600)
-    local seqStart  = math.floor(toNum(cfg.inputs["Sequence depart (ID)"], 101, 1, 100000))
-    local macStart  = math.floor(toNum(cfg.inputs["Macro depart (ID)"], 101, 1, 100000))
+    local baseId    = math.floor(toNum(cfg.inputs["ID de depart (seq/macro/appearance)"], 101, 1, 100000))
     local layNo     = math.floor(toNum(cfg.inputs["Layout (No)"], 1, 1, 100000))
-    local appStart  = macStart   -- pools differents : meme numerotation, lisible
 
     local colors = {}
     for i = 1, nColors do colors[i] = COLORS[i] end
@@ -279,8 +277,8 @@ local function main(display_handle)
         return
     end
 
-    -- Cibles : groupes si presents, sinon machines une a une ; + ALL.
-    local targets = {}
+    -- Cibles : ALL en premiere ligne, puis groupes (sinon machines).
+    local targets = { { label = "ALL", sel = "Fixture Thru", header = nil } }
     local groupIds = parseRange(grpStr) or scanGroups(100)
     local truncated = false
     if groupIds then
@@ -299,26 +297,22 @@ local function main(display_handle)
         if fixIds then
             for _, fid in ipairs(fixIds) do
                 targets[#targets + 1] = {
-                    label = "Fixture " .. fid, sel = "Fixture " .. fid,
+                    label = "Fix " .. fid, sel = "Fixture " .. fid,
                     header = "Fixture " .. fid,
                 }
             end
         end
     end
-    targets[#targets + 1] = { label = "ALL", sel = "Fixture Thru", header = nil }
     local nTargets = #targets
 
-    -- Numerotation des objets.
-    local seqEnd    = seqStart + nTargets - 1
-    local perTarget = nColors + 1                    -- N couleurs + 1 Off
-    local utilBase  = macStart + nTargets * perTarget
-    local macAllHdr = utilBase
-    local macOffAll = utilBase + 1
-    local macHi     = utilBase + 2
-    local macFull   = utilBase + 3
-    local macEnd    = macFull
-    local appDark   = appStart + nColors             -- fond sombre (ALL / Off)
-    local appEnd    = appDark
+    -- Numerotation (pools distincts, meme ID de depart -> lisible).
+    local nSeq     = nTargets * nColors
+    local seqEnd   = baseId + nSeq - 1
+    local appDark  = baseId + nColors
+    local appEnd   = appDark
+    local macOffAll, macHi, macFull, macAllHdr = baseId, baseId + 1, baseId + 2, baseId + 3
+    local macEnd   = macAllHdr
+    local function seqNoOf(ti, ci) return baseId + (ti - 1) * nColors + (ci - 1) end
 
     -- Occupation des plages -> confirmation avant d'ecraser.
     local occupied, detectOk = false, true
@@ -329,9 +323,9 @@ local function main(display_handle)
             if used then occupied = true; return end
         end
     end
-    check("Sequence %d", seqStart, seqEnd)
-    if detectOk and not occupied then check("Macro %d", macStart, macEnd) end
-    if detectOk and not occupied then check("Appearance %d", appStart, appEnd) end
+    check("Sequence %d", baseId, seqEnd)
+    if detectOk and not occupied then check("Macro %d", baseId, macEnd) end
+    if detectOk and not occupied then check("Appearance %d", baseId, appEnd) end
 
     if occupied or not detectOk then
         local confirm = MessageBox({ title = "Color Picker LIVE",
@@ -339,92 +333,81 @@ local function main(display_handle)
                 "Des objets existent peut-etre ici :\n"
              .. "Sequence %d -> %d\nMacro %d -> %d\nAppearance %d -> %d\n"
              .. "(et le Layout %d sera (re)cree).\n\nTout ecraser et regenerer ?",
-                seqStart, seqEnd, macStart, macEnd, appStart, appEnd, layNo),
+                baseId, seqEnd, baseId, macEnd, baseId, appEnd, layNo),
             commands = { { value = 1, name = "Ecraser" }, { value = 0, name = "Annuler" } } })
         if not confirm or confirm.result ~= 1 then return end
-        Cmd(string.format('Delete Sequence %d Thru %d /NoConfirm', seqStart, seqEnd))
-        Cmd(string.format('Delete Macro %d Thru %d /NoConfirm', macStart, macEnd))
-        Cmd(string.format('Delete Appearance %d Thru %d /NoConfirm', appStart, appEnd))
+        Cmd(string.format('Delete Sequence %d Thru %d /NoConfirm', baseId, seqEnd))
+        Cmd(string.format('Delete Macro %d Thru %d /NoConfirm', baseId, macEnd))
+        Cmd(string.format('Delete Appearance %d Thru %d /NoConfirm', baseId, appEnd))
         Cmd(string.format('Delete Layout %d /NoConfirm', layNo))
     end
 
-    -- 1) Appearances (fonds de cases).
+    -- 1) Appearances : une par couleur + une sombre.
     for i, c in ipairs(colors) do
-        makeAppearance(appStart + i - 1, "CP " .. c.name, c.r, c.g, c.b)
+        makeAppearance(baseId + i - 1, "CP " .. c.name, c.r, c.g, c.b)
     end
     makeAppearance(appDark, "CP Dark", 36, 40, 48)
 
-    -- 2) Sequences : 1 par cible, 1 cue par couleur (attributs directs).
+    -- 2) Mini-sequences : 1 par (cible x couleur), 1 cue, appearance couleur.
     for ti, t in ipairs(targets) do
-        local seqNo = seqStart + ti - 1
         for ci, c in ipairs(colors) do
+            local sq = seqNoOf(ti, ci)
             Cmd("ClearAll")
             Cmd(t.sel)
             Cmd(string.format('Attribute "ColorRGB_R" At %d', math.floor(c.r / 255 * 100 + 0.5)))
             Cmd(string.format('Attribute "ColorRGB_G" At %d', math.floor(c.g / 255 * 100 + 0.5)))
             Cmd(string.format('Attribute "ColorRGB_B" At %d', math.floor(c.b / 255 * 100 + 0.5)))
-            Cmd(string.format('Store Sequence %d Cue %d /NoConfirm', seqNo, ci))
-            Cmd(string.format('Label Sequence %d Cue %d "%s"', seqNo, ci, c.name))
+            Cmd(string.format('Store Sequence %d Cue 1 /NoConfirm', sq))
+            Cmd(string.format('Label Sequence %d "%s %s"', sq, t.label, c.name))
+            Cmd(string.format('Assign Appearance %d At Sequence %d', baseId + ci - 1, sq))
+            -- Timings (best-effort : commande + handle).
+            Cmd(string.format('Set Sequence %d Cue 1 Property "CueInFade" "%s"', sq, tostring(colorFade)))
+            Cmd(string.format('Set Sequence %d Property "OffFade" "%s"', sq, tostring(offFade)))
+            Cmd(string.format('Set Sequence %d Property "OffWhenOverridden" "Yes"', sq))
+            pcall(function()
+                local s = ObjectList("Sequence " .. sq)[1]
+                if s then
+                    s:Set("OffFade", tostring(offFade))
+                    s:Set("OffWhenOverridden", "Yes")
+                end
+            end)
         end
-        Cmd(string.format('Label Sequence %d "CP %s"', seqNo, t.label))
-        pcall(function()
-            local s = ObjectList("Sequence " .. seqNo)[1]
-            if s then
-                s:Set("OffWhenOverridden", "Yes")
-                s:Set("OffFade", tostring(offFade))
-            end
-        end)
     end
     Cmd("ClearAll")
 
-    -- 3) Macros : par cible (couleurs + Off), puis outils.
-    for ti, t in ipairs(targets) do
-        local seqNo = seqStart + ti - 1
-        local base  = macStart + (ti - 1) * perTarget
-        makeMacro(base, "Off", 36, 40, 48,
-            { string.format("Off Sequence %d", seqNo) })
-        for ci, c in ipairs(colors) do
-            makeMacro(base + ci, c.name, c.r, c.g, c.b,
-                { string.format("Goto Sequence %d Cue %d Fade %s",
-                    seqNo, ci, tostring(colorFade)) })
-        end
-    end
-    makeMacro(macAllHdr, "ALL",       36,  40,  48, {})
-    makeMacro(macOffAll, "Off All",   90,  30,  30,
-        { string.format("Off Sequence %d Thru %d", seqStart, seqEnd) })
-    makeMacro(macHi,     "Highlight", 255, 110,  0, { "Highlight" })
-    makeMacro(macFull,   "Full",      255, 200, 40, { "Full" })
+    -- 3) Macros utilitaires (4 seulement).
+    makeMacro(macOffAll, "Off All", appDark,
+        { string.format("Off Sequence %d Thru %d", baseId, seqEnd) })
+    makeMacro(macHi,   "Highlight", appDark, { "Highlight" })
+    makeMacro(macFull, "Full",      appDark, { "Full" })
+    makeMacro(macAllHdr, "ALL",     appDark, { "Fixture Thru" })
 
-    -- 4) Layout : grille  [machine][couleurs...][off]  + ligne outils.
+    -- 4) Layout : [machine (x2)] [couleurs...] par ligne + outils en bas.
     Cmd(string.format('Delete Layout %d /NoConfirm', layNo))
     Cmd(string.format('Store Layout %d /NoConfirm', layNo))
     Cmd(string.format('Label Layout %d "Color Picker LIVE"', layNo))
-    Cmd(string.format('Appearance Layout %d /R=16 /G=18 /B=24', layNo))
+    -- (pas d'appearance sur le layout lui-meme : "Assign ... At Layout"
+    --  ajouterait l'appearance comme case parasite dans la grille)
 
     local elements = {}
-    local offCol = 1 + nColors        -- col 0 = machine, 1..N = couleurs
     for ti, t in ipairs(targets) do
-        local row  = ti - 1
-        local base = macStart + (ti - 1) * perTarget
+        local row = ti - 1
         if t.header then
-            elements[#elements + 1] = { object = t.header, x = 0, y = row }
+            elements[#elements + 1] = { object = t.header, x = 0, y = row, w = 2 }
         else
-            elements[#elements + 1] = { object = "Macro " .. macAllHdr,
-                x = 0, y = row, app = appDark }
+            elements[#elements + 1] = { object = "Macro " .. macAllHdr, x = 0, y = row, w = 2 }
         end
         for ci = 1, nColors do
             elements[#elements + 1] = {
-                object = "Macro " .. (base + ci),
-                x = ci, y = row, app = appStart + ci - 1,
+                object = "Sequence " .. seqNoOf(ti, ci),
+                x = 2 + ci - 1, y = row, play = true,
             }
         end
-        elements[#elements + 1] = { object = "Macro " .. base,
-            x = offCol, y = row, app = appDark }
     end
-    local uy = nTargets
-    elements[#elements + 1] = { object = "Macro " .. macOffAll, x = 0, y = uy, w = 2, app = appDark }
-    elements[#elements + 1] = { object = "Macro " .. macHi,     x = 2, y = uy, w = 2, app = appDark }
-    elements[#elements + 1] = { object = "Macro " .. macFull,   x = 4, y = uy, w = 2, app = appDark }
+    local uy = nTargets + 0.4
+    elements[#elements + 1] = { object = "Macro " .. macOffAll, x = 0, y = uy, w = 2 }
+    elements[#elements + 1] = { object = "Macro " .. macHi,     x = 2, y = uy, w = 2 }
+    elements[#elements + 1] = { object = "Macro " .. macFull,   x = 4, y = uy, w = 2 }
 
     local placed, failed = fillLayout(layNo, elements)
     Cmd("ClearAll")
@@ -441,22 +424,22 @@ local function main(display_handle)
 
     local msg = string.format(
         "Color Picker LIVE pret !\n\n"
-     .. "Lignes : %d (%s + ALL)\n"
-     .. "Couleurs : %d   Fade %ss / arret %ss\n"
-     .. "Sequences %d-%d, Macros %d-%d\n"
+     .. "Lignes : %d (ALL + %s)   Couleurs : %d\n"
+     .. "Sequences %d -> %d (mini-cues de couleur)\n"
+     .. "Fade couleur %ss / arret %ss\n"
      .. "Layout %d : %d/%d cases placees%s\n\n"
-     .. "EN LIVE : tape une case couleur -> la ligne passe a cette couleur\n"
-     .. "en restitution, sans programmer. [Off] a droite relache la ligne.\n"
-     .. "Astuce : il faut de l'intensite (Full) pour voir la couleur.",
-        nTargets, (groupIds and "groupes" or "machines"),
-        nColors, tostring(colorFade), tostring(offFade),
-        seqStart, seqEnd, macStart, macEnd,
+     .. "EN LIVE : tape une tuile couleur -> la ligne passe a cette couleur\n"
+     .. "en restitution. Retape (ou autre couleur) pour changer/relacher.\n"
+     .. "Il faut de l'intensite (Full) pour voir la couleur.",
+        nTargets, (groupIds and "groupes" or "machines"), nColors,
+        baseId, seqEnd,
+        tostring(colorFade), tostring(offFade),
         layNo, placed, placed + failed, note)
 
     MessageBox({ title = "Color Picker LIVE", message = msg,
         commands = { { value = 1, name = "Super !" } } })
-    Printf("[ColorPickerLive] %d lignes x %d couleurs, layout %d : %d/%d cases.",
-        nTargets, nColors, layNo, placed, placed + failed)
+    Printf("[ColorPickerLive] %d lignes x %d couleurs = %d sequences, layout %d : %d/%d cases.",
+        nTargets, nColors, nSeq, layNo, placed, placed + failed)
 end
 
 return main
