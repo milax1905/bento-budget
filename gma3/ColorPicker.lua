@@ -89,10 +89,12 @@ local function objectExists(addr)
     return exists
 end
 
+-- Un groupe existant n'expose PAS ses fixtures via Children() -> on teste
+-- l'existence de l'objet, comme pour les fixtures.
 local function scanGroups(maxNo)
     local ids = {}
     for no = 1, maxNo do
-        if objectUsed("Group " .. no) then ids[#ids + 1] = no end
+        if objectExists("Group " .. no) then ids[#ids + 1] = no end
     end
     return (#ids > 0) and ids or nil
 end
@@ -363,7 +365,12 @@ local function main(display_handle)
     end
     check("Sequence %d", baseId, seqEnd)
     if detectOk and not occupied then check("Macro %d", baseId, macEnd) end
-    if detectOk and not occupied then check("Appearance %d", baseId, appEnd) end
+    if detectOk and not occupied then
+        -- Les appearances n'ont pas d'enfants -> test d'existence.
+        for no = baseId, appEnd do
+            if objectExists("Appearance " .. no) then occupied = true; break end
+        end
+    end
 
     if occupied or not detectOk then
         local confirm = MessageBox({ title = "Color Picker LIVE",
