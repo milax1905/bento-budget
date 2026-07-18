@@ -7,7 +7,10 @@
 --    [ ALL        ]   [Red][Orange][Yellow][Green] ... [White]
 --    [ Fixture 1  ]   [Red][Orange][Yellow][Green] ... [White]
 --    [ Fixture 2  ]   [Red][Orange][Yellow][Green] ... [White]
---    [Off All]   +   rangees FADE (bouton actif surligne)
+--    [========= Off All (barre rouge) =========]
+--    [FADE couleur] [0s][0.5s][1s][2s][3s][4s]   (bouton actif surligne)
+--    [FADE arret  ] [0][0.5][1][2][3][4]
+--    + banniere titre en haut, ordre garanti (axe Y du layout inverse).
 --
 --  - Chaque tuile couleur est une MINI-SEQUENCE (1 cue) posee sur le
 --    layout : taper = la couleur part EN RESTITUTION (LTP), sans jamais
@@ -186,16 +189,17 @@ local function fillLayout(layoutNo, elements)
     end
 
     local pitchX, pitchY = 32, 32
-    local GAP = 0.14
+    local GAP = 0.16
 
     local function place(elem, e)
         local stepX = pitchX * (1 + GAP)
         local stepY = pitchY * (1 + GAP)
         local w = e.w or 1
+        local h = e.h or 1
         local px = math.max(0, math.floor((e.x or 0) * stepX))
         local py = math.max(0, math.floor((e.y or 0) * stepY))
         local pw = math.max(1, math.floor(w * pitchX + (w - 1) * pitchX * GAP))
-        local ph = math.max(1, math.floor((e.h or 1) * pitchY))
+        local ph = math.max(1, math.floor(h * pitchY + (h - 1) * pitchY * GAP))
         local ok = pcall(function()
             elem.posx = px; elem.posy = py
             elem.positionw = pw; elem.positionh = ph
@@ -355,16 +359,17 @@ local function main(display_handle)
     local appDark   = baseId + nColors
     local appGrey   = baseId + nColors + 1
     local appAccent = baseId + nColors + 2      -- bouton de fade ACTIF
-    local appEnd    = appAccent
-    -- Macros : AUCUNE action programmer — Off All (playback) + etiquette ALL.
-    local macOffAll, macAllHdr = baseId, baseId + 1
+    local appRed    = baseId + nColors + 3      -- barre Off All
+    local appEnd    = appRed
+    -- Macros : AUCUNE action programmer — Off All, etiquette ALL, banniere.
+    local macOffAll, macAllHdr, macTitle = baseId, baseId + 1, baseId + 2
     -- Boutons de fade : 2 rangees (couleur / arret), 1 header + 1 par valeur.
     local nV          = #FADE_VALUES
-    local macFadeCHdr = baseId + 2
-    local macFadeC0   = baseId + 3              -- .. baseId + 2 + nV
-    local macFadeOHdr = baseId + 3 + nV
-    local macFadeO0   = baseId + 4 + nV         -- .. baseId + 3 + 2*nV
-    local macEnd      = baseId + 3 + 2 * nV
+    local macFadeCHdr = baseId + 3
+    local macFadeC0   = baseId + 4              -- .. baseId + 3 + nV
+    local macFadeOHdr = baseId + 4 + nV
+    local macFadeO0   = baseId + 5 + nV         -- .. baseId + 4 + 2*nV
+    local macEnd      = baseId + 4 + 2 * nV
     local function seqNoOf(ti, ci) return baseId + (ti - 1) * nColors + (ci - 1) end
 
     -- Occupation des plages -> confirmation avant d'ecraser.
@@ -409,6 +414,7 @@ local function main(display_handle)
     makeAppearance(appDark, "CP Dark", 36, 40, 48)
     makeAppearance(appGrey, "CP Grey", 66, 72, 84)
     makeAppearance(appAccent, "CP Fade On", 235, 238, 245)
+    makeAppearance(appRed, "CP Off Red", 128, 34, 40)
 
     -- 1b) Presets couleur UNIVERSELS (pool Color = 4), Preset 4.<baseId>...
     --     S'ils existent deja -> REUTILISES tels quels (tes modifs de
@@ -468,9 +474,10 @@ local function main(display_handle)
     --    (playback), ALL est une simple etiquette de ligne.
     -- Le fade d'arret est mis DANS la commande Off (fiable, comme Goto Fade) ;
     -- les boutons "FADE arret" reecrivent cette ligne quand on change de valeur.
-    makeMacro(macOffAll, "Off All", appDark,
+    makeMacro(macOffAll, "Off All", appRed,
         { string.format("Off Sequence %d Thru %d Fade %s", baseId, seqEnd, tostring(offFade)) })
     makeMacro(macAllHdr, "ALL", appDark, {})
+    makeMacro(macTitle, "C O L O R  P I C K E R", appDark, {})
 
     -- Boutons de fade : chaque bouton regle d'un coup toutes les sequences
     -- ET affiche l'etat courant :
@@ -531,8 +538,15 @@ local function main(display_handle)
     --  ajouterait l'appearance comme case parasite dans la grille)
 
     local elements = {}
+    local fullW = 2 + nColors           -- largeur totale de la grille
+
+    -- Banniere titre, pleine largeur.
+    elements[#elements + 1] = { object = "Macro " .. macTitle, x = 0, y = 0, w = fullW }
+
+    -- Lignes machines / groupes, puis ALL.
+    local rowTop = 1.3
     for ti, t in ipairs(targets) do
-        local row = ti - 1
+        local row = rowTop + (ti - 1)
         if t.header then
             elements[#elements + 1] = { object = t.header, x = 0, y = row, w = 2 }
         else
@@ -545,17 +559,23 @@ local function main(display_handle)
             }
         end
     end
-    local uy = nTargets + 0.4
-    elements[#elements + 1] = { object = "Macro " .. macOffAll, x = 0, y = uy, w = 2 }
 
-    -- Rangees FADE (header large + un bouton par valeur).
-    local fy1, fy2 = uy + 1.2, uy + 2.2
+    -- Barre Off All pleine largeur (rouge sombre), puis rangees FADE
+    -- alignees sur les colonnes de couleurs.
+    local yOff = rowTop + nTargets + 0.3
+    local fy1  = yOff + 1.3
+    local fy2  = fy1 + 1
+    elements[#elements + 1] = { object = "Macro " .. macOffAll, x = 0, y = yOff, w = fullW }
     elements[#elements + 1] = { object = "Macro " .. macFadeCHdr, x = 0, y = fy1, w = 2 }
     elements[#elements + 1] = { object = "Macro " .. macFadeOHdr, x = 0, y = fy2, w = 2 }
     for vi = 1, nV do
         elements[#elements + 1] = { object = "Macro " .. (macFadeC0 + vi - 1), x = 2 + vi - 1, y = fy1 }
         elements[#elements + 1] = { object = "Macro " .. (macFadeO0 + vi - 1), x = 2 + vi - 1, y = fy2 }
     end
+
+    -- Le layout MA3 rend l'axe Y vers le HAUT : on inverse les Y pour
+    -- afficher le board dans l'ordre concu (titre en haut, fades en bas).
+    for _, e in ipairs(elements) do e.y = fy2 - e.y end
 
     local placed, failed = fillLayout(layNo, elements)
     Cmd("ClearAll")

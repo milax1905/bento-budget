@@ -6,11 +6,15 @@ fondu, **sans jamais toucher au programmer**. C'est le pattern busking
 standard de grandMA3.
 
 ```
-  MACHINE           COULEURS (tuiles colorées, tappables) →
-[   ALL      ]   [Red][Orange][Yellow][Green][Cyan][Blue]...[White]
-[ Fixture 1  ]   [Red][Orange][Yellow][Green][Cyan][Blue]...[White]
-[ Fixture 2  ]   [Red][Orange][Yellow][Green][Cyan][Blue]...[White]
-[Off All] [Highlight] [Full]
+┌────────────────────────────────────────────────────┐
+│           C O L O R   P I C K E R                  │
+│ [ SPOT ] [Red][Orange][Yellow][Cyan]…[White]       │
+│ [ WASH ] [Red][Orange][Yellow][Cyan]…[White]       │
+│ [ ALL  ] [Red][Orange][Yellow][Cyan]…[White]       │
+│ [═════════ Off All (barre rouge) ═════════]        │
+│ [FADE couleur 1s] [0s][0.5s][1s][2s][3s][4s]       │
+│ [FADE arrêt 2s  ] [0][0.5][1][2][3][4]             │
+└────────────────────────────────────────────────────┘
 ```
 
 - **Case de gauche** = la vraie machine (ou le groupe) : icône, nom,
