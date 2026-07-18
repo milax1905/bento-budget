@@ -234,37 +234,6 @@ end
 -- ------------------------------- main --------------------------------
 
 local function main(display_handle)
-    local cfg = MessageBox({
-        title    = "Color Picker LIVE",
-        message  = "Busking : chaque tuile couleur est une mini-sequence ->\n"
-                .. "couleur en restitution (fondu), sans programmer.",
-        commands = {
-            { value = 1, name = "Generer" },
-            { value = 0, name = "Annuler" },
-        },
-        inputs = {
-            { name = "Groupes (ex: 1 Thru 8 / vide = auto)",  value = ""    },
-            { name = "Machines (si aucun groupe)",             value = ""    },
-            { name = "Nb couleurs (max 12)",                   value = "10"  },
-            { name = "Fade couleur (s)",                       value = "1"   },
-            { name = "Fade arret (s)",                         value = "2"   },
-            { name = "ID de depart (seq/macro/appearance)",    value = "101" },
-            { name = "Layout (No)",                            value = "1"   },
-        },
-    })
-    if not cfg or cfg.result ~= 1 then return end
-
-    local grpStr    = cfg.inputs["Groupes (ex: 1 Thru 8 / vide = auto)"]
-    local fixStr    = cfg.inputs["Machines (si aucun groupe)"]
-    local nColors   = math.floor(toNum(cfg.inputs["Nb couleurs (max 12)"], 10, 1, #COLORS))
-    local colorFade = toNum(cfg.inputs["Fade couleur (s)"], 1, 0, 600)
-    local offFade   = toNum(cfg.inputs["Fade arret (s)"], 2, 0, 600)
-    local baseId    = math.floor(toNum(cfg.inputs["ID de depart (seq/macro/appearance)"], 101, 1, 100000))
-    local layNo     = math.floor(toNum(cfg.inputs["Layout (No)"], 1, 1, 100000))
-
-    local colors = {}
-    for i = 1, nColors do colors[i] = COLORS[i] end
-
     -- Il faut des fixtures.
     Cmd("ClearAll"); Cmd("Fixture Thru")
     local selCount, hasSelApi = 0, false
@@ -277,9 +246,78 @@ local function main(display_handle)
         return
     end
 
+    -- Detection AUTOMATIQUE : groupes d'abord, sinon machines une a une.
+    local autoGroups = scanGroups(100)
+    local autoFix    = (not autoGroups) and scanFixtures(200, MAX_FIXTURE_ROWS + 1) or nil
+
+    local found
+    if autoGroups then
+        found = string.format("%d groupes detectes", #autoGroups)
+    elseif autoFix then
+        found = string.format("aucun groupe -> %d machines detectees",
+            math.min(#autoFix, MAX_FIXTURE_ROWS))
+    else
+        found = "aucun groupe, aucune machine ?"
+    end
+
+    -- Reglages par defaut (modifiables via "Options").
+    local grpStr, fixStr = "", ""
+    local nColors   = 10
+    local colorFade = 1
+    local offFade   = 2
+    local baseId    = 101
+    local layNo     = 1
+
+    local first = MessageBox({
+        title    = "Color Picker LIVE",
+        message  = string.format(
+            "Detecte : %s.\n\n"
+         .. "Genere : 1 ligne par cible + ALL, %d couleurs,\n"
+         .. "couleur en restitution (fondu %ds), sans programmer.\n"
+         .. "Objets ranges a partir du %d, Layout %d.",
+            found, nColors, colorFade, baseId, layNo),
+        commands = {
+            { value = 1, name = "Generer" },
+            { value = 2, name = "Options" },
+            { value = 0, name = "Annuler" },
+        },
+    })
+    if not first or first.result == 0 or first.result == nil then return end
+
+    if first.result == 2 then
+        local cfg = MessageBox({
+            title    = "Color Picker LIVE - Options",
+            message  = "Laisse vide pour l'auto-detection.",
+            commands = {
+                { value = 1, name = "Generer" },
+                { value = 0, name = "Annuler" },
+            },
+            inputs = {
+                { name = "Groupes (ex: 1 Thru 8 / vide = auto)",  value = ""    },
+                { name = "Machines (si aucun groupe)",             value = ""    },
+                { name = "Nb couleurs (max 12)",                   value = "10"  },
+                { name = "Fade couleur (s)",                       value = "1"   },
+                { name = "Fade arret (s)",                         value = "2"   },
+                { name = "ID de depart (seq/macro/appearance)",    value = "101" },
+                { name = "Layout (No)",                            value = "1"   },
+            },
+        })
+        if not cfg or cfg.result ~= 1 then return end
+        grpStr    = cfg.inputs["Groupes (ex: 1 Thru 8 / vide = auto)"]
+        fixStr    = cfg.inputs["Machines (si aucun groupe)"]
+        nColors   = math.floor(toNum(cfg.inputs["Nb couleurs (max 12)"], 10, 1, #COLORS))
+        colorFade = toNum(cfg.inputs["Fade couleur (s)"], 1, 0, 600)
+        offFade   = toNum(cfg.inputs["Fade arret (s)"], 2, 0, 600)
+        baseId    = math.floor(toNum(cfg.inputs["ID de depart (seq/macro/appearance)"], 101, 1, 100000))
+        layNo     = math.floor(toNum(cfg.inputs["Layout (No)"], 1, 1, 100000))
+    end
+
+    local colors = {}
+    for i = 1, nColors do colors[i] = COLORS[i] end
+
     -- Cibles : ALL en premiere ligne, puis groupes (sinon machines).
     local targets = { { label = "ALL", sel = "Fixture Thru", header = nil } }
-    local groupIds = parseRange(grpStr) or scanGroups(100)
+    local groupIds = parseRange(grpStr) or autoGroups
     local truncated = false
     if groupIds then
         for _, gid in ipairs(groupIds) do
@@ -289,7 +327,7 @@ local function main(display_handle)
             }
         end
     else
-        local fixIds = parseRange(fixStr) or scanFixtures(200, MAX_FIXTURE_ROWS + 1)
+        local fixIds = parseRange(fixStr) or autoFix or scanFixtures(200, MAX_FIXTURE_ROWS + 1)
         if fixIds and #fixIds > MAX_FIXTURE_ROWS then
             truncated = true
             while #fixIds > MAX_FIXTURE_ROWS do table.remove(fixIds) end
