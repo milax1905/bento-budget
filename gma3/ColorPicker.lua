@@ -387,7 +387,9 @@ local function main(display_handle)
             message = string.format(
                 "Des objets existent peut-etre ici :\n"
              .. "Sequence %d -> %d\nMacro %d -> %d\nAppearance %d -> %d\n"
-             .. "(et le Layout %d sera (re)cree).\n\nTout ecraser et regenerer ?",
+             .. "(et le Layout %d sera (re)cree).\n\n"
+             .. "Les PRESETS couleur (pool 4) sont conserves, jamais effaces.\n"
+             .. "Tout ecraser et regenerer ?",
                 baseId, seqEnd, baseId, macEnd, baseId, appEnd, layNo),
             commands = { { value = 1, name = "Ecraser" }, { value = 0, name = "Annuler" } } })
         if not confirm or confirm.result ~= 1 then return end
@@ -404,7 +406,32 @@ local function main(display_handle)
     makeAppearance(appDark, "CP Dark", 36, 40, 48)
     makeAppearance(appGrey, "CP Grey", 66, 72, 84)
 
+    -- 1b) Presets couleur UNIVERSELS (pool Color = 4), Preset 4.<baseId>...
+    --     S'ils existent deja -> REUTILISES tels quels (tes modifs de
+    --     couleur survivent aux regenerations). Sinon -> crees.
+    local PT = 4
+    local presetsCreated, presetsReused = 0, 0
+    for ci, c in ipairs(colors) do
+        local pNo = baseId + ci - 1
+        if objectExists(string.format("Preset %d.%d", PT, pNo)) then
+            presetsReused = presetsReused + 1
+        else
+            Cmd("ClearAll")
+            Cmd("Fixture Thru")
+            Cmd(string.format('Attribute "ColorRGB_R" At %d', math.floor(c.r / 255 * 100 + 0.5)))
+            Cmd(string.format('Attribute "ColorRGB_G" At %d', math.floor(c.g / 255 * 100 + 0.5)))
+            Cmd(string.format('Attribute "ColorRGB_B" At %d', math.floor(c.b / 255 * 100 + 0.5)))
+            Cmd(string.format('Store Preset %d.%d /Merge /NoConfirm /Universal', PT, pNo))
+            Cmd(string.format('Label Preset %d.%d "%s"', PT, pNo, c.name))
+            presetsCreated = presetsCreated + 1
+        end
+    end
+    Cmd("ClearAll")
+
     -- 2) Mini-sequences : 1 par (cible x couleur), 1 cue, appearance couleur.
+    --    La cue applique d'abord les attributs directs (filet de securite),
+    --    puis le PRESET par-dessus : si la reference passe, la cue est LIEE
+    --    au preset -> modifier le preset met a jour tout le board.
     for ti, t in ipairs(targets) do
         for ci, c in ipairs(colors) do
             local sq = seqNoOf(ti, ci)
@@ -413,6 +440,7 @@ local function main(display_handle)
             Cmd(string.format('Attribute "ColorRGB_R" At %d', math.floor(c.r / 255 * 100 + 0.5)))
             Cmd(string.format('Attribute "ColorRGB_G" At %d', math.floor(c.g / 255 * 100 + 0.5)))
             Cmd(string.format('Attribute "ColorRGB_B" At %d', math.floor(c.b / 255 * 100 + 0.5)))
+            Cmd(string.format('At Preset %d.%d', PT, baseId + ci - 1))
             Cmd(string.format('Store Sequence %d Cue 1 /NoConfirm', sq))
             Cmd(string.format('Label Sequence %d "%s %s"', sq, t.label, c.name))
             Cmd(string.format('Assign Appearance %d At Sequence %d', baseId + ci - 1, sq))
@@ -516,15 +544,18 @@ local function main(display_handle)
     local msg = string.format(
         "Color Picker LIVE pret !\n\n"
      .. "Lignes : %d (ALL + %s)   Couleurs : %d\n"
-     .. "Sequences %d -> %d (mini-cues de couleur)\n"
+     .. "Presets couleur : 4.%d -> 4.%d (%d crees, %d reutilises)\n"
+     .. "Sequences %d -> %d (cues liees aux presets)\n"
      .. "Fade couleur %ss / arret %ss\n"
      .. "Layout %d : %d/%d cases placees%s\n\n"
      .. "EN LIVE : tape une tuile couleur -> la ligne passe a cette couleur\n"
      .. "en restitution. Retape (ou autre couleur) pour changer/relacher.\n"
-     .. "Rangees FADE en bas : 'FADE couleur' = fondu entre couleurs,\n"
-     .. "'FADE arret' = fondu au relache (0 / 0.5 / 1 / 2 / 3 / 4 s).\n"
+     .. "Rangees FADE en bas : couleur (entre couleurs) / arret (relache).\n"
+     .. "COULEURS PAS A TON GOUT ? Modifie le Preset 4.x (pool Color) ->\n"
+     .. "tout le board suit. Regenerer ne touche jamais tes presets.\n"
      .. "Il faut de l'intensite (Full) pour voir la couleur.",
         nTargets, (groupIds and "groupes" or "machines"), nColors,
+        baseId, baseId + nColors - 1, presetsCreated, presetsReused,
         baseId, seqEnd,
         tostring(colorFade), tostring(offFade),
         layNo, placed, placed + failed, note)

@@ -19,6 +19,10 @@ standard de grandMA3.
   (`Assign Appearance N At Sequence M`) → tuiles pleines couleur.
 - **Off When Overridden** : changer de couleur relâche l'ancienne → une
   seule tuile active par ligne (comportement radio).
+- **Presets couleur universels** (pool Color 4, IDs `4.101`+) : les cues du
+  board les **référencent** → modifie un preset (ton rouge, ton ambre…) et
+  **tout le board suit**. S'ils existent déjà, ils sont **réutilisés tels
+  quels** — régénérer n'efface jamais tes presets.
 - **Outils** : `Off All` (tout relâcher), `Highlight`, `Full`.
 - **Rangées FADE** en bas du layout :
   - `FADE couleur` → `0s · 0.5s · 1s · 2s · 3s · 4s` : fondu **entre les
