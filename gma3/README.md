@@ -23,13 +23,15 @@ standard de grandMA3.
   board les **référencent** → modifie un preset (ton rouge, ton ambre…) et
   **tout le board suit**. S'ils existent déjà, ils sont **réutilisés tels
   quels** — régénérer n'efface jamais tes presets.
-- **Outils** : `Off All` (relâche les couleurs, playback) et tuile **`FULL`**
-  (dimmer 100 % **en restitution**, toggle). **Aucune action de ce board ne
-  touche le programmer** — c'est un layout de restitution, pas de construction.
+- **Outils** : `Off All` (relâche les couleurs, playback). L'intensité reste
+  à ton fader de dimmer. **Aucune action de ce board ne touche le
+  programmer** — c'est un layout de restitution, pas de construction.
 - **Rangées FADE** en bas du layout :
   - `FADE couleur` → `0s · 0.5s · 1s · 2s · 3s · 4s` : fondu **entre les
     couleurs** (et au lancement). Taper une valeur la règle pour tout le board.
   - `FADE arrêt` → mêmes valeurs : fondu au **relâché** (off).
+  - **Le bouton actif est surligné en blanc** et le titre affiche la valeur
+    courante (ex. `FADE couleur 2s`) — tu vois toujours sur quel fade tu es.
 
 ## Le workflow live
 

@@ -7,7 +7,7 @@
 --    [ ALL        ]   [Red][Orange][Yellow][Green] ... [White]
 --    [ Fixture 1  ]   [Red][Orange][Yellow][Green] ... [White]
 --    [ Fixture 2  ]   [Red][Orange][Yellow][Green] ... [White]
---    [Off All] [FULL]   +   rangees FADE (couleur / arret)
+--    [Off All]   +   rangees FADE (bouton actif surligne)
 --
 --  - Chaque tuile couleur est une MINI-SEQUENCE (1 cue) posee sur le
 --    layout : taper = la couleur part EN RESTITUTION (LTP), sans jamais
@@ -22,8 +22,8 @@
 --  Objets crees (a partir de l'ID de depart, defaut 101) :
 --    Appearances : 1 par couleur + 1 sombre.
 --    Sequences   : 1 par (ligne x couleur), label "<machine> <couleur>".
---    Macros      : Off All + etiquette ALL (aucune action programmer) ;
---                  l'intensite passe par la sequence FULL (restitution).
+--    Macros      : Off All + etiquette ALL + boutons FADE avec feedback
+--                  (aucune action programmer — l'intensite reste a ton fader).
 --
 --  NB : apres toute modification de ce fichier -> "ReloadAllPlugins" (RP).
 -- =====================================================================
@@ -351,11 +351,11 @@ local function main(display_handle)
 
     -- Numerotation (pools distincts, meme ID de depart -> lisible).
     local nSeq     = nTargets * nColors
-    local seqEnd   = baseId + nSeq - 1          -- derniere sequence couleur
-    local seqFull  = baseId + nSeq              -- sequence FULL (dimmer, restitution)
-    local appDark  = baseId + nColors
-    local appGrey  = baseId + nColors + 1
-    local appEnd   = appGrey
+    local seqEnd    = baseId + nSeq - 1         -- derniere sequence couleur
+    local appDark   = baseId + nColors
+    local appGrey   = baseId + nColors + 1
+    local appAccent = baseId + nColors + 2      -- bouton de fade ACTIF
+    local appEnd    = appAccent
     -- Macros : AUCUNE action programmer — Off All (playback) + etiquette ALL.
     local macOffAll, macAllHdr = baseId, baseId + 1
     -- Boutons de fade : 2 rangees (couleur / arret), 1 header + 1 par valeur.
@@ -376,7 +376,7 @@ local function main(display_handle)
             if used then occupied = true; return end
         end
     end
-    check("Sequence %d", baseId, seqFull)
+    check("Sequence %d", baseId, seqEnd)
     if detectOk and not occupied then check("Macro %d", baseId, macEnd) end
     if detectOk and not occupied then
         -- Les appearances n'ont pas d'enfants -> test d'existence.
@@ -396,7 +396,7 @@ local function main(display_handle)
                 baseId, seqEnd, baseId, macEnd, baseId, appEnd, layNo),
             commands = { { value = 1, name = "Ecraser" }, { value = 0, name = "Annuler" } } })
         if not confirm or confirm.result ~= 1 then return end
-        Cmd(string.format('Delete Sequence %d Thru %d /NoConfirm', baseId, seqFull))
+        Cmd(string.format('Delete Sequence %d Thru %d /NoConfirm', baseId, seqEnd))
         Cmd(string.format('Delete Macro %d Thru %d /NoConfirm', baseId, macEnd))
         Cmd(string.format('Delete Appearance %d Thru %d /NoConfirm', baseId, appEnd))
         Cmd(string.format('Delete Layout %d /NoConfirm', layNo))
@@ -408,6 +408,7 @@ local function main(display_handle)
     end
     makeAppearance(appDark, "CP Dark", 36, 40, 48)
     makeAppearance(appGrey, "CP Grey", 66, 72, 84)
+    makeAppearance(appAccent, "CP Fade On", 235, 238, 245)
 
     -- 1b) Presets couleur UNIVERSELS (pool Color = 4), Preset 4.<baseId>...
     --     S'ils existent deja -> REUTILISES tels quels (tes modifs de
@@ -461,16 +462,6 @@ local function main(display_handle)
         end
     end
 
-    -- 2b) Sequence FULL : dimmer 100% sur tout, EN RESTITUTION (toggle).
-    --     Remplace l'ancien bouton "Full" qui ecrivait dans le programmer.
-    Cmd("ClearAll")
-    Cmd("Fixture Thru")
-    Cmd('Attribute "Dimmer" At 100')
-    Cmd(string.format('Store Sequence %d Cue 1 /NoConfirm', seqFull))
-    Cmd(string.format('Label Sequence %d "FULL"', seqFull))
-    Cmd(string.format('Assign Appearance %d At Sequence %d', appGrey, seqFull))
-    Cmd(string.format('Set Sequence %d Cue 1 Property "CueInFade" "%s"', seqFull, tostring(colorFade)))
-    Cmd(string.format('Set Sequence %d Property "OffFade" "%s"', seqFull, tostring(offFade)))
     Cmd("ClearAll")
 
     -- 3) Macros — aucune action programmer : Off All relache les COULEURS
@@ -479,16 +470,17 @@ local function main(display_handle)
         { string.format("Off Sequence %d Thru %d", baseId, seqEnd) })
     makeMacro(macAllHdr, "ALL", appDark, {})
 
-    -- Boutons de fade : chaque bouton regle d'un coup toutes les sequences.
-    --   FADE couleur -> CueInFade de chaque cue (fondu entre les couleurs
-    --                   et au lancement).
-    --   FADE arret   -> OffFade de chaque sequence (fondu au relache).
+    -- Boutons de fade : chaque bouton regle d'un coup toutes les sequences
+    -- ET affiche l'etat courant :
+    --   - le bouton actif passe en surbrillance (appAccent), les autres en
+    --     gris (le tile de layout suit l'appearance de la macro) ;
+    --   - le header affiche la valeur courante ("FADE couleur 2s").
     local function fadeLabel(v)
         if v == math.floor(v) then return string.format("%ds", v) end
         return tostring(v) .. "s"
     end
-    makeMacro(macFadeCHdr, "FADE couleur", appDark, {})
-    makeMacro(macFadeOHdr, "FADE arret",   appDark, {})
+    makeMacro(macFadeCHdr, "FADE couleur " .. fadeLabel(colorFade), appDark, {})
+    makeMacro(macFadeOHdr, "FADE arret "   .. fadeLabel(offFade),   appDark, {})
     for vi, v in ipairs(FADE_VALUES) do
         local vs = tostring(v)
         local linesC, linesO = {}, {}
@@ -501,8 +493,22 @@ local function main(display_handle)
                     'Set Sequence %d Property "OffFade" "%s"', sq, vs)
             end
         end
-        makeMacro(macFadeC0 + vi - 1, fadeLabel(v), appGrey, linesC)
-        makeMacro(macFadeO0 + vi - 1, fadeLabel(v), appGrey, linesO)
+        -- Feedback : header + surbrillance du bouton actif.
+        linesC[#linesC + 1] = string.format('Label Macro %d "FADE couleur %s"',
+            macFadeCHdr, fadeLabel(v))
+        linesO[#linesO + 1] = string.format('Label Macro %d "FADE arret %s"',
+            macFadeOHdr, fadeLabel(v))
+        for vj = 1, nV do
+            linesC[#linesC + 1] = string.format('Assign Appearance %d At Macro %d',
+                (vj == vi) and appAccent or appGrey, macFadeC0 + vj - 1)
+            linesO[#linesO + 1] = string.format('Assign Appearance %d At Macro %d',
+                (vj == vi) and appAccent or appGrey, macFadeO0 + vj - 1)
+        end
+        -- Etat initial : le bouton correspondant au fade par defaut est actif.
+        makeMacro(macFadeC0 + vi - 1, fadeLabel(v),
+            (v == colorFade) and appAccent or appGrey, linesC)
+        makeMacro(macFadeO0 + vi - 1, fadeLabel(v),
+            (v == offFade) and appAccent or appGrey, linesO)
     end
 
     -- 4) Layout : [machine (x2)] [couleurs...] par ligne + outils en bas.
@@ -529,7 +535,6 @@ local function main(display_handle)
     end
     local uy = nTargets + 0.4
     elements[#elements + 1] = { object = "Macro " .. macOffAll, x = 0, y = uy, w = 2 }
-    elements[#elements + 1] = { object = "Sequence " .. seqFull, x = 2, y = uy, w = 2, play = true }
 
     -- Rangees FADE (header large + un bouton par valeur).
     local fy1, fy2 = uy + 1.2, uy + 2.2
@@ -562,10 +567,10 @@ local function main(display_handle)
      .. "Layout %d : %d/%d cases placees%s\n\n"
      .. "EN LIVE : tape une tuile couleur -> la ligne passe a cette couleur\n"
      .. "en restitution. Retape (ou autre couleur) pour changer/relacher.\n"
-     .. "Rangees FADE en bas : couleur (entre couleurs) / arret (relache).\n"
+     .. "Rangees FADE en bas : le bouton ACTIF est surligne en blanc et\n"
+     .. "le titre affiche la valeur courante (ex: FADE couleur 2s).\n"
      .. "COULEURS PAS A TON GOUT ? Modifie le Preset 4.x (pool Color) ->\n"
      .. "tout le board suit. Regenerer ne touche jamais tes presets.\n"
-     .. "Tuile FULL = lumiere (dimmer 100%%) en restitution, toggle.\n"
      .. "AUCUNE action de ce board ne touche le programmer.",
         nTargets, (groupIds and "groupes" or "machines"), nColors,
         baseId, baseId + nColors - 1, presetsCreated, presetsReused,
