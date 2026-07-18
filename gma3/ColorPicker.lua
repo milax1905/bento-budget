@@ -7,7 +7,7 @@
 --    [ ALL        ]   [Red][Orange][Yellow][Green] ... [White]
 --    [ Fixture 1  ]   [Red][Orange][Yellow][Green] ... [White]
 --    [ Fixture 2  ]   [Red][Orange][Yellow][Green] ... [White]
---    [Off All] [Highlight] [Full]
+--    [Off All] [FULL]   +   rangees FADE (couleur / arret)
 --
 --  - Chaque tuile couleur est une MINI-SEQUENCE (1 cue) posee sur le
 --    layout : taper = la couleur part EN RESTITUTION (LTP), sans jamais
@@ -22,7 +22,8 @@
 --  Objets crees (a partir de l'ID de depart, defaut 101) :
 --    Appearances : 1 par couleur + 1 sombre.
 --    Sequences   : 1 par (ligne x couleur), label "<machine> <couleur>".
---    Macros      : Off All / Highlight / Full / ALL (4 seulement).
+--    Macros      : Off All + etiquette ALL (aucune action programmer) ;
+--                  l'intensite passe par la sequence FULL (restitution).
 --
 --  NB : apres toute modification de ce fichier -> "ReloadAllPlugins" (RP).
 -- =====================================================================
@@ -350,18 +351,20 @@ local function main(display_handle)
 
     -- Numerotation (pools distincts, meme ID de depart -> lisible).
     local nSeq     = nTargets * nColors
-    local seqEnd   = baseId + nSeq - 1
+    local seqEnd   = baseId + nSeq - 1          -- derniere sequence couleur
+    local seqFull  = baseId + nSeq              -- sequence FULL (dimmer, restitution)
     local appDark  = baseId + nColors
     local appGrey  = baseId + nColors + 1
     local appEnd   = appGrey
-    local macOffAll, macHi, macFull, macAllHdr = baseId, baseId + 1, baseId + 2, baseId + 3
+    -- Macros : AUCUNE action programmer — Off All (playback) + etiquette ALL.
+    local macOffAll, macAllHdr = baseId, baseId + 1
     -- Boutons de fade : 2 rangees (couleur / arret), 1 header + 1 par valeur.
     local nV          = #FADE_VALUES
-    local macFadeCHdr = baseId + 4
-    local macFadeC0   = baseId + 5              -- .. baseId + 4 + nV
-    local macFadeOHdr = baseId + 5 + nV
-    local macFadeO0   = baseId + 6 + nV         -- .. baseId + 5 + 2*nV
-    local macEnd      = baseId + 5 + 2 * nV
+    local macFadeCHdr = baseId + 2
+    local macFadeC0   = baseId + 3              -- .. baseId + 2 + nV
+    local macFadeOHdr = baseId + 3 + nV
+    local macFadeO0   = baseId + 4 + nV         -- .. baseId + 3 + 2*nV
+    local macEnd      = baseId + 3 + 2 * nV
     local function seqNoOf(ti, ci) return baseId + (ti - 1) * nColors + (ci - 1) end
 
     -- Occupation des plages -> confirmation avant d'ecraser.
@@ -373,7 +376,7 @@ local function main(display_handle)
             if used then occupied = true; return end
         end
     end
-    check("Sequence %d", baseId, seqEnd)
+    check("Sequence %d", baseId, seqFull)
     if detectOk and not occupied then check("Macro %d", baseId, macEnd) end
     if detectOk and not occupied then
         -- Les appearances n'ont pas d'enfants -> test d'existence.
@@ -393,7 +396,7 @@ local function main(display_handle)
                 baseId, seqEnd, baseId, macEnd, baseId, appEnd, layNo),
             commands = { { value = 1, name = "Ecraser" }, { value = 0, name = "Annuler" } } })
         if not confirm or confirm.result ~= 1 then return end
-        Cmd(string.format('Delete Sequence %d Thru %d /NoConfirm', baseId, seqEnd))
+        Cmd(string.format('Delete Sequence %d Thru %d /NoConfirm', baseId, seqFull))
         Cmd(string.format('Delete Macro %d Thru %d /NoConfirm', baseId, macEnd))
         Cmd(string.format('Delete Appearance %d Thru %d /NoConfirm', baseId, appEnd))
         Cmd(string.format('Delete Layout %d /NoConfirm', layNo))
@@ -457,14 +460,24 @@ local function main(display_handle)
             end)
         end
     end
+
+    -- 2b) Sequence FULL : dimmer 100% sur tout, EN RESTITUTION (toggle).
+    --     Remplace l'ancien bouton "Full" qui ecrivait dans le programmer.
+    Cmd("ClearAll")
+    Cmd("Fixture Thru")
+    Cmd('Attribute "Dimmer" At 100')
+    Cmd(string.format('Store Sequence %d Cue 1 /NoConfirm', seqFull))
+    Cmd(string.format('Label Sequence %d "FULL"', seqFull))
+    Cmd(string.format('Assign Appearance %d At Sequence %d', appGrey, seqFull))
+    Cmd(string.format('Set Sequence %d Cue 1 Property "CueInFade" "%s"', seqFull, tostring(colorFade)))
+    Cmd(string.format('Set Sequence %d Property "OffFade" "%s"', seqFull, tostring(offFade)))
     Cmd("ClearAll")
 
-    -- 3) Macros utilitaires (4 seulement).
+    -- 3) Macros — aucune action programmer : Off All relache les COULEURS
+    --    (playback), ALL est une simple etiquette de ligne.
     makeMacro(macOffAll, "Off All", appDark,
         { string.format("Off Sequence %d Thru %d", baseId, seqEnd) })
-    makeMacro(macHi,   "Highlight", appDark, { "Highlight" })
-    makeMacro(macFull, "Full",      appDark, { "Full" })
-    makeMacro(macAllHdr, "ALL",     appDark, { "Fixture Thru" })
+    makeMacro(macAllHdr, "ALL", appDark, {})
 
     -- Boutons de fade : chaque bouton regle d'un coup toutes les sequences.
     --   FADE couleur -> CueInFade de chaque cue (fondu entre les couleurs
@@ -516,8 +529,7 @@ local function main(display_handle)
     end
     local uy = nTargets + 0.4
     elements[#elements + 1] = { object = "Macro " .. macOffAll, x = 0, y = uy, w = 2 }
-    elements[#elements + 1] = { object = "Macro " .. macHi,     x = 2, y = uy, w = 2 }
-    elements[#elements + 1] = { object = "Macro " .. macFull,   x = 4, y = uy, w = 2 }
+    elements[#elements + 1] = { object = "Sequence " .. seqFull, x = 2, y = uy, w = 2, play = true }
 
     -- Rangees FADE (header large + un bouton par valeur).
     local fy1, fy2 = uy + 1.2, uy + 2.2
@@ -553,7 +565,8 @@ local function main(display_handle)
      .. "Rangees FADE en bas : couleur (entre couleurs) / arret (relache).\n"
      .. "COULEURS PAS A TON GOUT ? Modifie le Preset 4.x (pool Color) ->\n"
      .. "tout le board suit. Regenerer ne touche jamais tes presets.\n"
-     .. "Il faut de l'intensite (Full) pour voir la couleur.",
+     .. "Tuile FULL = lumiere (dimmer 100%%) en restitution, toggle.\n"
+     .. "AUCUNE action de ce board ne touche le programmer.",
         nTargets, (groupIds and "groupes" or "machines"), nColors,
         baseId, baseId + nColors - 1, presetsCreated, presetsReused,
         baseId, seqEnd,
