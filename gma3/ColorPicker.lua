@@ -44,6 +44,9 @@ local COLORS = {
 
 local MAX_FIXTURE_ROWS = 12   -- limite de lignes en mode "une par machine"
 
+-- Valeurs proposees par les boutons de fade (secondes).
+local FADE_VALUES = { 0, 0.5, 1, 2, 3, 4 }
+
 -- ------------------------------ utils --------------------------------
 
 local function toNum(value, default, min, max)
@@ -349,9 +352,16 @@ local function main(display_handle)
     local nSeq     = nTargets * nColors
     local seqEnd   = baseId + nSeq - 1
     local appDark  = baseId + nColors
-    local appEnd   = appDark
+    local appGrey  = baseId + nColors + 1
+    local appEnd   = appGrey
     local macOffAll, macHi, macFull, macAllHdr = baseId, baseId + 1, baseId + 2, baseId + 3
-    local macEnd   = macAllHdr
+    -- Boutons de fade : 2 rangees (couleur / arret), 1 header + 1 par valeur.
+    local nV          = #FADE_VALUES
+    local macFadeCHdr = baseId + 4
+    local macFadeC0   = baseId + 5              -- .. baseId + 4 + nV
+    local macFadeOHdr = baseId + 5 + nV
+    local macFadeO0   = baseId + 6 + nV         -- .. baseId + 5 + 2*nV
+    local macEnd      = baseId + 5 + 2 * nV
     local function seqNoOf(ti, ci) return baseId + (ti - 1) * nColors + (ci - 1) end
 
     -- Occupation des plages -> confirmation avant d'ecraser.
@@ -392,6 +402,7 @@ local function main(display_handle)
         makeAppearance(baseId + i - 1, "CP " .. c.name, c.r, c.g, c.b)
     end
     makeAppearance(appDark, "CP Dark", 36, 40, 48)
+    makeAppearance(appGrey, "CP Grey", 66, 72, 84)
 
     -- 2) Mini-sequences : 1 par (cible x couleur), 1 cue, appearance couleur.
     for ti, t in ipairs(targets) do
@@ -427,6 +438,32 @@ local function main(display_handle)
     makeMacro(macFull, "Full",      appDark, { "Full" })
     makeMacro(macAllHdr, "ALL",     appDark, { "Fixture Thru" })
 
+    -- Boutons de fade : chaque bouton regle d'un coup toutes les sequences.
+    --   FADE couleur -> CueInFade de chaque cue (fondu entre les couleurs
+    --                   et au lancement).
+    --   FADE arret   -> OffFade de chaque sequence (fondu au relache).
+    local function fadeLabel(v)
+        if v == math.floor(v) then return string.format("%ds", v) end
+        return tostring(v) .. "s"
+    end
+    makeMacro(macFadeCHdr, "FADE couleur", appDark, {})
+    makeMacro(macFadeOHdr, "FADE arret",   appDark, {})
+    for vi, v in ipairs(FADE_VALUES) do
+        local vs = tostring(v)
+        local linesC, linesO = {}, {}
+        for ti2 = 1, nTargets do
+            for ci2 = 1, nColors do
+                local sq = seqNoOf(ti2, ci2)
+                linesC[#linesC + 1] = string.format(
+                    'Set Sequence %d Cue 1 Property "CueInFade" "%s"', sq, vs)
+                linesO[#linesO + 1] = string.format(
+                    'Set Sequence %d Property "OffFade" "%s"', sq, vs)
+            end
+        end
+        makeMacro(macFadeC0 + vi - 1, fadeLabel(v), appGrey, linesC)
+        makeMacro(macFadeO0 + vi - 1, fadeLabel(v), appGrey, linesO)
+    end
+
     -- 4) Layout : [machine (x2)] [couleurs...] par ligne + outils en bas.
     Cmd(string.format('Delete Layout %d /NoConfirm', layNo))
     Cmd(string.format('Store Layout %d /NoConfirm', layNo))
@@ -454,6 +491,15 @@ local function main(display_handle)
     elements[#elements + 1] = { object = "Macro " .. macHi,     x = 2, y = uy, w = 2 }
     elements[#elements + 1] = { object = "Macro " .. macFull,   x = 4, y = uy, w = 2 }
 
+    -- Rangees FADE (header large + un bouton par valeur).
+    local fy1, fy2 = uy + 1.2, uy + 2.2
+    elements[#elements + 1] = { object = "Macro " .. macFadeCHdr, x = 0, y = fy1, w = 2 }
+    elements[#elements + 1] = { object = "Macro " .. macFadeOHdr, x = 0, y = fy2, w = 2 }
+    for vi = 1, nV do
+        elements[#elements + 1] = { object = "Macro " .. (macFadeC0 + vi - 1), x = 2 + vi - 1, y = fy1 }
+        elements[#elements + 1] = { object = "Macro " .. (macFadeO0 + vi - 1), x = 2 + vi - 1, y = fy2 }
+    end
+
     local placed, failed = fillLayout(layNo, elements)
     Cmd("ClearAll")
 
@@ -475,6 +521,8 @@ local function main(display_handle)
      .. "Layout %d : %d/%d cases placees%s\n\n"
      .. "EN LIVE : tape une tuile couleur -> la ligne passe a cette couleur\n"
      .. "en restitution. Retape (ou autre couleur) pour changer/relacher.\n"
+     .. "Rangees FADE en bas : 'FADE couleur' = fondu entre couleurs,\n"
+     .. "'FADE arret' = fondu au relache (0 / 0.5 / 1 / 2 / 3 / 4 s).\n"
      .. "Il faut de l'intensite (Full) pour voir la couleur.",
         nTargets, (groupIds and "groupes" or "machines"), nColors,
         baseId, seqEnd,

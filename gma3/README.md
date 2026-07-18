@@ -20,6 +20,10 @@ standard de grandMA3.
 - **Off When Overridden** : changer de couleur relâche l'ancienne → une
   seule tuile active par ligne (comportement radio).
 - **Outils** : `Off All` (tout relâcher), `Highlight`, `Full`.
+- **Rangées FADE** en bas du layout :
+  - `FADE couleur` → `0s · 0.5s · 1s · 2s · 3s · 4s` : fondu **entre les
+    couleurs** (et au lancement). Taper une valeur la règle pour tout le board.
+  - `FADE arrêt` → mêmes valeurs : fondu au **relâché** (off).
 
 ## Le workflow live
 
