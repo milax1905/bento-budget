@@ -29,7 +29,9 @@ standard de grandMA3.
 - **Rangées FADE** en bas du layout :
   - `FADE couleur` → `0s · 0.5s · 1s · 2s · 3s · 4s` : fondu **entre les
     couleurs** (et au lancement). Taper une valeur la règle pour tout le board.
-  - `FADE arrêt` → mêmes valeurs : fondu au **relâché** (off).
+  - `FADE arrêt` → `0 · 0.5 · 1 · 2 · 3 · 4` : fondu au **relâché** (off).
+    Le fade est écrit directement dans la commande du bouton `Off All`
+    (`Off … Fade X`) — fiable quel que soit le build.
   - **Le bouton actif est surligné en blanc** et le titre affiche la valeur
     courante (ex. `FADE couleur 2s`) — tu vois toujours sur quel fade tu es.
 

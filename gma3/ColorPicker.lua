@@ -466,8 +466,10 @@ local function main(display_handle)
 
     -- 3) Macros — aucune action programmer : Off All relache les COULEURS
     --    (playback), ALL est une simple etiquette de ligne.
+    -- Le fade d'arret est mis DANS la commande Off (fiable, comme Goto Fade) ;
+    -- les boutons "FADE arret" reecrivent cette ligne quand on change de valeur.
     makeMacro(macOffAll, "Off All", appDark,
-        { string.format("Off Sequence %d Thru %d", baseId, seqEnd) })
+        { string.format("Off Sequence %d Thru %d Fade %s", baseId, seqEnd, tostring(offFade)) })
     makeMacro(macAllHdr, "ALL", appDark, {})
 
     -- Boutons de fade : chaque bouton regle d'un coup toutes les sequences
@@ -475,9 +477,15 @@ local function main(display_handle)
     --   - le bouton actif passe en surbrillance (appAccent), les autres en
     --     gris (le tile de layout suit l'appearance de la macro) ;
     --   - le header affiche la valeur courante ("FADE couleur 2s").
+    -- Libelles UNIQUES entre les deux rangees (sinon MA3 suffixe "#2") :
+    -- rangee couleur = "1s", rangee arret = "1" (le header porte le sens).
     local function fadeLabel(v)
         if v == math.floor(v) then return string.format("%ds", v) end
         return tostring(v) .. "s"
+    end
+    local function fadeLabelO(v)
+        if v == math.floor(v) then return string.format("%d", v) end
+        return tostring(v)
     end
     makeMacro(macFadeCHdr, "FADE couleur " .. fadeLabel(colorFade), appDark, {})
     makeMacro(macFadeOHdr, "FADE arret "   .. fadeLabel(offFade),   appDark, {})
@@ -493,6 +501,10 @@ local function main(display_handle)
                     'Set Sequence %d Property "OffFade" "%s"', sq, vs)
             end
         end
+        -- Le vrai fade d'arret : reecrit la ligne du macro Off All.
+        linesO[#linesO + 1] = string.format(
+            'Set Macro %d.1 Property "Command" "Off Sequence %d Thru %d Fade %s"',
+            macOffAll, baseId, seqEnd, vs)
         -- Feedback : header + surbrillance du bouton actif.
         linesC[#linesC + 1] = string.format('Label Macro %d "FADE couleur %s"',
             macFadeCHdr, fadeLabel(v))
@@ -507,7 +519,7 @@ local function main(display_handle)
         -- Etat initial : le bouton correspondant au fade par defaut est actif.
         makeMacro(macFadeC0 + vi - 1, fadeLabel(v),
             (v == colorFade) and appAccent or appGrey, linesC)
-        makeMacro(macFadeO0 + vi - 1, fadeLabel(v),
+        makeMacro(macFadeO0 + vi - 1, fadeLabelO(v),
             (v == offFade) and appAccent or appGrey, linesO)
     end
 
