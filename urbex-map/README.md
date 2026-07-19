@@ -53,6 +53,19 @@ tester tout de suite, sans aucun compte.
 > ⚠️ Tes spots créés en mode local restent dans le navigateur : exporte-les en **JSON**
 > (bouton en bas de la liste) avant d'activer la synchro, puis réimporte-les.
 
+## 📲 Installer l'app sur vos téléphones (iPhone, iPad, Android)
+
+Urbex Atlas est une **PWA** : une fois l'app en ligne (voir ci-dessous), chacun peut
+l'installer comme une vraie app, avec son icône et en plein écran :
+
+- **iPhone / iPad** : ouvre l'URL dans **Safari** → bouton **Partager** →
+  **« Sur l'écran d'accueil »**.
+- **Android** : ouvre l'URL dans **Chrome** → menu **⋮** → **« Installer l'application »**
+  (ou accepte la bannière d'installation).
+
+Bonus terrain : les zones de carte déjà consultées restent disponibles en cache,
+même sans réseau. 📵
+
 ## 🌍 Mettre l'app en ligne (pour y accéder depuis vos téléphones)
 
 Le plus simple : [Vercel](https://vercel.com) ou [Netlify](https://netlify.com) (gratuit).

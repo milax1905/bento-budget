@@ -50,7 +50,7 @@ export default function SpotDetail({ spot, onClose, onEdit }) {
   const wazeUrl = `https://waze.com/ul?ll=${spot.lat},${spot.lng}&navigate=yes`
 
   return (
-    <div className="glass pointer-events-auto flex h-full w-full flex-col overflow-hidden rounded-none sm:rounded-2xl">
+    <div className="glass pointer-events-auto pt-safe pb-safe flex h-full w-full flex-col overflow-hidden rounded-none sm:rounded-2xl">
       {/* En-tête */}
       <div className="border-b border-white/10 px-4 py-3">
         <div className="flex items-start gap-3">

@@ -71,7 +71,7 @@ export default function Sidebar({ onClose, selectedId, onSelect, userPos, onOpen
   }
 
   return (
-    <div className="glass pointer-events-auto flex h-full w-full flex-col overflow-hidden rounded-none sm:rounded-2xl">
+    <div className="glass pointer-events-auto pt-safe pb-safe flex h-full w-full flex-col overflow-hidden rounded-none sm:rounded-2xl">
       {/* En-tête */}
       <div className="flex items-center gap-3 border-b border-white/10 px-4 py-3">
         <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-400/15 text-lg">🏚️</div>

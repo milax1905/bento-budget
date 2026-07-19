@@ -44,7 +44,7 @@ export default function AuthScreen() {
   }
 
   return (
-    <div className="flex h-screen w-screen items-center justify-center bg-zinc-950 p-4">
+    <div className="flex h-dvh w-screen items-center justify-center bg-zinc-950 p-4">
       <div className="w-full max-w-sm">
         <div className="mb-6 text-center">
           <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-400/15 text-3xl">

@@ -92,6 +92,20 @@ body,
   background: transparent;
 }
 
+/* ---------- Tactile & zones sûres (encoche iPhone…) ---------- */
+button,
+a,
+select,
+input[type='range'] {
+  touch-action: manipulation;
+}
+.pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
 /* ---------- Utilitaires ---------- */
 .glass {
   background: rgba(24, 24, 27, 0.85);

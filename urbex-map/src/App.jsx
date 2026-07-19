@@ -22,7 +22,7 @@ function Toast() {
   }
   return (
     <div
-      className={`pointer-events-none fixed bottom-5 left-1/2 z-[3000] max-w-[90vw] -translate-x-1/2 rounded-xl border px-4 py-2.5 text-sm shadow-2xl backdrop-blur-xl ${colors[toast.kind] || colors.info}`}
+      className={`pointer-events-none fixed bottom-[calc(1.25rem+env(safe-area-inset-bottom))] left-1/2 z-[3000] max-w-[90vw] -translate-x-1/2 rounded-xl border px-4 py-2.5 text-sm shadow-2xl backdrop-blur-xl ${colors[toast.kind] || colors.info}`}
     >
       {toast.message}
     </div>
@@ -144,7 +144,7 @@ function Shell() {
 
   if (mode === 'cloud' && !authReady) {
     return (
-      <div className="flex h-screen w-screen items-center justify-center bg-zinc-950">
+      <div className="flex h-dvh w-screen items-center justify-center bg-zinc-950">
         <Loader2 size={28} className="animate-spin text-amber-400" />
       </div>
     )
@@ -162,7 +162,7 @@ function Shell() {
   const panelOpen = formState || selectedSpot
 
   return (
-    <div className="relative h-screen w-screen overflow-hidden bg-zinc-950 text-zinc-100">
+    <div className="relative h-dvh w-screen overflow-hidden bg-zinc-950 text-zinc-100">
       <MapView
         spots={spots}
         selectedId={selectedId}
@@ -193,7 +193,7 @@ function Shell() {
         <button
           title="Ouvrir la liste"
           onClick={() => setSidebarOpen(true)}
-          className="glass absolute left-3 top-3 z-[1000] flex h-11 w-11 items-center justify-center rounded-xl text-zinc-200 shadow-lg transition hover:bg-zinc-700/70"
+          className="glass absolute left-3 top-[calc(0.75rem+env(safe-area-inset-top))] z-[1000] flex h-11 w-11 items-center justify-center rounded-xl text-zinc-200 shadow-lg transition hover:bg-zinc-700/70"
         >
           <PanelLeftOpen size={18} />
         </button>
@@ -217,8 +217,9 @@ function Shell() {
         </div>
       )}
 
-      {/* Contrôles carte */}
-      <MapControls
+      {/* Contrôles carte (cachés sur mobile quand la liste est ouverte) */}
+      <div className={sidebarOpen ? 'hidden sm:contents' : 'contents'}>
+        <MapControls
         layerId={layerId}
         onLayerChange={setLayerId}
         labelsOn={labelsOn}
@@ -226,13 +227,14 @@ function Shell() {
         onLocate={locate}
         locating={locating}
         onZoom={(dir) => (dir > 0 ? mapRef.current?.zoomIn() : mapRef.current?.zoomOut())}
-        onGoto={(t) => setFlyTarget({ ...t, ts: Date.now() })}
-        shifted={Boolean(panelOpen)}
-      />
+          onGoto={(t) => setFlyTarget({ ...t, ts: Date.now() })}
+          shifted={Boolean(panelOpen)}
+        />
+      </div>
 
       {/* Bannière mode ajout */}
       {addMode && (
-        <div className="glass no-select pointer-events-auto absolute left-1/2 top-3 z-[1200] flex -translate-x-1/2 items-center gap-3 rounded-xl px-4 py-2.5 text-sm text-zinc-100 shadow-2xl">
+        <div className="glass no-select pointer-events-auto absolute left-1/2 top-[calc(0.75rem+env(safe-area-inset-top))] z-[1200] flex -translate-x-1/2 items-center gap-3 rounded-xl px-4 py-2.5 text-sm text-zinc-100 shadow-2xl">
           <span className="hidden sm:inline">🎯 Clique sur la carte pour placer le spot</span>
           <span className="sm:hidden">🎯 Touche la carte pour placer le spot</span>
           <button onClick={() => setAddMode(false)} className="rounded-lg p-1 text-zinc-400 hover:text-zinc-200">
@@ -245,7 +247,9 @@ function Shell() {
       {!addMode && !formState && (
         <button
           onClick={startAdd}
-          className="absolute bottom-6 left-1/2 z-[1000] flex -translate-x-1/2 items-center gap-2 rounded-full bg-amber-400 px-5 py-3 text-sm font-bold text-zinc-950 shadow-2xl shadow-amber-400/20 transition hover:bg-amber-300 active:scale-95"
+          className={`absolute bottom-[calc(1.5rem+env(safe-area-inset-bottom))] left-1/2 z-[1000] -translate-x-1/2 items-center gap-2 rounded-full bg-amber-400 px-5 py-3 text-sm font-bold text-zinc-950 shadow-2xl shadow-amber-400/20 transition hover:bg-amber-300 active:scale-95 ${
+            sidebarOpen ? 'hidden sm:flex' : 'flex'
+          }`}
         >
           <Plus size={18} strokeWidth={2.5} /> Spot
         </button>

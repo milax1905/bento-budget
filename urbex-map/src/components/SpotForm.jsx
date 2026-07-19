@@ -75,7 +75,7 @@ export default function SpotForm({ spot, position, onPositionHint, onSaved, onCa
   }
 
   return (
-    <div className="glass pointer-events-auto flex h-full w-full flex-col overflow-hidden rounded-none sm:rounded-2xl">
+    <div className="glass pointer-events-auto pt-safe pb-safe flex h-full w-full flex-col overflow-hidden rounded-none sm:rounded-2xl">
       <div className="flex items-center gap-3 border-b border-white/10 px-4 py-3">
         <h2 className="flex-1 text-base font-bold text-zinc-100">
           {editing ? 'Modifier le spot' : 'Nouveau spot'}

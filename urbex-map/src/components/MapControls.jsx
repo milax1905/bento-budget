@@ -79,7 +79,7 @@ export default function MapControls({
 
   return (
     <div
-      className={`pointer-events-none absolute top-3 z-[1000] flex flex-col items-end gap-2 transition-all duration-300 ${
+      className={`pointer-events-none absolute top-[calc(0.75rem+env(safe-area-inset-top))] z-[1000] flex flex-col items-end gap-2 transition-all duration-300 ${
         shifted ? 'right-3 sm:right-[424px]' : 'right-3'
       }`}
     >
