@@ -19,8 +19,12 @@ create table if not exists public.spots (
   updated_at timestamptz not null default now()
 );
 
--- Sécurité : seules les personnes connectées (toi + ton cousin) peuvent
--- lire et modifier les spots. Personne d'autre n'y a accès.
+-- Sécurité : seuls les comptes connectés peuvent lire et modifier les spots.
+-- ⚠️ ATTENTION : par défaut Supabase laisse les INSCRIPTIONS OUVERTES —
+-- n'importe qui connaissant l'URL du projet pourrait créer un compte et donc
+-- accéder à la carte. Une fois vos comptes créés, fermez les inscriptions :
+-- Dashboard → Authentication → Sign In / Providers → décocher
+-- « Allow new user signups ». (Voir aussi la fin de ce fichier.)
 alter table public.spots enable row level security;
 
 drop policy if exists "authenticated read" on public.spots;
@@ -48,6 +52,21 @@ exception
   when duplicate_object then null;
 end $$;
 
--- Optionnel mais recommandé : limite l'inscription aux personnes qui ont le
--- lien — dans le Dashboard : Authentication → Providers → Email,
--- tu peux aussi désactiver « Confirm email » pour simplifier la connexion.
+-- ────────────────────────────────────────────────────────────────────────────
+-- 🔐 OBLIGATOIRE une fois vos comptes créés : fermer les inscriptions.
+-- Dashboard → Authentication → Sign In / Providers → décocher
+-- « Allow new user signups ». Sans ça, toute personne devinant l'URL du
+-- projet peut créer un compte et lire/modifier/supprimer vos spots.
+--
+-- Option plus stricte (à la place ou en plus) : restreindre les policies à
+-- une liste d'emails précise, par exemple :
+--
+--   drop policy "authenticated read" on public.spots;
+--   create policy "authenticated read" on public.spots
+--     for select to authenticated
+--     using ((auth.jwt()->>'email') in ('toi@exemple.fr', 'cousin@exemple.fr'));
+--
+--   (répéter le même using/with check pour insert, update et delete)
+--
+-- Astuce confort : Authentication → Providers → Email → désactiver
+-- « Confirm email » simplifie la première connexion (pas de mail à valider).

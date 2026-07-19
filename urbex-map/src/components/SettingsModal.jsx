@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { X, Cloud, CloudOff, ExternalLink } from 'lucide-react'
 import { useStore } from '../lib/store'
-import { getConfig, saveStoredConfig, clearStoredConfig } from '../lib/supabase'
+import { getConfig, saveStoredConfig, clearStoredConfig, isValidSupabaseUrl, getSupabase } from '../lib/supabase'
 
 export default function SettingsModal({ onClose }) {
   const { mode, user, profileName, showToast } = useStore()
@@ -12,7 +12,7 @@ export default function SettingsModal({ onClose }) {
   const activate = () => {
     const u = url.trim().replace(/\/+$/, '')
     const k = anonKey.trim()
-    if (!/^https:\/\/.+\.supabase\.co$/.test(u)) {
+    if (!isValidSupabaseUrl(u)) {
       showToast('URL invalide — elle ressemble à https://xxxx.supabase.co', 'error')
       return
     }
@@ -24,7 +24,14 @@ export default function SettingsModal({ onClose }) {
     window.location.reload()
   }
 
-  const deactivate = () => {
+  const deactivate = async () => {
+    // Déconnexion d'abord, pour ne pas laisser un jeton de session orphelin
+    // dans le localStorage.
+    try {
+      await getSupabase()?.auth.signOut()
+    } catch {
+      /* hors-ligne : le reload suffit */
+    }
     clearStoredConfig()
     window.location.reload()
   }

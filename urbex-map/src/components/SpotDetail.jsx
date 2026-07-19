@@ -14,20 +14,7 @@ import {
 import { categoryById, statusById, STATUSES } from '../lib/constants'
 import { formatCoords } from '../lib/geo'
 import { useStore } from '../lib/store'
-
-function Lightbox({ src, onClose }) {
-  return (
-    <div
-      className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/90 p-4"
-      onClick={onClose}
-    >
-      <img src={src} alt="" className="max-h-full max-w-full rounded-xl object-contain" />
-      <button className="absolute right-4 top-4 rounded-full bg-zinc-800/80 p-2 text-zinc-200">
-        <X size={20} />
-      </button>
-    </div>
-  )
-}
+import Lightbox from './Lightbox'
 
 export default function SpotDetail({ spot, onClose, onEdit }) {
   const { updateSpot, deleteSpot, showToast } = useStore()

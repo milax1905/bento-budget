@@ -33,7 +33,7 @@ export default function MapControls({
   const [searchOpen, setSearchOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [results, setResults] = useState([])
-  const [searching, setSearching] = useState(false)
+  const [searchStatus, setSearchStatus] = useState('idle') // idle | searching | empty | error
   const abortRef = useRef(null)
   const inputRef = useRef(null)
 
@@ -46,23 +46,30 @@ export default function MapControls({
     const q = query.trim()
     if (q.length < 3) {
       setResults([])
+      setSearchStatus('idle')
       return
     }
     const coords = parseCoords(q)
     if (coords) {
       setResults([{ label: `Aller aux coordonnées ${coords.lat}, ${coords.lng}`, ...coords, type: 'coords' }])
+      setSearchStatus('idle')
       return
     }
     const controller = new AbortController()
     abortRef.current = controller
-    setSearching(true)
+    setSearchStatus('searching')
     const timer = setTimeout(() => {
       searchPlaces(q, { signal: controller.signal })
-        .then((r) => setResults(r))
-        .catch((err) => {
-          if (err.name !== 'AbortError') setResults([])
+        .then((r) => {
+          setResults(r)
+          setSearchStatus(r.length ? 'idle' : 'empty')
         })
-        .finally(() => setSearching(false))
+        .catch((err) => {
+          if (err.name !== 'AbortError') {
+            setResults([])
+            setSearchStatus('error')
+          }
+        })
     }, 400)
     return () => {
       clearTimeout(timer)
@@ -75,6 +82,7 @@ export default function MapControls({
     setSearchOpen(false)
     setQuery('')
     setResults([])
+    setSearchStatus('idle')
   }
 
   return (
@@ -100,9 +108,19 @@ export default function MapControls({
                 <X size={16} />
               </button>
             </div>
-            {(results.length > 0 || searching) && (
+            {(results.length > 0 || searchStatus !== 'idle') && (
               <div className="mt-2 max-h-64 overflow-y-auto border-t border-white/10 pt-1">
-                {searching && <div className="px-2 py-2 text-xs text-zinc-500">Recherche…</div>}
+                {searchStatus === 'searching' && (
+                  <div className="px-2 py-2 text-xs text-zinc-500">Recherche…</div>
+                )}
+                {searchStatus === 'empty' && (
+                  <div className="px-2 py-2 text-xs text-zinc-500">Aucun résultat</div>
+                )}
+                {searchStatus === 'error' && (
+                  <div className="px-2 py-2 text-xs text-rose-300">
+                    Recherche impossible — vérifie ta connexion
+                  </div>
+                )}
                 {results.map((r, i) => (
                   <button
                     key={i}

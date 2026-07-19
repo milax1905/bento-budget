@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { LogIn, UserPlus, Loader2 } from 'lucide-react'
 import { useStore } from '../lib/store'
-import { getConfig, clearStoredConfig } from '../lib/supabase'
+import { getConfig, clearStoredConfig, getSupabase } from '../lib/supabase'
 
 export default function AuthScreen() {
   const { signIn, signUp } = useStore()
@@ -38,7 +38,12 @@ export default function AuthScreen() {
     }
   }
 
-  const backToLocal = () => {
+  const backToLocal = async () => {
+    try {
+      await getSupabase()?.auth.signOut()
+    } catch {
+      /* hors-ligne : le reload suffit */
+    }
     clearStoredConfig()
     window.location.reload()
   }

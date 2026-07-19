@@ -1,13 +1,20 @@
 import { useRef, useState } from 'react'
-import { X, ImagePlus, Trash2, Save, MoveDiagonal } from 'lucide-react'
-import { CATEGORIES, STATUSES } from '../lib/constants'
+import { X, ImagePlus, Trash2, Save, Crosshair, Loader2, Check } from 'lucide-react'
+import { CATEGORIES, STATUSES, MAX_PHOTOS } from '../lib/constants'
 import { formatCoords } from '../lib/geo'
 import { fileToCompressedDataUrl } from '../lib/images'
 import { useStore } from '../lib/store'
+import Lightbox from './Lightbox'
 
-const MAX_PHOTOS = 8
-
-export default function SpotForm({ spot, position, onPositionHint, onSaved, onCancel }) {
+export default function SpotForm({
+  spot,
+  position,
+  adjusting,
+  onStartAdjust,
+  onEndAdjust,
+  onSaved,
+  onCancel,
+}) {
   const { addSpot, updateSpot, showToast, mode } = useStore()
   const editing = Boolean(spot)
 
@@ -20,6 +27,8 @@ export default function SpotForm({ spot, position, onPositionHint, onSaved, onCa
   const [visitedAt, setVisitedAt] = useState(spot?.visitedAt || '')
   const [photos, setPhotos] = useState(spot?.photos || [])
   const [saving, setSaving] = useState(false)
+  const [compressing, setCompressing] = useState(false)
+  const [preview, setPreview] = useState(null)
   const fileRef = useRef(null)
 
   const lat = position?.lat ?? spot?.lat
@@ -28,17 +37,18 @@ export default function SpotForm({ spot, position, onPositionHint, onSaved, onCa
   const addPhotos = async (e) => {
     const files = Array.from(e.target.files || [])
     e.target.value = ''
-    if (!files.length) return
-    if (photos.length + files.length > MAX_PHOTOS) {
+    if (!files.length || compressing) return
+    setCompressing(true)
+    const results = await Promise.allSettled(files.map((f) => fileToCompressedDataUrl(f)))
+    const ok = results.filter((r) => r.status === 'fulfilled').map((r) => r.value)
+    const failed = results.length - ok.length
+    if (photos.length + ok.length > MAX_PHOTOS) {
       showToast(`Maximum ${MAX_PHOTOS} photos par spot`, 'error')
-      return
+    } else if (failed > 0) {
+      showToast(`${failed} fichier(s) illisible(s) ignoré(s)`, 'error')
     }
-    try {
-      const compressed = await Promise.all(files.map((f) => fileToCompressedDataUrl(f)))
-      setPhotos((prev) => [...prev, ...compressed])
-    } catch (err) {
-      showToast(err.message, 'error')
-    }
+    setPhotos((prev) => [...prev, ...ok].slice(0, MAX_PHOTOS))
+    setCompressing(false)
   }
 
   const save = async () => {
@@ -65,13 +75,36 @@ export default function SpotForm({ spot, position, onPositionHint, onSaved, onCa
       lng,
     }
     if (editing) {
-      await updateSpot(spot.id, fields)
-      onSaved(spot.id)
+      const ok = await updateSpot(spot.id, fields)
+      if (ok) onSaved(spot.id)
     } else {
       const created = await addSpot(fields)
       if (created) onSaved(created.id)
     }
     setSaving(false)
+  }
+
+  // Mode ajustement : le formulaire se replie en barre pour laisser la carte
+  // visible (surtout sur mobile où il occupe tout l'écran). La saisie est
+  // conservée : le composant reste monté.
+  if (adjusting) {
+    return (
+      <div className="glass pointer-events-auto pb-safe flex w-full items-center gap-3 rounded-none px-4 py-3 sm:rounded-2xl">
+        <span className="text-xl">📍</span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] text-zinc-400">Déplace le marqueur rose ou touche la carte</p>
+          <p className="font-mono text-sm text-zinc-100">
+            {lat != null && lng != null ? formatCoords(lat, lng) : '—'}
+          </p>
+        </div>
+        <button
+          onClick={onEndAdjust}
+          className="flex items-center gap-1.5 rounded-xl bg-amber-400 px-4 py-2.5 text-sm font-bold text-zinc-950 transition hover:bg-amber-300"
+        >
+          <Check size={15} /> OK
+        </button>
+      </div>
+    )
   }
 
   return (
@@ -90,24 +123,16 @@ export default function SpotForm({ spot, position, onPositionHint, onSaved, onCa
 
       <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
         {/* Position */}
-        <div className="flex items-center justify-between rounded-xl bg-zinc-800/50 px-3 py-2.5 text-xs">
+        <div className="flex items-center justify-between gap-2 rounded-xl bg-zinc-800/50 px-3 py-2.5 text-xs">
           <span className="font-mono text-zinc-300">
             {lat != null && lng != null ? formatCoords(lat, lng) : 'Non placé'}
           </span>
-          {!editing && (
-            <span className="flex items-center gap-1 text-[10px] text-zinc-500">
-              <MoveDiagonal size={11} /> déplace le marqueur pour ajuster
-            </span>
-          )}
-          {editing && (
-            <button
-              onClick={onPositionHint}
-              className="text-[10px] text-amber-300/90 hover:text-amber-300"
-              title="Déplacer le marqueur sur la carte"
-            >
-              repositionner
-            </button>
-          )}
+          <button
+            onClick={onStartAdjust}
+            className="flex shrink-0 items-center gap-1.5 rounded-lg bg-zinc-700/60 px-2.5 py-1.5 text-[11px] font-medium text-amber-300 transition hover:bg-zinc-600/60"
+          >
+            <Crosshair size={12} /> Ajuster sur la carte
+          </button>
         </div>
 
         {/* Nom */}
@@ -239,22 +264,26 @@ export default function SpotForm({ spot, position, onPositionHint, onSaved, onCa
           </label>
           <div className="grid grid-cols-3 gap-1.5">
             {photos.map((p, i) => (
-              <div key={i} className="group relative overflow-hidden rounded-lg">
-                <img src={p} alt="" className="aspect-square w-full object-cover" />
+              <div key={i} className="relative overflow-hidden rounded-lg">
+                <button onClick={() => setPreview(p)} className="block w-full">
+                  <img src={p} alt="" className="aspect-square w-full object-cover" />
+                </button>
                 <button
+                  title="Supprimer cette photo"
                   onClick={() => setPhotos((prev) => prev.filter((_, j) => j !== i))}
-                  className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 transition group-hover:opacity-100"
+                  className="absolute right-1 top-1 rounded-full bg-black/70 p-1.5 text-rose-300 transition hover:bg-black/90"
                 >
-                  <Trash2 size={16} className="text-rose-300" />
+                  <Trash2 size={12} />
                 </button>
               </div>
             ))}
             {photos.length < MAX_PHOTOS && (
               <button
-                onClick={() => fileRef.current?.click()}
-                className="flex aspect-square items-center justify-center rounded-lg border border-dashed border-zinc-700 text-zinc-500 transition hover:border-amber-400/50 hover:text-amber-300"
+                onClick={() => !compressing && fileRef.current?.click()}
+                disabled={compressing}
+                className="flex aspect-square items-center justify-center rounded-lg border border-dashed border-zinc-700 text-zinc-500 transition hover:border-amber-400/50 hover:text-amber-300 disabled:opacity-60"
               >
-                <ImagePlus size={18} />
+                {compressing ? <Loader2 size={18} className="animate-spin" /> : <ImagePlus size={18} />}
               </button>
             )}
           </div>
@@ -289,6 +318,8 @@ export default function SpotForm({ spot, position, onPositionHint, onSaved, onCa
           <Save size={15} /> {saving ? 'Enregistrement…' : editing ? 'Enregistrer' : 'Ajouter le spot'}
         </button>
       </div>
+
+      {preview && <Lightbox src={preview} onClose={() => setPreview(null)} />}
     </div>
   )
 }

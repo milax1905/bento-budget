@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
-import { getSupabase, isCloudConfigured } from './supabase'
+import { getSupabase } from './supabase'
 
 const LS_SPOTS = 'urbex-atlas:spots'
 
@@ -47,18 +47,49 @@ const toDb = (s) => ({
   updated_at: s.updatedAt,
 })
 
+// Colonnes autorisées pour un update partiel (on n'envoie jamais la ligne
+// entière, pour ne pas écraser les modifications concurrentes du coéquipier).
+const PATCH_COLUMNS = {
+  name: 'name',
+  category: 'category',
+  status: 'status',
+  lat: 'lat',
+  lng: 'lng',
+  description: 'description',
+  accessNotes: 'access_notes',
+  danger: 'danger',
+  photos: 'photos',
+  visitedAt: 'visited_at',
+  updatedAt: 'updated_at',
+}
+
+const patchToDb = (patch) => {
+  const row = {}
+  for (const [key, value] of Object.entries(patch)) {
+    const col = PATCH_COLUMNS[key]
+    if (col) row[col] = value
+  }
+  return row
+}
+
+const isValidSpot = (s) =>
+  s && typeof s === 'object' && typeof s.name === 'string' && Number.isFinite(s.lat) && Number.isFinite(s.lng)
+
 function loadLocalSpots() {
   try {
     const raw = localStorage.getItem(LS_SPOTS)
-    return raw ? JSON.parse(raw) : []
+    const data = raw ? JSON.parse(raw) : []
+    return Array.isArray(data) ? data.filter(isValidSpot) : []
   } catch {
     return []
   }
 }
 
 export function StoreProvider({ children }) {
-  const cloud = isCloudConfigured()
-  const supabase = cloud ? getSupabase() : null
+  // getSupabase() renvoie null si aucune config (ou une config invalide) :
+  // dans ce cas l'app fonctionne en mode local.
+  const supabase = getSupabase()
+  const cloud = supabase != null
 
   const [spots, setSpots] = useState(() => (cloud ? [] : loadLocalSpots()))
   const [loading, setLoading] = useState(cloud)
@@ -66,6 +97,7 @@ export function StoreProvider({ children }) {
   const [authReady, setAuthReady] = useState(!cloud)
   const [toast, setToast] = useState(null)
   const toastTimer = useRef(null)
+  const loadedOnce = useRef(false)
 
   const showToast = useCallback((message, kind = 'info') => {
     clearTimeout(toastTimer.current)
@@ -86,54 +118,80 @@ export function StoreProvider({ children }) {
   // ----- Mode cloud : session + auth -----
   useEffect(() => {
     if (!supabase) return
-    supabase.auth.getSession().then(({ data }) => {
-      setUser(data.session?.user ?? null)
-      setAuthReady(true)
-    })
+    supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        setUser(data.session?.user ?? null)
+        setAuthReady(true)
+      })
+      .catch(() => setAuthReady(true))
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null)
+      // Ne remplace l'objet user que si l'identité change (évite de casser le
+      // canal realtime à chaque rafraîchissement de jeton).
+      setUser((prev) => (prev?.id === session?.user?.id ? prev : (session?.user ?? null)))
     })
     return () => sub.subscription.unsubscribe()
   }, [supabase])
 
-  // ----- Mode cloud : chargement + temps réel -----
+  // ----- Mode cloud : temps réel + chargement (une fois abonné) -----
+  const userId = user?.id
   useEffect(() => {
-    if (!supabase || !user) return
+    if (!supabase || !userId) return
     let cancelled = false
 
+    const applyRow = (row) => {
+      const spot = fromDb(row)
+      setSpots((prev) => [spot, ...prev.filter((s) => s.id !== spot.id)])
+    }
+
     const fetchSpots = async () => {
-      setLoading(true)
+      if (!loadedOnce.current) setLoading(true)
       const { data, error } = await supabase.from('spots').select('*').order('updated_at', { ascending: false })
       if (cancelled) return
       if (error) {
         showToast(`Chargement impossible : ${error.message}`, 'error')
       } else {
         setSpots(data.map(fromDb))
+        loadedOnce.current = true
       }
       setLoading(false)
     }
-    fetchSpots()
 
     const channel = supabase
       .channel('spots-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'spots' }, (payload) => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'spots' }, async (payload) => {
+        if (cancelled) return
         if (payload.eventType === 'DELETE') {
           setSpots((prev) => prev.filter((s) => s.id !== payload.old.id))
+          return
+        }
+        const row = payload.new
+        if (!row?.id) return
+        // Les gros payloads (photos) peuvent être tronqués par le temps réel :
+        // dans ce cas on recharge la ligne complète au lieu d'écraser l'état
+        // avec des données partielles.
+        const truncated = (Array.isArray(payload.errors) && payload.errors.length > 0) || row.photos == null
+        if (truncated) {
+          const { data } = await supabase.from('spots').select('*').eq('id', row.id).single()
+          if (!cancelled && data) applyRow(data)
         } else {
-          const spot = fromDb(payload.new)
-          setSpots((prev) => {
-            const rest = prev.filter((s) => s.id !== spot.id)
-            return [spot, ...rest]
-          })
+          applyRow(row)
         }
       })
-      .subscribe()
+      .subscribe((status) => {
+        if (cancelled) return
+        // Chargement une fois abonné (et re-chargement après reconnexion) :
+        // aucun événement ne peut se perdre entre le fetch et l'abonnement.
+        if (status === 'SUBSCRIBED') fetchSpots()
+        else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT')
+          showToast('Connexion temps réel interrompue — recharge la page si ça persiste', 'error')
+      })
 
     return () => {
       cancelled = true
       supabase.removeChannel(channel)
     }
-  }, [supabase, user, showToast])
+  }, [supabase, userId, showToast])
 
   const profileName = user?.user_metadata?.pseudo || user?.email?.split('@')[0] || ''
 
@@ -167,25 +225,28 @@ export function StoreProvider({ children }) {
     [supabase, cloud, profileName, showToast]
   )
 
+  // Renvoie true si la modification est enregistrée (l'appelant peut alors
+  // fermer son formulaire), false si elle a été annulée suite à une erreur.
   const updateSpot = useCallback(
     async (id, patch) => {
       let previous = null
-      let updated = null
+      const stamped = { ...patch, updatedAt: new Date().toISOString() }
       setSpots((prev) =>
         prev.map((s) => {
           if (s.id !== id) return s
           previous = s
-          updated = { ...s, ...patch, updatedAt: new Date().toISOString() }
-          return updated
+          return { ...s, ...stamped }
         })
       )
-      if (supabase && updated) {
-        const { error } = await supabase.from('spots').update(toDb(updated)).eq('id', id)
+      if (supabase) {
+        const { error } = await supabase.from('spots').update(patchToDb(stamped)).eq('id', id)
         if (error) {
           setSpots((prev) => prev.map((s) => (s.id === id && previous ? previous : s)))
           showToast(`Modification impossible : ${error.message}`, 'error')
+          return false
         }
       }
+      return true
     },
     [supabase, showToast]
   )
@@ -209,8 +270,14 @@ export function StoreProvider({ children }) {
     async (imported) => {
       const now = new Date().toISOString()
       const existing = new Set(spots.map((s) => s.id))
-      const toAdd = imported
-        .map((s) => ({
+      const seen = new Set(existing)
+      const toAdd = []
+      for (const s of imported) {
+        // Un id déjà présent = le même spot : on ne le duplique pas.
+        if (s.id && existing.has(s.id)) continue
+        const id = s.id && !seen.has(s.id) ? s.id : newId()
+        seen.add(id)
+        toAdd.push({
           danger: 2,
           photos: [],
           description: '',
@@ -220,18 +287,23 @@ export function StoreProvider({ children }) {
           createdAt: now,
           updatedAt: now,
           ...s,
-          id: s.id && !existing.has(s.id) ? s.id : newId(),
-        }))
-        .filter((s) => !existing.has(s.id))
+          id,
+        })
+      }
       if (!toAdd.length) {
         showToast('Rien de nouveau à importer', 'info')
         return
       }
-      setSpots((prev) => [...toAdd, ...prev])
       if (supabase) {
-        const { error } = await supabase.from('spots').upsert(toAdd.map(toDb))
-        if (error) showToast(`Import cloud incomplet : ${error.message}`, 'error')
+        // Cloud d'abord : en cas d'échec, l'état local reste intact.
+        // ignoreDuplicates protège les lignes déjà en base d'un écrasement.
+        const { error } = await supabase.from('spots').upsert(toAdd.map(toDb), { ignoreDuplicates: true })
+        if (error) {
+          showToast(`Import impossible : ${error.message}`, 'error')
+          return
+        }
       }
+      setSpots((prev) => [...toAdd, ...prev])
       showToast(`${toAdd.length} spot(s) importé(s)`, 'success')
     },
     [supabase, spots, showToast]
@@ -254,6 +326,11 @@ export function StoreProvider({ children }) {
         options: { data: { pseudo } },
       })
       if (error) throw error
+      // Avec la confirmation d'email activée, Supabase renvoie un user sans
+      // identité quand l'adresse est déjà prise (pour ne pas la divulguer).
+      if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+        throw new Error('Un compte existe déjà avec cet email — connecte-toi.')
+      }
       return { needsConfirmation: !data.session }
     },
     [supabase]
@@ -262,6 +339,7 @@ export function StoreProvider({ children }) {
   const signOut = useCallback(async () => {
     await supabase.auth.signOut()
     setSpots([])
+    loadedOnce.current = false
   }, [supabase])
 
   const value = {

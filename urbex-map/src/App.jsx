@@ -40,6 +40,7 @@ function Shell() {
   const [addMode, setAddMode] = useState(false)
   const [draftPos, setDraftPos] = useState(null)
   const [formState, setFormState] = useState(null) // null | {mode:'create'} | {mode:'edit', spot}
+  const [adjusting, setAdjusting] = useState(false) // formulaire replié pendant qu'on déplace le marqueur
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [flyTarget, setFlyTarget] = useState(null)
   const [userPos, setUserPos] = useState(null)
@@ -51,15 +52,26 @@ function Shell() {
 
   const selectedSpot = spots.find((s) => s.id === selectedId)
 
-  const select = useCallback((id) => {
-    setSelectedId(id)
-    setFormState(null)
-  }, [])
+  const select = useCallback(
+    (id) => {
+      // Un formulaire ouvert contient de la saisie non enregistrée : on ne
+      // l'écrase pas silencieusement.
+      if (formState) {
+        showToast("Enregistre ou annule d'abord le formulaire en cours", 'info')
+        return false
+      }
+      setAddMode(false)
+      setDraftPos(null)
+      setSelectedId(id)
+      return true
+    },
+    [formState, showToast]
+  )
 
   const selectAndFly = useCallback(
     (id) => {
+      if (!select(id)) return
       const spot = spots.find((s) => s.id === id)
-      select(id)
       if (spot) setFlyTarget({ lat: spot.lat, lng: spot.lng, ts: Date.now() })
       if (window.innerWidth < 640) setSidebarOpen(false)
     },
@@ -77,6 +89,7 @@ function Shell() {
     setAddMode(false)
     setDraftPos(null)
     setFormState(null)
+    setAdjusting(false)
   }, [])
 
   const handleMapClick = useCallback(
@@ -85,16 +98,19 @@ function Shell() {
         setDraftPos({ lat: latlng.lat, lng: latlng.lng })
         setAddMode(false)
         setFormState({ mode: 'create' })
+      } else if (adjusting) {
+        setDraftPos({ lat: latlng.lat, lng: latlng.lng })
       } else if (!formState) {
         setSelectedId(null)
       }
     },
-    [addMode, formState]
+    [addMode, adjusting, formState]
   )
 
   const handleSaved = (id) => {
     setFormState(null)
     setDraftPos(null)
+    setAdjusting(false)
     setSelectedId(id)
   }
 
@@ -102,11 +118,11 @@ function Shell() {
     setFormState({ mode: 'edit', spot })
   }
 
-  const handleRepositionHint = () => {
-    if (formState?.mode === 'edit') {
+  const handleStartAdjust = () => {
+    if (formState?.mode === 'edit' && !draftPos) {
       setDraftPos({ lat: formState.spot.lat, lng: formState.spot.lng })
-      showToast('Déplace le marqueur rose pour repositionner le spot', 'info')
     }
+    setAdjusting(true)
   }
 
   const locate = () => {
@@ -134,13 +150,14 @@ function Shell() {
     const onKey = (e) => {
       if (e.key === 'Escape') {
         if (addMode) setAddMode(false)
+        else if (adjusting) setAdjusting(false)
         else if (settingsOpen) setSettingsOpen(false)
         else if (!formState) setSelectedId(null)
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [addMode, settingsOpen, formState])
+  }, [addMode, adjusting, settingsOpen, formState])
 
   if (mode === 'cloud' && !authReady) {
     return (
@@ -201,18 +218,29 @@ function Shell() {
 
       {/* Panneau droit : détail ou formulaire */}
       {panelOpen && (
-        <div className="pointer-events-none absolute bottom-0 right-0 top-0 z-[1100] w-full sm:w-[400px] sm:p-3">
+        <div
+          className={`pointer-events-none absolute bottom-0 right-0 z-[1100] w-full sm:w-[400px] sm:p-3 ${
+            formState && adjusting ? '' : 'top-0'
+          }`}
+        >
           {formState ? (
             <SpotForm
               key={formState.mode === 'edit' ? formState.spot.id : 'new'}
               spot={formState.mode === 'edit' ? formState.spot : null}
               position={draftPos}
-              onPositionHint={handleRepositionHint}
+              adjusting={adjusting}
+              onStartAdjust={handleStartAdjust}
+              onEndAdjust={() => setAdjusting(false)}
               onSaved={handleSaved}
               onCancel={cancelAll}
             />
           ) : (
-            <SpotDetail spot={selectedSpot} onClose={() => setSelectedId(null)} onEdit={handleEdit} />
+            <SpotDetail
+              key={selectedSpot.id}
+              spot={selectedSpot}
+              onClose={() => setSelectedId(null)}
+              onEdit={handleEdit}
+            />
           )}
         </div>
       )}
@@ -228,7 +256,7 @@ function Shell() {
         locating={locating}
         onZoom={(dir) => (dir > 0 ? mapRef.current?.zoomIn() : mapRef.current?.zoomOut())}
           onGoto={(t) => setFlyTarget({ ...t, ts: Date.now() })}
-          shifted={Boolean(panelOpen)}
+          shifted={Boolean(panelOpen) && !adjusting}
         />
       </div>
 

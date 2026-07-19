@@ -1,4 +1,4 @@
-import { categoryById, statusById } from './constants'
+import { CATEGORIES, STATUSES, MAX_PHOTOS, categoryById, statusById } from './constants'
 
 function download(filename, mime, content) {
   const blob = new Blob([content], { type: mime })
@@ -41,12 +41,49 @@ ${wpts}
   download(`urbex-atlas-${stamp()}.gpx`, 'application/gpx+xml', gpx)
 }
 
-// Lit un export JSON de l'app et renvoie la liste de spots, ou lève une erreur.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const cleanString = (v, max) => (typeof v === 'string' ? v.slice(0, max) : '')
+const cleanDate = (v) => (typeof v === 'string' && !Number.isNaN(Date.parse(v)) ? v : null)
+const isPhoto = (p) =>
+  typeof p === 'string' && p.length < 2_000_000 && (p.startsWith('data:image/') || /^https?:\/\//.test(p))
+
+// Lit un export JSON et renvoie une liste de spots ASSAINIE (liste blanche de
+// champs, bornes et types vérifiés) — un fichier corrompu ou malveillant ne
+// peut pas injecter de données arbitraires. Lève une erreur si illisible.
 export function parseImportedJson(text) {
   const data = JSON.parse(text)
   const spots = Array.isArray(data) ? data : data?.spots
   if (!Array.isArray(spots)) throw new Error('Format non reconnu')
-  return spots.filter(
-    (s) => s && typeof s.lat === 'number' && typeof s.lng === 'number' && typeof s.name === 'string'
-  )
+  const catIds = new Set(CATEGORIES.map((c) => c.id))
+  const stIds = new Set(STATUSES.map((s) => s.id))
+  const cleaned = []
+  for (const s of spots) {
+    if (!s || typeof s !== 'object') continue
+    const name = cleanString(s.name, 200).trim()
+    const lat = Number(s.lat)
+    const lng = Number(s.lng)
+    if (!name || !Number.isFinite(lat) || lat < -90 || lat > 90) continue
+    if (!Number.isFinite(lng) || lng < -180 || lng > 180) continue
+    const danger = Math.round(Number(s.danger))
+    const spot = {
+      name,
+      lat,
+      lng,
+      category: catIds.has(s.category) ? s.category : 'autre',
+      status: stIds.has(s.status) ? s.status : 'repere',
+      danger: Number.isFinite(danger) ? Math.min(5, Math.max(1, danger)) : 2,
+      description: cleanString(s.description, 5000),
+      accessNotes: cleanString(s.accessNotes, 5000),
+      photos: Array.isArray(s.photos) ? s.photos.filter(isPhoto).slice(0, MAX_PHOTOS) : [],
+      visitedAt: cleanDate(s.visitedAt),
+      createdBy: cleanString(s.createdBy, 100),
+    }
+    if (typeof s.id === 'string' && UUID_RE.test(s.id)) spot.id = s.id
+    const createdAt = cleanDate(s.createdAt)
+    const updatedAt = cleanDate(s.updatedAt)
+    if (createdAt) spot.createdAt = createdAt
+    if (updatedAt) spot.updatedAt = updatedAt
+    cleaned.push(spot)
+  }
+  return cleaned
 }

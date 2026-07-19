@@ -18,7 +18,8 @@ Carte collaborative d'exploration urbaine — référencez vos spots **faits**, 
   chez l'autre (Supabase, gratuit), avec « ajouté par »
 - 📱 **Pensé pour le terrain** : géolocalisation, lien Google Maps / Waze par spot,
   export GPX pour GPS et applis hors-ligne (Organic Maps, OsmAnd), export/import JSON
-- 🔒 **Privé** : la carte n'est visible que par les comptes que vous créez
+- 🔒 **Privé** : la carte n'est visible que par les comptes connectés — pense à
+  **fermer les inscriptions** une fois vos deux comptes créés (voir plus bas)
 
 ## 🚀 Lancer l'app
 
@@ -45,6 +46,10 @@ tester tout de suite, sans aucun compte.
      dans ce cas la synchro est déjà active pour tous ceux qui ouvrent l'app.
 5. Chacun crée son compte (pseudo + email + mot de passe) → vous voyez la même carte,
    synchronisée en direct. 🎉
+6. **🔐 Important — une fois vos deux comptes créés** : ferme les inscriptions dans
+   **Dashboard → Authentication → Sign In / Providers** → décoche
+   **« Allow new user signups »**. Sans ça, quelqu'un qui découvre l'URL de votre
+   projet pourrait créer un compte et voir votre carte (adresses sensibles !).
 
 > 💡 Par défaut Supabase demande une confirmation par email à l'inscription.
 > Pour simplifier : Dashboard → **Authentication → Providers → Email** → désactive

@@ -5,8 +5,74 @@ import '@fontsource-variable/inter'
 import './index.css'
 import App from './App'
 
+// Filet de sécurité : si l'app plante (donnée corrompue, bug…), on affiche un
+// écran de récupération au lieu d'une page noire, avec de quoi sauvegarder
+// ses spots avant toute réinitialisation.
+class ErrorBoundary extends React.Component {
+  state = { error: null }
+
+  static getDerivedStateFromError(error) {
+    return { error }
+  }
+
+  exportLocal = () => {
+    try {
+      const raw = localStorage.getItem('urbex-atlas:spots') || '[]'
+      const blob = new Blob([raw], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'urbex-atlas-sauvegarde.json'
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      /* rien à sauvegarder */
+    }
+  }
+
+  resetLocal = () => {
+    localStorage.removeItem('urbex-atlas:spots')
+    window.location.reload()
+  }
+
+  render() {
+    if (!this.state.error) return this.props.children
+    return (
+      <div className="flex h-dvh w-screen flex-col items-center justify-center gap-4 bg-zinc-950 p-6 text-center text-zinc-100">
+        <span className="text-4xl">😵</span>
+        <h1 className="text-lg font-bold">Oups, l'app a rencontré un problème</h1>
+        <p className="max-w-md break-words text-xs text-zinc-500">
+          {String(this.state.error?.message || this.state.error)}
+        </p>
+        <div className="flex flex-wrap justify-center gap-2">
+          <button
+            onClick={() => window.location.reload()}
+            className="rounded-xl bg-amber-400 px-4 py-2.5 text-sm font-bold text-zinc-950"
+          >
+            Recharger
+          </button>
+          <button
+            onClick={this.exportLocal}
+            className="rounded-xl bg-zinc-800 px-4 py-2.5 text-sm font-medium text-zinc-200"
+          >
+            Sauvegarder mes spots (JSON)
+          </button>
+          <button
+            onClick={this.resetLocal}
+            className="rounded-xl bg-zinc-800 px-4 py-2.5 text-sm font-medium text-rose-300"
+          >
+            Réinitialiser les données locales
+          </button>
+        </div>
+      </div>
+    )
+  }
+}
+
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <App />
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   </React.StrictMode>
 )

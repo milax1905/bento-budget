@@ -25,6 +25,8 @@ export const STATUSES = [
 export const categoryById = (id) => CATEGORIES.find((c) => c.id === id) || CATEGORIES[CATEGORIES.length - 1]
 export const statusById = (id) => STATUSES.find((s) => s.id === id) || STATUSES[2]
 
+export const MAX_PHOTOS = 8
+
 // Fonds de carte. L'imagerie Esri est mise à jour très régulièrement au niveau
 // mondial ; l'ortho IGN est la plus détaillée sur la France.
 export const BASE_LAYERS = [
