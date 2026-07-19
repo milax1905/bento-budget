@@ -1,0 +1,80 @@
+# 🏚️ Urbex Atlas
+
+Carte collaborative d'exploration urbaine — référencez vos spots **faits**, **à faire**,
+**repérés** ou **perdus**, à deux (ou plus), en temps réel.
+
+![statuts](https://img.shields.io/badge/statuts-fait%20·%20à%20faire%20·%20repéré%20·%20perdu-f59e0b)
+
+## ✨ Fonctionnalités
+
+- 🗺️ **Carte plein écran** avec 4 fonds : satellite mondial (Esri, imagerie mise à jour
+  très régulièrement), **satellite IGN haute résolution** (France), plan OSM et topo,
+  plus une surcouche « noms de lieux » pour se repérer en vue satellite
+- 📍 **Spots** : statut (Fait ✅ / À faire 🎯 / Repéré 👀 / Perdu 🚫), catégorie (usine,
+  château, hôpital, bunker…), niveau de danger, description, notes d'accès, photos, date de visite
+- 🔎 **Recherche & filtres** : par nom, statut, catégorie ; recherche d'adresse ou de
+  coordonnées GPS ; distance depuis ta position
+- 👥 **Collaboration temps réel** : chaque spot ajouté ou modifié apparaît instantanément
+  chez l'autre (Supabase, gratuit), avec « ajouté par »
+- 📱 **Pensé pour le terrain** : géolocalisation, lien Google Maps / Waze par spot,
+  export GPX pour GPS et applis hors-ligne (Organic Maps, OsmAnd), export/import JSON
+- 🔒 **Privé** : la carte n'est visible que par les comptes que vous créez
+
+## 🚀 Lancer l'app
+
+```bash
+cd urbex-map
+npm install
+npm run dev
+```
+
+L'app démarre en **mode local** (spots enregistrés dans le navigateur) : parfait pour
+tester tout de suite, sans aucun compte.
+
+## 👥 Activer la collaboration (gratuit, ~10 min)
+
+1. Crée un compte sur [supabase.com](https://supabase.com) et un nouveau projet
+   (le plan gratuit suffit largement).
+2. Dans le projet : **SQL Editor → New query**, colle le contenu de
+   [`supabase/schema.sql`](supabase/schema.sql) et clique **Run**.
+3. Récupère dans **Settings → API** : l'**URL du projet** et la clé **anon / public**.
+4. Deux façons de brancher l'app :
+   - **Dans l'app** : bouton ⚙️ Réglages → colle l'URL et la clé → Activer la synchro
+     (ton cousin fait pareil sur son appareil, avec les mêmes valeurs) ;
+   - **Ou au build** : copie `.env.example` vers `.env` et remplis les deux variables —
+     dans ce cas la synchro est déjà active pour tous ceux qui ouvrent l'app.
+5. Chacun crée son compte (pseudo + email + mot de passe) → vous voyez la même carte,
+   synchronisée en direct. 🎉
+
+> 💡 Par défaut Supabase demande une confirmation par email à l'inscription.
+> Pour simplifier : Dashboard → **Authentication → Providers → Email** → désactive
+> « Confirm email ».
+
+> ⚠️ Tes spots créés en mode local restent dans le navigateur : exporte-les en **JSON**
+> (bouton en bas de la liste) avant d'activer la synchro, puis réimporte-les.
+
+## 🌍 Mettre l'app en ligne (pour y accéder depuis vos téléphones)
+
+Le plus simple : [Vercel](https://vercel.com) ou [Netlify](https://netlify.com) (gratuit).
+
+1. Pousse ce dossier sur GitHub (c'est déjà fait si tu lis ceci 😉).
+2. Sur Vercel : **New Project** → importe le repo → *Root Directory* : `urbex-map` →
+   ajoute les variables d'environnement `VITE_SUPABASE_URL` et `VITE_SUPABASE_ANON_KEY` → Deploy.
+3. Envoie l'URL à ton cousin — il crée son compte et c'est parti.
+
+## 🛰️ À propos des vues satellite
+
+- **Satellite (Esri)** : couverture mondiale, imagerie régulièrement rafraîchie.
+- **Satellite IGN 🇫🇷** : orthophotos officielles très détaillées sur la France.
+- Sur chaque fiche spot, le bouton **Google Maps** ouvre la position pour comparer avec
+  une autre source d'imagerie (souvent plus récente selon les zones).
+
+## 🧰 Stack
+
+React 18 · Vite · Tailwind CSS 4 · Leaflet / react-leaflet · Supabase (auth + Postgres +
+Realtime) · lucide-react
+
+## ⚠️ Rappel
+
+L'urbex se pratique à vos risques : lieux privés et parfois dangereux.
+Ne forcez jamais un accès, ne divulguez pas les adresses publiquement, et prudence. 🙏
