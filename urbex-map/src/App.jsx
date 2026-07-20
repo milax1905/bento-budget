@@ -264,7 +264,9 @@ function Shell() {
       setDiscover((d) => (d ? { ...d, status: 'done', results: fresh } : d))
     } catch {
       if (discoverSeq.current !== seq) return
-      setDiscover((d) => (d ? { ...d, status: 'error', error: 'Recherche indisponible (réseau ?)' } : d))
+      setDiscover((d) =>
+        d ? { ...d, status: 'error', error: 'Recherche indisponible — réessaie dans un instant ou réduis le rayon.' } : d
+      )
     }
   }, [spots])
 
