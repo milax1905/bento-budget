@@ -10,8 +10,8 @@
 //      serveur : aucun blocage réseau du navigateur (relais privé / bloqueur).
 export const config = { maxDuration: 60 }
 
-const BUDGET_MS = 25000
-const UA = 'UrbexAtlas/2.18 (+https://urbex-phi.vercel.app; contact via GitHub milax1905/bento-budget)'
+const BUDGET_MS = 55000
+const UA = 'UrbexAtlas/2.19 (+https://urbex-phi.vercel.app; contact via GitHub milax1905/bento-budget)'
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash'
 
 function parseWikipediaTag(tag) {
@@ -159,40 +159,60 @@ ${JSON.stringify(brief)}`
   const url =
     `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(GEMINI_MODEL)}:generateContent?key=${encodeURIComponent(key)}`
 
+  // Extrait un objet JSON d'une réponse texte : soit c'est déjà du JSON pur,
+  // soit il est entouré de prose / ```json … ``` (cas du grounding web).
+  const extractJson = (text) => {
+    if (!text) return {}
+    try {
+      const p = JSON.parse(text)
+      return p && typeof p === 'object' ? p : {}
+    } catch {
+      const m = text.match(/\{[\s\S]*\}/)
+      if (!m) return {}
+      try {
+        const p = JSON.parse(m[0])
+        return p && typeof p === 'object' ? p : {}
+      } catch {
+        return {}
+      }
+    }
+  }
+
   // Appel Gemini. Avec recherche web (grounding Google), on ne force pas le mime
   // JSON (incompatible) → on extrait le JSON du texte. Sans, on force le JSON.
-  const callGemini = async (useSearch) => {
+  // Renvoie l'objet analysé (ou {} en cas d'échec HTTP ou de texte inexploitable).
+  // `capMs` borne la durée de CET appel (le grounding web est parfois lent) :
+  // s'il dépasse, on l'annule pour garder du budget au repli JSON, sans couper
+  // toute la requête.
+  const callGemini = async (useSearch, capMs) => {
     const body = {
       contents: [{ parts: [{ text: prompt }] }],
       generationConfig: { temperature: 0.3, maxOutputTokens: 8192, ...(useSearch ? {} : { responseMimeType: 'application/json' }) },
       ...(useSearch ? { tools: [{ google_search: {} }] } : {}),
     }
-    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal })
-    if (!r.ok) throw new Error('gemini HTTP ' + r.status)
-    const data = await r.json()
-    return data?.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('') || ''
-  }
-
-  // 1) On tente AVEC recherche web ; 2) repli sans (si le modèle/quota la refuse).
-  let text = ''
-  try {
-    text = await callGemini(true)
-  } catch {
-    text = await callGemini(false).catch(() => '')
-  }
-
-  let parsed
-  try {
-    parsed = JSON.parse(text)
-  } catch {
-    // Réponse en texte (grounding) ou entourée de ```json … ``` : on extrait le
-    // premier objet JSON.
-    const m = text.match(/\{[\s\S]*\}/)
+    const ac = new AbortController()
+    const onAbort = () => ac.abort()
+    if (signal) signal.addEventListener('abort', onAbort, { once: true })
+    const cap = capMs ? setTimeout(() => ac.abort(), capMs) : null
     try {
-      parsed = m ? JSON.parse(m[0]) : {}
-    } catch {
-      parsed = {}
+      const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: ac.signal })
+      if (!r.ok) throw new Error('gemini HTTP ' + r.status)
+      const data = await r.json()
+      const text = data?.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('') || ''
+      return extractJson(text)
+    } finally {
+      if (cap) clearTimeout(cap)
+      if (signal) signal.removeEventListener('abort', onAbort)
     }
+  }
+
+  // 1) On tente AVEC recherche web (analyse la plus riche), bornée à ~32 s.
+  // 2) Repli SANS recherche (mime JSON forcé, chemin le plus fiable) dès que le
+  // grounding échoue, est trop lent, OU renvoie un résultat vide/inexploitable —
+  // sinon aucune analyse IA ne s'afficherait. Le mode JSON pur est le filet.
+  let parsed = await callGemini(true, 32000).catch(() => ({}))
+  if (!parsed || Object.keys(parsed).length === 0) {
+    parsed = await callGemini(false).catch(() => ({}))
   }
   return parsed && typeof parsed === 'object' ? parsed : {}
 }
