@@ -34,6 +34,7 @@ function effectiveDanger(r) {
 // Lieu à écarter : jugé non-urbex par l'IA, ou description Wikipédia de commune/
 // relief (filet de sécurité si l'IA n'a pas (encore) analysé ce lieu).
 function isExcluded(r) {
+  if (r.source === 'perso') return false // ma carte : lieux curés, jamais masqués
   const ai = r.enrichment?.ai
   if (ai && ai.urbex === false) return true
   const ex = r.enrichment?.wiki?.extract || ''
@@ -68,6 +69,11 @@ function DiscoverResult({ r, onAdd, onSelect }) {
           <span className="text-xl">{cat.emoji}</span>
           <span className="min-w-0 flex-1">
             <span className="flex items-center gap-1.5 text-sm font-medium text-zinc-100">
+              {r.source === 'perso' && (
+                <span className="flex shrink-0 items-center gap-0.5 rounded bg-amber-500/25 px-1 py-px text-[9px] font-semibold text-amber-200">
+                  ★ Ma carte
+                </span>
+              )}
               {ai?.verdict === 'top' && (
                 <span className="flex shrink-0 items-center gap-0.5 rounded bg-amber-500/25 px-1 py-px text-[9px] font-semibold text-amber-200">
                   <Star size={9} /> Top
