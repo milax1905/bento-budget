@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Layers, Plus, Minus, LocateFixed, Search, X, Type } from 'lucide-react'
+import { Layers, Plus, Minus, LocateFixed, Search, X, Type, Radar } from 'lucide-react'
 import { BASE_LAYERS } from '../lib/constants'
 import { searchPlaces } from '../lib/geocode'
 import { parseCoords } from '../lib/geo'
@@ -27,6 +27,8 @@ export default function MapControls({
   locating,
   onZoom,
   onGoto,
+  onOpenDiscover,
+  discoverActive,
   shifted,
 }) {
   const [layersOpen, setLayersOpen] = useState(false)
@@ -173,6 +175,12 @@ export default function MapControls({
             </div>
           </div>
         )}
+      </div>
+
+      <div className="pointer-events-auto">
+        <ControlButton title="Découvrir des lieux abandonnés" active={discoverActive} onClick={onOpenDiscover}>
+          <Radar size={18} />
+        </ControlButton>
       </div>
 
       <div className="pointer-events-auto">

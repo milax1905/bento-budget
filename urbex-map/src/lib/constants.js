@@ -26,10 +26,11 @@ export const categoryById = (id) => CATEGORIES.find((c) => c.id === id) || CATEG
 export const statusById = (id) => STATUSES.find((s) => s.id === id) || STATUSES[2]
 
 export const MAX_PHOTOS = 8
+export const MAX_CHECKLIST = 40
 
 // Affichée dans le pied de la liste — incrémentée à chaque livraison pour
 // vérifier d'un coup d'œil quelle version est déployée.
-export const APP_VERSION = '1.7'
+export const APP_VERSION = '2.0'
 
 // Fonds de carte. L'imagerie Esri est mise à jour très régulièrement au niveau
 // mondial ; l'ortho IGN est la plus détaillée sur la France.

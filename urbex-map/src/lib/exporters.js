@@ -177,6 +177,14 @@ const cleanDate = (v) => (typeof v === 'string' && !Number.isNaN(Date.parse(v)) 
 const isPhoto = (p) =>
   typeof p === 'string' && p.length < 2_000_000 && (p.startsWith('data:image/') || /^https?:\/\//.test(p))
 
+const cleanChecklist = (c) =>
+  Array.isArray(c)
+    ? c
+        .filter((i) => i && typeof i.text === 'string' && i.text.trim())
+        .slice(0, 40)
+        .map((i) => ({ text: i.text.slice(0, 80), done: Boolean(i.done) }))
+    : []
+
 const cleanApproach = (a) => {
   if (!a || typeof a !== 'object') return null
   const waypoints = Array.isArray(a.waypoints)
@@ -230,6 +238,8 @@ export function parseImportedJson(text) {
       accessNotes: cleanString(s.accessNotes, 5000),
       photos: Array.isArray(s.photos) ? s.photos.filter(isPhoto).slice(0, MAX_PHOTOS) : [],
       approach: cleanApproach(s.approach),
+      checklist: cleanChecklist(s.checklist),
+      favorite: Boolean(s.favorite),
       visitedAt: cleanDate(s.visitedAt),
       createdBy: cleanString(s.createdBy, 100),
     }

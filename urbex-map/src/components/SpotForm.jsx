@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
-import { X, ImagePlus, Trash2, Save, Crosshair, Loader2, Check } from 'lucide-react'
-import { CATEGORIES, STATUSES, MAX_PHOTOS } from '../lib/constants'
+import { X, ImagePlus, Trash2, Save, Crosshair, Loader2, Check, Star, Plus, ListChecks } from 'lucide-react'
+import { CATEGORIES, STATUSES, MAX_PHOTOS, MAX_CHECKLIST } from '../lib/constants'
 import { formatCoords } from '../lib/geo'
 import { fileToCompressedDataUrl } from '../lib/images'
 import { useStore } from '../lib/store'
@@ -26,10 +26,29 @@ export default function SpotForm({
   const [accessNotes, setAccessNotes] = useState(spot?.accessNotes || '')
   const [visitedAt, setVisitedAt] = useState(spot?.visitedAt || '')
   const [photos, setPhotos] = useState(spot?.photos || [])
+  const [favorite, setFavorite] = useState(Boolean(spot?.favorite))
+  const [checklist, setChecklist] = useState(() =>
+    Array.isArray(spot?.checklist) ? spot.checklist.map((i) => ({ text: i.text, done: !!i.done })) : []
+  )
+  const [checkItem, setCheckItem] = useState('')
   const [saving, setSaving] = useState(false)
   const [compressing, setCompressing] = useState(false)
   const [preview, setPreview] = useState(null)
   const fileRef = useRef(null)
+
+  const addCheckItem = () => {
+    const text = checkItem.trim().slice(0, 80)
+    if (!text) return
+    setChecklist((prev) => {
+      if (prev.length >= MAX_CHECKLIST) {
+        showToast(`Maximum ${MAX_CHECKLIST} éléments`, 'error')
+        return prev
+      }
+      if (prev.some((i) => i.text.toLowerCase() === text.toLowerCase())) return prev
+      return [...prev, { text, done: false }]
+    })
+    setCheckItem('')
+  }
 
   const lat = position?.lat ?? spot?.lat
   const lng = position?.lng ?? spot?.lng
@@ -62,6 +81,12 @@ export default function SpotForm({
       return
     }
     setSaving(true)
+    // On récupère l'élément de checklist en cours de saisie (non validé).
+    const pending = checkItem.trim().slice(0, 80)
+    const finalChecklist =
+      pending && !checklist.some((i) => i.text.toLowerCase() === pending.toLowerCase())
+        ? [...checklist, { text: pending, done: false }].slice(0, MAX_CHECKLIST)
+        : checklist
     const fields = {
       name: trimmed,
       category,
@@ -73,6 +98,18 @@ export default function SpotForm({
       photos,
       lat,
       lng,
+    }
+    // favorite/checklist se modifient aussi HORS formulaire (étoile et cases à
+    // cocher de la fiche). On ne les réécrit que si l'utilisateur les a changés
+    // ici, pour ne pas écraser une coche/un favori posé par un coéquipier.
+    if (!editing) {
+      fields.favorite = favorite
+      fields.checklist = finalChecklist
+    } else {
+      if (favorite !== Boolean(spot.favorite)) fields.favorite = favorite
+      if (JSON.stringify(finalChecklist) !== JSON.stringify(spot.checklist || [])) {
+        fields.checklist = finalChecklist
+      }
     }
     if (editing) {
       const ok = await updateSpot(spot.id, fields)
@@ -113,6 +150,13 @@ export default function SpotForm({
         <h2 className="flex-1 text-base font-bold text-zinc-100">
           {editing ? 'Modifier le spot' : 'Nouveau spot'}
         </h2>
+        <button
+          title={favorite ? 'Prochaine sortie ✓' : 'Marquer « prochaine sortie »'}
+          onClick={() => setFavorite((v) => !v)}
+          className="rounded-lg p-2 text-zinc-400 transition hover:bg-zinc-700/60"
+        >
+          <Star size={16} className={favorite ? 'fill-amber-400 text-amber-400' : ''} />
+        </button>
         <button
           onClick={onCancel}
           className="rounded-lg p-2 text-zinc-400 transition hover:bg-zinc-700/60 hover:text-zinc-200"
@@ -255,6 +299,48 @@ export default function SpotForm({
             placeholder="Où se garer, par où entrer, présence de sécu…"
             className="w-full resize-none rounded-xl bg-zinc-800/70 px-3 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 outline-none ring-amber-400/50 focus:ring-2"
           />
+        </div>
+
+        {/* Checklist matériel */}
+        <div>
+          <label className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+            <ListChecks size={12} /> Matériel à prévoir
+          </label>
+          {checklist.length > 0 && (
+            <div className="mb-2 space-y-1">
+              {checklist.map((item, i) => (
+                <div key={i} className="flex items-center gap-2 rounded-lg bg-zinc-800/50 px-2.5 py-1.5">
+                  <span className="flex-1 text-sm text-zinc-200">{item.text}</span>
+                  <button
+                    onClick={() => setChecklist((prev) => prev.filter((_, j) => j !== i))}
+                    className="rounded p-1 text-zinc-500 transition hover:text-rose-300"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="flex gap-2">
+            <input
+              value={checkItem}
+              onChange={(e) => setCheckItem(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  addCheckItem()
+                }
+              }}
+              placeholder="Lampe, gants, corde, batterie…"
+              className="w-full rounded-xl bg-zinc-800/70 px-3 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 outline-none ring-amber-400/50 focus:ring-2"
+            />
+            <button
+              onClick={addCheckItem}
+              className="flex shrink-0 items-center justify-center rounded-xl bg-zinc-700/70 px-3 text-zinc-200 transition hover:bg-zinc-600/70"
+            >
+              <Plus size={16} />
+            </button>
+          </div>
         </div>
 
         {/* Photos */}

@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Plus, PanelLeftOpen, Loader2, X, Undo2, Check } from 'lucide-react'
 import { StoreProvider, useStore } from './lib/store'
 import { trailRoute, directRoute, walkMinutes } from './lib/routing'
-import { formatDistance } from './lib/geo'
+import { discoverAbandoned } from './lib/discover'
+import { formatDistance, distanceKm } from './lib/geo'
 import MapView from './components/MapView'
 import MapControls from './components/MapControls'
 import Sidebar from './components/Sidebar'
@@ -10,6 +11,9 @@ import SpotDetail from './components/SpotDetail'
 import SpotForm from './components/SpotForm'
 import AuthScreen from './components/AuthScreen'
 import SettingsModal from './components/SettingsModal'
+import GuestScreen from './components/GuestScreen'
+import TeamModal from './components/TeamModal'
+import DiscoverPanel from './components/DiscoverPanel'
 
 const LS_LAYER = 'urbex-atlas:layer'
 const LS_LABELS = 'urbex-atlas:labels'
@@ -33,7 +37,7 @@ function Toast() {
 
 function Shell() {
   const store = useStore()
-  const { mode, user, authReady, spots, showToast, updateSpot } = store
+  const { mode, user, authReady, membership, spots, showToast, updateSpot, addSpot } = store
 
   const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 640)
   const [layerId, setLayerId] = useState(() => localStorage.getItem(LS_LAYER) || 'esri')
@@ -46,6 +50,10 @@ function Shell() {
   const [approachEdit, setApproachEdit] = useState(null) // édition de l'itinéraire d'approche d'un spot
   const approachSeq = useRef(0)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [teamOpen, setTeamOpen] = useState(false)
+  const [discover, setDiscover] = useState(null) // { center, radiusKm, status, results, error }
+  const discoverSeq = useRef(0)
+  const discoverRef = useRef(null)
   const [flyTarget, setFlyTarget] = useState(null)
   const [userPos, setUserPos] = useState(null)
   const [locating, setLocating] = useState(false)
@@ -53,6 +61,9 @@ function Shell() {
 
   useEffect(() => localStorage.setItem(LS_LAYER, layerId), [layerId])
   useEffect(() => localStorage.setItem(LS_LABELS, labelsOn ? '1' : '0'), [labelsOn])
+  useEffect(() => {
+    discoverRef.current = discover
+  }, [discover])
 
   const selectedSpot = spots.find((s) => s.id === selectedId)
 
@@ -227,6 +238,73 @@ function Shell() {
     )
   }
 
+  // ----- Découverte de lieux abandonnés (OpenStreetMap) -----
+  const openDiscover = () => {
+    cancelAll()
+    setSelectedId(null)
+    const center = userPos ||
+      (mapRef.current
+        ? { lat: mapRef.current.getCenter().lat, lng: mapRef.current.getCenter().lng }
+        : { lat: 46.8, lng: 2.4 })
+    setDiscover({ center, radiusKm: 5, status: 'idle', results: [], error: '' })
+    if (window.innerWidth < 640) setSidebarOpen(false)
+  }
+
+  const runDiscover = useCallback(async () => {
+    const current = discoverRef.current
+    if (!current?.center) return
+    const { center, radiusKm } = current
+    setDiscover((d) => (d ? { ...d, status: 'loading', error: '' } : d))
+    const seq = ++discoverSeq.current
+    try {
+      const found = await discoverAbandoned(center, radiusKm)
+      if (discoverSeq.current !== seq) return
+      // On écarte les candidats déjà présents dans la carte (< 60 m d'un spot).
+      const fresh = found.filter((c) => !spots.some((s) => distanceKm(s, c) < 0.06))
+      setDiscover((d) => (d ? { ...d, status: 'done', results: fresh } : d))
+    } catch {
+      if (discoverSeq.current !== seq) return
+      setDiscover((d) => (d ? { ...d, status: 'error', error: 'Recherche indisponible (réseau ?)' } : d))
+    }
+  }, [spots])
+
+  const recenterDiscover = () => {
+    if (!navigator.geolocation) {
+      showToast('Géolocalisation non disponible', 'error')
+      return
+    }
+    setLocating(true)
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const p = { lat: pos.coords.latitude, lng: pos.coords.longitude }
+        setUserPos(p)
+        setFlyTarget({ ...p, zoom: 13, ts: Date.now() })
+        setDiscover((d) => (d ? { ...d, center: p } : d))
+        setLocating(false)
+      },
+      () => {
+        showToast('Position introuvable — vérifie les autorisations', 'error')
+        setLocating(false)
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    )
+  }
+
+  const addDiscovered = async (c) => {
+    const created = await addSpot({
+      name: c.name,
+      category: c.category,
+      status: 'repere',
+      lat: c.lat,
+      lng: c.lng,
+      description: `Suggéré par OpenStreetMap (${c.tagline}). À vérifier sur place.`,
+    })
+    if (created) {
+      setDiscover((d) => (d ? { ...d, results: d.results.filter((r) => r.id !== c.id) } : d))
+      showToast(`« ${c.name} » ajouté en Repéré`, 'success')
+    }
+  }
+
   useEffect(() => {
     const onKey = (e) => {
       if (e.key === 'Escape') {
@@ -234,12 +312,14 @@ function Shell() {
         else if (approachEdit) setApproachEdit(null)
         else if (adjusting) setAdjusting(false)
         else if (settingsOpen) setSettingsOpen(false)
+        else if (teamOpen) setTeamOpen(false)
+        else if (discover) setDiscover(null)
         else if (!formState) setSelectedId(null)
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [addMode, approachEdit, adjusting, settingsOpen, formState])
+  }, [addMode, approachEdit, adjusting, settingsOpen, teamOpen, discover, formState])
 
   if (mode === 'cloud' && !authReady) {
     return (
@@ -253,6 +333,25 @@ function Shell() {
     return (
       <>
         <AuthScreen />
+        <Toast />
+      </>
+    )
+  }
+
+  // Connecté mais on vérifie encore l'invitation.
+  if (mode === 'cloud' && membership === 'unknown') {
+    return (
+      <div className="flex h-dvh w-screen items-center justify-center bg-zinc-950">
+        <Loader2 size={28} className="animate-spin text-amber-400" />
+      </div>
+    )
+  }
+
+  // Connecté mais pas invité : pas d'accès à la carte.
+  if (mode === 'cloud' && membership === 'guest') {
+    return (
+      <>
+        <GuestScreen />
         <Toast />
       </>
     )
@@ -281,6 +380,9 @@ function Shell() {
           const wps = approachEdit.waypoints.map((w, j) => (j === i ? pos : w))
           computeApproach(approachEdit.spotId, wps, approachEdit.mode)
         }}
+        discoverResults={discover?.results}
+        discoverCircle={discover ? { center: discover.center, radiusKm: discover.radiusKm } : null}
+        onDiscoverSelect={(r) => setFlyTarget({ lat: r.lat, lng: r.lng, zoom: 16, ts: Date.now() })}
       />
 
       {/* Sidebar */}
@@ -292,6 +394,7 @@ function Shell() {
             onSelect={selectAndFly}
             userPos={userPos}
             onOpenSettings={() => setSettingsOpen(true)}
+            onOpenTeam={() => setTeamOpen(true)}
           />
         </div>
       ) : (
@@ -407,18 +510,36 @@ function Shell() {
         </div>
       )}
 
-      {/* Contrôles carte (cachés sur mobile quand la liste est ouverte) */}
-      <div className={sidebarOpen ? 'hidden sm:contents' : 'contents'}>
+      {/* Panneau « Découvrir » */}
+      {discover && (
+        <div className="pointer-events-none absolute bottom-0 right-0 top-0 z-[1100] w-full sm:w-[400px] sm:p-3">
+          <DiscoverPanel
+            discover={discover}
+            locating={locating}
+            onClose={() => setDiscover(null)}
+            onRadius={(km) => setDiscover((d) => (d ? { ...d, radiusKm: km } : d))}
+            onSearch={runDiscover}
+            onAdd={addDiscovered}
+            onSelect={(r) => setFlyTarget({ lat: r.lat, lng: r.lng, zoom: 16, ts: Date.now() })}
+            onRecenter={recenterDiscover}
+          />
+        </div>
+      )}
+
+      {/* Contrôles carte (cachés sur mobile quand un panneau plein écran est ouvert) */}
+      <div className={sidebarOpen || discover ? 'hidden sm:contents' : 'contents'}>
         <MapControls
-        layerId={layerId}
-        onLayerChange={setLayerId}
-        labelsOn={labelsOn}
-        onLabelsToggle={() => setLabelsOn((v) => !v)}
-        onLocate={locate}
-        locating={locating}
-        onZoom={(dir) => (dir > 0 ? mapRef.current?.zoomIn() : mapRef.current?.zoomOut())}
+          layerId={layerId}
+          onLayerChange={setLayerId}
+          labelsOn={labelsOn}
+          onLabelsToggle={() => setLabelsOn((v) => !v)}
+          onLocate={locate}
+          locating={locating}
+          onZoom={(dir) => (dir > 0 ? mapRef.current?.zoomIn() : mapRef.current?.zoomOut())}
           onGoto={(t) => setFlyTarget({ ...t, ts: Date.now() })}
-          shifted={Boolean(panelOpen) && !adjusting && !approachEdit}
+          onOpenDiscover={openDiscover}
+          discoverActive={Boolean(discover)}
+          shifted={(Boolean(panelOpen) || Boolean(discover)) && !adjusting && !approachEdit}
         />
       </div>
 
@@ -434,7 +555,7 @@ function Shell() {
       )}
 
       {/* Bouton ajouter */}
-      {!addMode && !formState && !approachEdit && (
+      {!addMode && !formState && !approachEdit && !discover && (
         <button
           onClick={startAdd}
           className={`absolute bottom-[calc(1.5rem+env(safe-area-inset-bottom))] left-1/2 z-[1000] -translate-x-1/2 items-center gap-2 rounded-full bg-amber-400 px-5 py-3 text-sm font-bold text-zinc-950 shadow-2xl shadow-amber-400/20 transition hover:bg-amber-300 active:scale-95 ${
@@ -446,6 +567,7 @@ function Shell() {
       )}
 
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
+      {teamOpen && <TeamModal onClose={() => setTeamOpen(false)} />}
       <Toast />
     </div>
   )
