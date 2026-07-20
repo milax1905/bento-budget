@@ -4,16 +4,31 @@
 // C'est ce serveur qui interroge Overpass (aucune restriction CORS côté serveur)
 // et renvoie le JSON.
 //
-// Point crucial : on interroge les 3 miroirs EN PARALLÈLE avec un plafond de 9 s.
-// La fonction renvoie donc toujours une vraie réponse HTTP bien avant la limite
-// de durée du plan Vercel (le premier miroir qui répond gagne). Ainsi le
-// navigateur ne voit jamais une connexion coupée (« Load failed ») due à une
-// fonction tuée par la plateforme.
+// On interroge plusieurs miroirs EN PARALLÈLE : le premier qui répond
+// correctement gagne. Un plafond global (< maxDuration) garantit que la fonction
+// renvoie toujours une vraie réponse HTTP (200, ou 504 si Overpass est lent) —
+// jamais une connexion coupée (« Load failed ») due à une fonction tuée par la
+// plateforme.
 const ENDPOINTS = [
-  'https://overpass-api.de/api/interpreter',
   'https://overpass.kumi.systems/api/interpreter',
+  'https://overpass-api.de/api/interpreter',
   'https://overpass.private.coffee/api/interpreter',
+  'https://overpass.openstreetmap.fr/api/interpreter',
 ]
+
+// Les services OpenStreetMap brident (ou refusent) les requêtes anonymes issues
+// de datacenters. Un User-Agent descriptif est requis par leur politique d'usage.
+const HEADERS = {
+  'Content-Type': 'application/x-www-form-urlencoded',
+  'User-Agent': 'UrbexAtlas/2.10 (+https://urbex-phi.vercel.app)',
+  Accept: 'application/json',
+}
+
+// Le plan Vercel gratuit autorise jusqu'à 60 s par fonction : on laisse à
+// Overpass le temps de répondre (il est souvent en file d'attente).
+export const config = { maxDuration: 60 }
+
+const BUDGET_MS = 25000
 
 // Récupère la requête Overpass (QL) depuis le corps POST (JSON) ou la query GET.
 // Le GET permet aussi de tester l'endpoint directement dans un navigateur.
@@ -40,19 +55,18 @@ export default async function handler(req, res) {
   }
   const body = 'data=' + encodeURIComponent(data)
 
-  // Plafond global : la fonction répond en ≤ 9 s quoi qu'il arrive.
+  // Plafond global : la fonction répond en ≤ BUDGET_MS quoi qu'il arrive.
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 9000)
+  const timer = setTimeout(() => controller.abort(), BUDGET_MS)
 
   const attempt = async (ep) => {
-    const r = await fetch(ep, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body,
-      signal: controller.signal,
-    })
+    const r = await fetch(ep, { method: 'POST', headers: HEADERS, body, signal: controller.signal })
     if (!r.ok) throw new Error('HTTP ' + r.status)
-    return await r.text()
+    const text = await r.text()
+    // Un miroir surchargé peut renvoyer 200 + une page HTML : on ne garde que
+    // du vrai JSON Overpass.
+    if (!text.trimStart().startsWith('{')) throw new Error('non-JSON')
+    return text
   }
 
   try {
@@ -65,7 +79,7 @@ export default async function handler(req, res) {
     res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=600')
     res.status(200).send(text)
   } catch {
-    // Tous les miroirs ont échoué (ou dépassé les 9 s) : on renvoie un vrai
+    // Tous les miroirs ont échoué (ou dépassé le budget) : on renvoie un vrai
     // code HTTP (504) — jamais une connexion coupée.
     res.status(504).json({ error: 'Overpass lent ou injoignable' })
   } finally {
