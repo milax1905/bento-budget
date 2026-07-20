@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from 'react'
-import { MapContainer, TileLayer, Marker, CircleMarker, Polyline, useMap, useMapEvents } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, CircleMarker, Circle, Polyline, useMap, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
 import { BASE_LAYERS, LABELS_LAYER, DEFAULT_CENTER, DEFAULT_ZOOM, categoryById, statusById } from '../lib/constants'
 
@@ -54,6 +54,20 @@ const waypointIcon = (n) => {
 const APPROACH_STYLE = { color: '#fbbf24', weight: 4, opacity: 0.85, dashArray: '10 8' }
 const APPROACH_EDIT_STYLE = { color: '#38bdf8', weight: 4, opacity: 0.9, dashArray: '10 8' }
 
+const discoverIconCache = new Map()
+const discoverIcon = (emoji) => {
+  if (discoverIconCache.has(emoji)) return discoverIconCache.get(emoji)
+  const icon = L.divIcon({
+    className: 'urbex-pin',
+    html: `<div class="discover-pin"><span>${emoji}</span></div>`,
+    iconSize: [30, 30],
+    iconAnchor: [15, 15],
+  })
+  discoverIconCache.set(emoji, icon)
+  return icon
+}
+const DISCOVER_CIRCLE = { color: '#a78bfa', weight: 1.5, opacity: 0.5, fillColor: '#a78bfa', fillOpacity: 0.06 }
+
 function ClickHandler({ onMapClick }) {
   useMapEvents({
     click(e) {
@@ -107,6 +121,9 @@ export default function MapView({
   mapRef,
   approachDraft,
   onApproachWaypointMove,
+  discoverResults,
+  discoverCircle,
+  onDiscoverSelect,
 }) {
   const layer = BASE_LAYERS.find((l) => l.id === layerId) || BASE_LAYERS[0]
   const selectedSpot = spots.find((s) => s.id === selectedId)
@@ -156,6 +173,24 @@ export default function MapView({
       <FlyController target={flyTarget} />
       <CursorController addMode={addMode} />
       <MapRefBinder mapRef={mapRef} />
+
+      {/* Zone de recherche « Découvrir » + candidats abandonnés */}
+      {discoverCircle?.center && (
+        <Circle
+          center={[discoverCircle.center.lat, discoverCircle.center.lng]}
+          radius={Math.min(Math.max(discoverCircle.radiusKm, 0.5), 30) * 1000}
+          pathOptions={DISCOVER_CIRCLE}
+        />
+      )}
+      {discoverResults?.map((r) => (
+        <Marker
+          key={r.id}
+          position={[r.lat, r.lng]}
+          icon={discoverIcon(categoryById(r.category).emoji)}
+          zIndexOffset={500}
+          eventHandlers={{ click: () => onDiscoverSelect?.(r) }}
+        />
+      ))}
 
       {/* Itinéraire d'approche enregistré du spot sélectionné */}
       {savedApproach && (
