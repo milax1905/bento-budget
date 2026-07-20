@@ -10,6 +10,8 @@ import SpotDetail from './components/SpotDetail'
 import SpotForm from './components/SpotForm'
 import AuthScreen from './components/AuthScreen'
 import SettingsModal from './components/SettingsModal'
+import GuestScreen from './components/GuestScreen'
+import TeamModal from './components/TeamModal'
 
 const LS_LAYER = 'urbex-atlas:layer'
 const LS_LABELS = 'urbex-atlas:labels'
@@ -33,7 +35,7 @@ function Toast() {
 
 function Shell() {
   const store = useStore()
-  const { mode, user, authReady, spots, showToast, updateSpot } = store
+  const { mode, user, authReady, membership, spots, showToast, updateSpot } = store
 
   const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 640)
   const [layerId, setLayerId] = useState(() => localStorage.getItem(LS_LAYER) || 'esri')
@@ -46,6 +48,7 @@ function Shell() {
   const [approachEdit, setApproachEdit] = useState(null) // édition de l'itinéraire d'approche d'un spot
   const approachSeq = useRef(0)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [teamOpen, setTeamOpen] = useState(false)
   const [flyTarget, setFlyTarget] = useState(null)
   const [userPos, setUserPos] = useState(null)
   const [locating, setLocating] = useState(false)
@@ -258,6 +261,25 @@ function Shell() {
     )
   }
 
+  // Connecté mais on vérifie encore l'invitation.
+  if (mode === 'cloud' && membership === 'unknown') {
+    return (
+      <div className="flex h-dvh w-screen items-center justify-center bg-zinc-950">
+        <Loader2 size={28} className="animate-spin text-amber-400" />
+      </div>
+    )
+  }
+
+  // Connecté mais pas invité : pas d'accès à la carte.
+  if (mode === 'cloud' && membership === 'guest') {
+    return (
+      <>
+        <GuestScreen />
+        <Toast />
+      </>
+    )
+  }
+
   const panelOpen = formState || selectedSpot
 
   return (
@@ -292,6 +314,7 @@ function Shell() {
             onSelect={selectAndFly}
             userPos={userPos}
             onOpenSettings={() => setSettingsOpen(true)}
+            onOpenTeam={() => setTeamOpen(true)}
           />
         </div>
       ) : (
@@ -446,6 +469,7 @@ function Shell() {
       )}
 
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
+      {teamOpen && <TeamModal onClose={() => setTeamOpen(false)} />}
       <Toast />
     </div>
   )

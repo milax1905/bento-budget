@@ -11,12 +11,15 @@ import {
   AlertTriangle,
   KeyRound,
   Footprints,
+  Star,
+  ListChecks,
 } from 'lucide-react'
 import { categoryById, statusById, STATUSES } from '../lib/constants'
 import { formatCoords, formatDistance } from '../lib/geo'
 import { walkMinutes } from '../lib/routing'
 import { useStore } from '../lib/store'
 import Lightbox from './Lightbox'
+import WeatherPanel from './WeatherPanel'
 
 export default function SpotDetail({ spot, onClose, onEdit, onEditApproach }) {
   const { updateSpot, deleteSpot, showToast } = useStore()
@@ -48,6 +51,13 @@ export default function SpotDetail({ spot, onClose, onEdit, onEditApproach }) {
             <h2 className="break-words text-base font-bold leading-tight text-zinc-100">{spot.name}</h2>
             <p className="mt-0.5 text-[11px] text-zinc-500">{cat.label}</p>
           </div>
+          <button
+            title={spot.favorite ? 'Retirer de la prochaine sortie' : 'Ajouter à la prochaine sortie'}
+            onClick={() => updateSpot(spot.id, { favorite: !spot.favorite })}
+            className="rounded-lg p-2 text-zinc-400 transition hover:bg-zinc-700/60"
+          >
+            <Star size={16} className={spot.favorite ? 'fill-amber-400 text-amber-400' : ''} />
+          </button>
           <button
             onClick={onClose}
             className="rounded-lg p-2 text-zinc-400 transition hover:bg-zinc-700/60 hover:text-zinc-200"
@@ -109,6 +119,41 @@ export default function SpotDetail({ spot, onClose, onEdit, onEditApproach }) {
             <p className="whitespace-pre-wrap text-sm leading-relaxed text-zinc-300">{spot.accessNotes}</p>
           </div>
         )}
+
+        {/* Checklist matériel */}
+        {spot.checklist?.length > 0 && (
+          <div>
+            <h3 className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+              <ListChecks size={11} /> Matériel ({spot.checklist.filter((i) => i.done).length}/{spot.checklist.length})
+            </h3>
+            <div className="space-y-1">
+              {spot.checklist.map((item, i) => (
+                <button
+                  key={i}
+                  onClick={() => {
+                    const next = spot.checklist.map((it, j) => (j === i ? { ...it, done: !it.done } : it))
+                    updateSpot(spot.id, { checklist: next })
+                  }}
+                  className="flex w-full items-center gap-2.5 rounded-lg bg-zinc-800/40 px-2.5 py-2 text-left transition hover:bg-zinc-800/70"
+                >
+                  <span
+                    className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                      item.done ? 'border-emerald-400 bg-emerald-400/20 text-emerald-300' : 'border-zinc-600'
+                    }`}
+                  >
+                    {item.done && '✓'}
+                  </span>
+                  <span className={`text-sm ${item.done ? 'text-zinc-500 line-through' : 'text-zinc-200'}`}>
+                    {item.text}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Météo & lumière du jour */}
+        <WeatherPanel lat={spot.lat} lng={spot.lng} />
 
         {/* Photos */}
         {spot.photos?.length > 0 && (

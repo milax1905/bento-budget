@@ -12,6 +12,8 @@ import {
   LogOut,
   AlertTriangle,
   Globe,
+  Users,
+  Star,
 } from 'lucide-react'
 import { CATEGORIES, STATUSES, APP_VERSION, categoryById, statusById } from '../lib/constants'
 import { distanceKm, formatDistance } from '../lib/geo'
@@ -31,12 +33,15 @@ function DangerDots({ level }) {
   )
 }
 
-export default function Sidebar({ onClose, selectedId, onSelect, userPos, onOpenSettings }) {
+export default function Sidebar({ onClose, selectedId, onSelect, userPos, onOpenSettings, onOpenTeam }) {
   const { spots, mode, user, profileName, signOut, importSpots, showToast, loading } = useStore()
   const [query, setQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState(null)
   const [categoryFilter, setCategoryFilter] = useState('')
+  const [favOnly, setFavOnly] = useState(false)
   const fileRef = useRef(null)
+
+  const favCount = useMemo(() => spots.filter((s) => s.favorite).length, [spots])
 
   const counts = useMemo(() => {
     const c = {}
@@ -47,6 +52,7 @@ export default function Sidebar({ onClose, selectedId, onSelect, userPos, onOpen
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     return spots
+      .filter((s) => (favOnly ? s.favorite : true))
       .filter((s) => (statusFilter ? s.status === statusFilter : true))
       .filter((s) => (categoryFilter ? s.category === categoryFilter : true))
       .filter((s) =>
@@ -57,7 +63,7 @@ export default function Sidebar({ onClose, selectedId, onSelect, userPos, onOpen
           : true
       )
       .sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''))
-  }, [spots, query, statusFilter, categoryFilter])
+  }, [spots, query, statusFilter, categoryFilter, favOnly])
 
   const handleImport = async (e) => {
     const file = e.target.files?.[0]
@@ -94,6 +100,15 @@ export default function Sidebar({ onClose, selectedId, onSelect, userPos, onOpen
             )}
           </div>
         </div>
+        {mode === 'cloud' && (
+          <button
+            title="Équipe & invitations"
+            onClick={onOpenTeam}
+            className="rounded-lg p-2 text-zinc-400 transition hover:bg-zinc-700/60 hover:text-zinc-200"
+          >
+            <Users size={16} />
+          </button>
+        )}
         {mode === 'cloud' && user && (
           <button
             title="Se déconnecter"
@@ -153,6 +168,17 @@ export default function Sidebar({ onClose, selectedId, onSelect, userPos, onOpen
               </button>
             )
           })}
+          <button
+            onClick={() => setFavOnly((v) => !v)}
+            title="Spots de la prochaine sortie"
+            className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium transition ${
+              favOnly ? 'bg-amber-400 text-zinc-950' : 'bg-zinc-800/70 text-zinc-300 hover:bg-zinc-700/60'
+            }`}
+          >
+            <Star size={11} className={favOnly ? 'fill-zinc-950' : 'fill-amber-400 text-amber-400'} />
+            Sortie
+            <span className={favOnly ? 'opacity-70' : 'text-zinc-500'}>{favCount}</span>
+          </button>
         </div>
         <select
           value={categoryFilter}
@@ -200,7 +226,10 @@ export default function Sidebar({ onClose, selectedId, onSelect, userPos, onOpen
             >
               <span className="text-xl">{cat.emoji}</span>
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-medium text-zinc-100">{s.name}</span>
+                <span className="flex items-center gap-1.5 truncate text-sm font-medium text-zinc-100">
+                  {s.favorite && <Star size={12} className="shrink-0 fill-amber-400 text-amber-400" />}
+                  <span className="truncate">{s.name}</span>
+                </span>
                 <span className="mt-0.5 flex items-center gap-2 text-[11px] text-zinc-500">
                   <span className="flex items-center gap-1">
                     <span className="h-1.5 w-1.5 rounded-full" style={{ background: st.color }} />

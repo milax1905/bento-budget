@@ -26,6 +26,8 @@ const fromDb = (row) => ({
   danger: row.danger ?? 2,
   photos: Array.isArray(row.photos) ? row.photos : [],
   approach: row.approach || null,
+  checklist: Array.isArray(row.checklist) ? row.checklist : [],
+  favorite: Boolean(row.favorite),
   visitedAt: row.visited_at || null,
   createdBy: row.created_by || '',
   createdAt: row.created_at,
@@ -44,6 +46,8 @@ const toDb = (s) => ({
   danger: s.danger,
   photos: s.photos,
   approach: s.approach ?? null,
+  checklist: Array.isArray(s.checklist) ? s.checklist : [],
+  favorite: Boolean(s.favorite),
   visited_at: s.visitedAt,
   created_by: s.createdBy,
   created_at: s.createdAt,
@@ -63,6 +67,8 @@ const PATCH_COLUMNS = {
   danger: 'danger',
   photos: 'photos',
   approach: 'approach',
+  checklist: 'checklist',
+  favorite: 'favorite',
   visitedAt: 'visited_at',
   updatedAt: 'updated_at',
 }
@@ -100,6 +106,10 @@ export function StoreProvider({ children }) {
   const [user, setUser] = useState(null)
   const [authReady, setAuthReady] = useState(!cloud)
   const [toast, setToast] = useState(null)
+  // 'unknown' tant qu'on n'a pas vérifié, 'member' = invité et autorisé,
+  // 'guest' = connecté mais pas invité. En local, tout le monde est « membre ».
+  const [membership, setMembership] = useState(cloud ? 'unknown' : 'member')
+  const [members, setMembers] = useState([])
   const toastTimer = useRef(null)
   const loadedOnce = useRef(false)
   const localReady = useRef(false)
@@ -233,6 +243,65 @@ export function StoreProvider({ children }) {
     user?.email?.split('@')[0] ||
     ''
 
+  // ----- Équipe : liste des membres invités -----
+  const loadMembers = useCallback(async () => {
+    if (!supabase) return
+    const { data, error } = await supabase.from('members').select('*').order('added_at', { ascending: true })
+    if (!error) setMembers(data || [])
+  }, [supabase])
+
+  // ----- Mode cloud : suis-je invité ? -----
+  useEffect(() => {
+    if (!supabase || !userId) return
+    let cancelled = false
+    ;(async () => {
+      const { data, error } = await supabase.rpc('is_member')
+      if (cancelled) return
+      if (error) {
+        // Fonction absente (schéma pas encore migré) : on n'enferme personne.
+        setMembership('member')
+        loadMembers()
+        return
+      }
+      setMembership(data ? 'member' : 'guest')
+      if (data) loadMembers()
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [supabase, userId, loadMembers])
+
+  const addMember = useCallback(
+    async (email) => {
+      const clean = (email || '').trim().toLowerCase()
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean)) {
+        showToast('Adresse email invalide', 'error')
+        return false
+      }
+      const { error } = await supabase.from('members').insert({ email: clean, added_by: profileName })
+      if (error) {
+        showToast(error.code === '23505' ? 'Déjà dans l’équipe' : `Invitation impossible : ${error.message}`, 'error')
+        return false
+      }
+      await loadMembers()
+      showToast(`${clean} peut maintenant voir la carte`, 'success')
+      return true
+    },
+    [supabase, profileName, loadMembers, showToast]
+  )
+
+  const removeMember = useCallback(
+    async (email) => {
+      const { error } = await supabase.from('members').delete().eq('email', email)
+      if (error) {
+        showToast(`Retrait impossible : ${error.message}`, 'error')
+        return
+      }
+      await loadMembers()
+    },
+    [supabase, loadMembers, showToast]
+  )
+
   // ----- CRUD (optimiste : état local d'abord, puis push) -----
   const addSpot = useCallback(
     async (draft) => {
@@ -241,6 +310,8 @@ export function StoreProvider({ children }) {
         id: newId(),
         danger: 2,
         photos: [],
+        checklist: [],
+        favorite: false,
         description: '',
         accessNotes: '',
         visitedAt: null,
@@ -318,6 +389,8 @@ export function StoreProvider({ children }) {
         toAdd.push({
           danger: 2,
           photos: [],
+          checklist: [],
+          favorite: false,
           description: '',
           accessNotes: '',
           visitedAt: null,
@@ -377,6 +450,8 @@ export function StoreProvider({ children }) {
   const signOut = useCallback(async () => {
     await supabase.auth.signOut()
     setSpots([])
+    setMembers([])
+    setMembership('unknown')
     loadedOnce.current = false
   }, [supabase])
 
@@ -385,8 +460,13 @@ export function StoreProvider({ children }) {
     spots,
     loading,
     user,
+    userEmail: user?.email || '',
     authReady,
     profileName,
+    membership,
+    members,
+    addMember,
+    removeMember,
     addSpot,
     updateSpot,
     deleteSpot,
