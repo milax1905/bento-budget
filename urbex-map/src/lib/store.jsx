@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { getSupabase } from './supabase'
+import { idbGet, idbSet } from './localdb'
 
 const LS_SPOTS = 'urbex-atlas:spots'
 
@@ -101,6 +102,7 @@ export function StoreProvider({ children }) {
   const [toast, setToast] = useState(null)
   const toastTimer = useRef(null)
   const loadedOnce = useRef(false)
+  const localReady = useRef(false)
 
   const showToast = useCallback((message, kind = 'info') => {
     clearTimeout(toastTimer.current)
@@ -108,14 +110,42 @@ export function StoreProvider({ children }) {
     toastTimer.current = setTimeout(() => setToast(null), 4000)
   }, [])
 
-  // ----- Mode local : persistance localStorage -----
+  // ----- Mode local : chargement depuis IndexedDB (avec migration depuis
+  // l'ancien stockage localStorage, limité à ~5 Mo sur iOS) -----
   useEffect(() => {
     if (cloud) return
-    try {
-      localStorage.setItem(LS_SPOTS, JSON.stringify(spots))
-    } catch {
-      showToast('Stockage local plein — supprime des photos ou active la synchro cloud', 'error')
+    let cancelled = false
+    ;(async () => {
+      try {
+        const stored = await idbGet(LS_SPOTS)
+        if (cancelled) return
+        if (Array.isArray(stored)) {
+          setSpots(stored.filter(isValidSpot))
+        } else {
+          const legacy = loadLocalSpots()
+          if (legacy.length) await idbSet(LS_SPOTS, legacy)
+        }
+      } catch {
+        /* IndexedDB indisponible : on reste sur le localStorage déjà chargé */
+      } finally {
+        if (!cancelled) localReady.current = true
+      }
+    })()
+    return () => {
+      cancelled = true
     }
+  }, [cloud])
+
+  // ----- Mode local : persistance IndexedDB (repli localStorage) -----
+  useEffect(() => {
+    if (cloud || !localReady.current) return
+    idbSet(LS_SPOTS, spots).catch(() => {
+      try {
+        localStorage.setItem(LS_SPOTS, JSON.stringify(spots))
+      } catch {
+        showToast('Stockage local plein — supprime des photos ou active la synchro cloud', 'error')
+      }
+    })
   }, [spots, cloud, showToast])
 
   // ----- Mode cloud : session + auth -----

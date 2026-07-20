@@ -4,6 +4,7 @@ import 'leaflet/dist/leaflet.css'
 import '@fontsource-variable/inter'
 import './index.css'
 import App from './App'
+import { idbGet, idbSet } from './lib/localdb'
 
 // Filet de sécurité : si l'app plante (donnée corrompue, bug…), on affiche un
 // écran de récupération au lieu d'une page noire, avec de quoi sauvegarder
@@ -15,9 +16,17 @@ class ErrorBoundary extends React.Component {
     return { error }
   }
 
-  exportLocal = () => {
+  exportLocal = async () => {
     try {
-      const raw = localStorage.getItem('urbex-atlas:spots') || '[]'
+      let spots = null
+      try {
+        spots = await idbGet('urbex-atlas:spots')
+      } catch {
+        /* IndexedDB indisponible : repli localStorage */
+      }
+      const raw = Array.isArray(spots)
+        ? JSON.stringify(spots)
+        : localStorage.getItem('urbex-atlas:spots') || '[]'
       const blob = new Blob([raw], { type: 'application/json' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -30,7 +39,12 @@ class ErrorBoundary extends React.Component {
     }
   }
 
-  resetLocal = () => {
+  resetLocal = async () => {
+    try {
+      await idbSet('urbex-atlas:spots', [])
+    } catch {
+      /* IndexedDB indisponible */
+    }
     localStorage.removeItem('urbex-atlas:spots')
     window.location.reload()
   }
