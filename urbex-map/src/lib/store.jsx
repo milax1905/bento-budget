@@ -24,6 +24,7 @@ const fromDb = (row) => ({
   accessNotes: row.access_notes || '',
   danger: row.danger ?? 2,
   photos: Array.isArray(row.photos) ? row.photos : [],
+  approach: row.approach || null,
   visitedAt: row.visited_at || null,
   createdBy: row.created_by || '',
   createdAt: row.created_at,
@@ -41,6 +42,7 @@ const toDb = (s) => ({
   access_notes: s.accessNotes,
   danger: s.danger,
   photos: s.photos,
+  approach: s.approach ?? null,
   visited_at: s.visitedAt,
   created_by: s.createdBy,
   created_at: s.createdAt,
@@ -59,6 +61,7 @@ const PATCH_COLUMNS = {
   accessNotes: 'access_notes',
   danger: 'danger',
   photos: 'photos',
+  approach: 'approach',
   visitedAt: 'visited_at',
   updatedAt: 'updated_at',
 }

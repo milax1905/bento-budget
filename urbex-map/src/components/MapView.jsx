@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from 'react'
-import { MapContainer, TileLayer, Marker, CircleMarker, useMap, useMapEvents } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, CircleMarker, Polyline, useMap, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
 import { BASE_LAYERS, LABELS_LAYER, DEFAULT_CENTER, DEFAULT_ZOOM, categoryById, statusById } from '../lib/constants'
 
@@ -30,6 +30,29 @@ const draftIcon = L.divIcon({
   iconSize: [44, 58],
   iconAnchor: [22, 58],
 })
+
+const parkingIcon = L.divIcon({
+  className: 'urbex-pin',
+  html: '<div class="parking-pin">🅿️</div>',
+  iconSize: [30, 30],
+  iconAnchor: [15, 15],
+})
+
+const wpIconCache = new Map()
+const waypointIcon = (n) => {
+  if (wpIconCache.has(n)) return wpIconCache.get(n)
+  const icon = L.divIcon({
+    className: 'urbex-pin',
+    html: `<div class="wp-pin">${n}</div>`,
+    iconSize: [22, 22],
+    iconAnchor: [11, 11],
+  })
+  wpIconCache.set(n, icon)
+  return icon
+}
+
+const APPROACH_STYLE = { color: '#fbbf24', weight: 4, opacity: 0.85, dashArray: '10 8' }
+const APPROACH_EDIT_STYLE = { color: '#38bdf8', weight: 4, opacity: 0.9, dashArray: '10 8' }
 
 function ClickHandler({ onMapClick }) {
   useMapEvents({
@@ -82,8 +105,12 @@ export default function MapView({
   userPos,
   flyTarget,
   mapRef,
+  approachDraft,
+  onApproachWaypointMove,
 }) {
   const layer = BASE_LAYERS.find((l) => l.id === layerId) || BASE_LAYERS[0]
+  const selectedSpot = spots.find((s) => s.id === selectedId)
+  const savedApproach = !approachDraft && selectedSpot?.approach?.geometry?.length > 1 ? selectedSpot.approach : null
 
   const markers = useMemo(
     () =>
@@ -129,6 +156,44 @@ export default function MapView({
       <FlyController target={flyTarget} />
       <CursorController addMode={addMode} />
       <MapRefBinder mapRef={mapRef} />
+
+      {/* Itinéraire d'approche enregistré du spot sélectionné */}
+      {savedApproach && (
+        <>
+          <Polyline positions={savedApproach.geometry} pathOptions={APPROACH_STYLE} />
+          {savedApproach.waypoints?.[0] && (
+            <Marker
+              position={[savedApproach.waypoints[0].lat, savedApproach.waypoints[0].lng]}
+              icon={parkingIcon}
+              zIndexOffset={900}
+            />
+          )}
+        </>
+      )}
+
+      {/* Itinéraire d'approche en cours d'édition */}
+      {approachDraft && (
+        <>
+          {approachDraft.geometry?.length > 1 && (
+            <Polyline positions={approachDraft.geometry} pathOptions={APPROACH_EDIT_STYLE} />
+          )}
+          {approachDraft.waypoints.map((w, i) => (
+            <Marker
+              key={i}
+              position={[w.lat, w.lng]}
+              icon={i === 0 ? parkingIcon : waypointIcon(i)}
+              draggable
+              zIndexOffset={1500}
+              eventHandlers={{
+                dragend: (e) => {
+                  const { lat, lng } = e.target.getLatLng()
+                  onApproachWaypointMove?.(i, { lat, lng })
+                },
+              }}
+            />
+          ))}
+        </>
+      )}
 
       {markers}
 

@@ -14,6 +14,10 @@ Carte collaborative d'exploration urbaine — référencez vos spots **faits**, 
   château, hôpital, bunker…), niveau de danger, description, notes d'accès, photos, date de visite
 - 🔎 **Recherche & filtres** : par nom, statut, catégorie ; recherche d'adresse ou de
   coordonnées GPS ; distance depuis ta position
+- 🥾 **Itinéraire d'approche** par spot : place le parking 🅿️ et les étapes, le tracé
+  suit automatiquement **les sentiers** (routage piéton BRouter/OpenStreetMap, sans clé),
+  avec distance, temps de marche, navigation Google Maps/Waze jusqu'au parking, et
+  repli « à vol d'oiseau » hors connexion
 - 👥 **Collaboration temps réel** : chaque spot ajouté ou modifié apparaît instantanément
   chez l'autre (Supabase, gratuit), avec « ajouté par »
 - 📱 **Pensé pour le terrain** : géolocalisation, lien Google Maps / Waze par spot,

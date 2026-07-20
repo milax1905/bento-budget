@@ -13,6 +13,7 @@ create table if not exists public.spots (
   access_notes text not null default '',
   danger int not null default 2 check (danger between 1 and 5),
   photos jsonb not null default '[]',
+  approach jsonb,
   visited_at date,
   created_by text not null default '',
   created_at timestamptz not null default now(),
@@ -42,6 +43,10 @@ create policy "authenticated update" on public.spots
 drop policy if exists "authenticated delete" on public.spots;
 create policy "authenticated delete" on public.spots
   for delete to authenticated using (true);
+
+-- Migration depuis une version antérieure du schéma (sans effet si la
+-- colonne existe déjà) :
+alter table public.spots add column if not exists approach jsonb;
 
 -- Temps réel : chaque ajout / modif / suppression est poussé instantanément
 -- vers les autres appareils connectés.

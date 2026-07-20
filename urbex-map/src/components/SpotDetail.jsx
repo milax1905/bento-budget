@@ -10,13 +10,15 @@ import {
   User,
   AlertTriangle,
   KeyRound,
+  Footprints,
 } from 'lucide-react'
 import { categoryById, statusById, STATUSES } from '../lib/constants'
-import { formatCoords } from '../lib/geo'
+import { formatCoords, formatDistance } from '../lib/geo'
+import { walkMinutes } from '../lib/routing'
 import { useStore } from '../lib/store'
 import Lightbox from './Lightbox'
 
-export default function SpotDetail({ spot, onClose, onEdit }) {
+export default function SpotDetail({ spot, onClose, onEdit, onEditApproach }) {
   const { updateSpot, deleteSpot, showToast } = useStore()
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [lightbox, setLightbox] = useState(null)
@@ -136,6 +138,67 @@ export default function SpotDetail({ spot, onClose, onEdit }) {
               <User size={11} /> Ajouté par {spot.createdBy}
               {spot.createdAt ? ` · ${new Date(spot.createdAt).toLocaleDateString('fr-FR')}` : ''}
             </p>
+          )}
+        </div>
+
+        {/* Itinéraire d'approche */}
+        <div className="rounded-xl bg-zinc-800/50 p-3">
+          <div className="flex items-center justify-between">
+            <h3 className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+              <Footprints size={11} /> Approche à pied
+            </h3>
+            {spot.approach && (
+              <button
+                onClick={() => onEditApproach(spot)}
+                className="text-[10px] text-amber-300/90 hover:text-amber-300"
+              >
+                modifier
+              </button>
+            )}
+          </div>
+          {spot.approach ? (
+            <>
+              <p className="mt-1.5 text-sm text-zinc-200">
+                {formatDistance(spot.approach.distance / 1000)} · ~{walkMinutes(spot.approach.distance)} min ·{' '}
+                {spot.approach.mode === 'trail' ? 'via les sentiers' : "à vol d'oiseau"}
+              </p>
+              {spot.approach.waypoints?.[0] && (
+                <div className="mt-2 grid grid-cols-2 gap-1.5">
+                  <a
+                    href={`https://www.google.com/maps/search/?api=1&query=${spot.approach.waypoints[0].lat},${spot.approach.waypoints[0].lng}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center justify-center gap-1.5 rounded-lg bg-zinc-700/60 px-2 py-2 text-xs font-medium text-zinc-200 transition hover:bg-zinc-600/60"
+                  >
+                    🅿️ Google Maps
+                  </a>
+                  <a
+                    href={`https://waze.com/ul?ll=${spot.approach.waypoints[0].lat},${spot.approach.waypoints[0].lng}&navigate=yes`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center justify-center gap-1.5 rounded-lg bg-zinc-700/60 px-2 py-2 text-xs font-medium text-zinc-200 transition hover:bg-zinc-600/60"
+                  >
+                    🅿️ Waze
+                  </a>
+                </div>
+              )}
+              <p className="mt-2 text-[10px] leading-snug text-zinc-600">
+                Navigue jusqu'au parking 🅿️, puis suis le tracé pointillé sur la carte.
+              </p>
+              <button
+                onClick={() => updateSpot(spot.id, { approach: null })}
+                className="mt-1 text-[10px] text-zinc-600 underline hover:text-rose-300"
+              >
+                Supprimer le tracé
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => onEditApproach(spot)}
+              className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg bg-zinc-700/60 px-2 py-2 text-xs font-medium text-zinc-200 transition hover:bg-zinc-600/60"
+            >
+              🥾 Tracer l'approche (parking → spot)
+            </button>
           )}
         </div>
 

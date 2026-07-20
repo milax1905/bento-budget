@@ -21,7 +21,8 @@ export function exportJson(spots) {
 const xmlEscape = (s = '') =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
-// Waypoints GPX pour GPS / appli carto hors-ligne (Organic Maps, OsmAnd…).
+// Waypoints + itinéraires d'approche GPX pour GPS / appli carto hors-ligne
+// (Organic Maps, OsmAnd…).
 export function exportGpx(spots) {
   const wpts = spots
     .map((s) => {
@@ -34,9 +35,29 @@ export function exportGpx(spots) {
   </wpt>`
     })
     .join('\n')
+  const parkings = spots
+    .filter((s) => s.approach?.waypoints?.[0])
+    .map((s) => {
+      const p = s.approach.waypoints[0]
+      return `  <wpt lat="${p.lat}" lon="${p.lng}">
+    <name>${xmlEscape(`🅿️ Parking — ${s.name}`)}</name>
+  </wpt>`
+    })
+    .join('\n')
+  const tracks = spots
+    .filter((s) => s.approach?.geometry?.length > 1)
+    .map(
+      (s) => `  <trk>
+    <name>${xmlEscape(`Approche — ${s.name}`)}</name>
+    <trkseg>
+${s.approach.geometry.map(([la, lo]) => `      <trkpt lat="${la}" lon="${lo}"/>`).join('\n')}
+    </trkseg>
+  </trk>`
+    )
+    .join('\n')
   const gpx = `<?xml version="1.0" encoding="UTF-8"?>
 <gpx version="1.1" creator="Urbex Atlas" xmlns="http://www.topografix.com/GPX/1/1">
-${wpts}
+${[wpts, parkings, tracks].filter(Boolean).join('\n')}
 </gpx>`
   download(`urbex-atlas-${stamp()}.gpx`, 'application/gpx+xml', gpx)
 }
@@ -46,6 +67,30 @@ const cleanString = (v, max) => (typeof v === 'string' ? v.slice(0, max) : '')
 const cleanDate = (v) => (typeof v === 'string' && !Number.isNaN(Date.parse(v)) ? v : null)
 const isPhoto = (p) =>
   typeof p === 'string' && p.length < 2_000_000 && (p.startsWith('data:image/') || /^https?:\/\//.test(p))
+
+const cleanApproach = (a) => {
+  if (!a || typeof a !== 'object') return null
+  const waypoints = Array.isArray(a.waypoints)
+    ? a.waypoints
+        .filter((p) => p && Number.isFinite(Number(p.lat)) && Number.isFinite(Number(p.lng)))
+        .slice(0, 20)
+        .map((p) => ({ lat: Number(p.lat), lng: Number(p.lng) }))
+    : []
+  if (!waypoints.length) return null
+  const geometry = Array.isArray(a.geometry)
+    ? a.geometry
+        .filter((pt) => Array.isArray(pt) && Number.isFinite(Number(pt[0])) && Number.isFinite(Number(pt[1])))
+        .slice(0, 5000)
+        .map((pt) => [Number(pt[0]), Number(pt[1])])
+    : []
+  const distance = Number(a.distance)
+  return {
+    waypoints,
+    geometry,
+    distance: Number.isFinite(distance) && distance >= 0 ? Math.round(distance) : 0,
+    mode: a.mode === 'direct' ? 'direct' : 'trail',
+  }
+}
 
 // Lit un export JSON et renvoie une liste de spots ASSAINIE (liste blanche de
 // champs, bornes et types vérifiés) — un fichier corrompu ou malveillant ne
@@ -75,6 +120,7 @@ export function parseImportedJson(text) {
       description: cleanString(s.description, 5000),
       accessNotes: cleanString(s.accessNotes, 5000),
       photos: Array.isArray(s.photos) ? s.photos.filter(isPhoto).slice(0, MAX_PHOTOS) : [],
+      approach: cleanApproach(s.approach),
       visitedAt: cleanDate(s.visitedAt),
       createdBy: cleanString(s.createdBy, 100),
     }
