@@ -13,7 +13,7 @@ import {
   AlertTriangle,
   Globe,
 } from 'lucide-react'
-import { CATEGORIES, STATUSES, categoryById, statusById } from '../lib/constants'
+import { CATEGORIES, STATUSES, APP_VERSION, categoryById, statusById } from '../lib/constants'
 import { distanceKm, formatDistance } from '../lib/geo'
 import { exportGpx, exportJson, exportKml, parseImportedJson } from '../lib/exporters'
 import { useStore } from '../lib/store'
@@ -221,7 +221,7 @@ export default function Sidebar({ onClose, selectedId, onSelect, userPos, onOpen
       {/* Pied : export / import */}
       <div className="flex items-center gap-1.5 border-t border-white/10 px-3 py-2.5">
         <span className="mr-auto text-[11px] text-zinc-600">
-          {spots.length} spot{spots.length > 1 ? 's' : ''}
+          {spots.length} spot{spots.length > 1 ? 's' : ''} · v{APP_VERSION}
         </span>
         <button
           title="Importer un fichier JSON"
