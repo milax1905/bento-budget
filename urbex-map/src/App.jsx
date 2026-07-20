@@ -265,9 +265,15 @@ function Shell() {
     } catch (err) {
       if (discoverSeq.current !== seq) return
       const raw = err?.message || 'réseau'
-      const msg = /HTTP 429|429/.test(raw)
-        ? 'Trop de recherches d’affilée — attends ~1 min puis réessaie.'
-        : `Recherche indisponible (${raw}). Réessaie ou réduis le rayon.`
+      let msg
+      if (/429/.test(raw)) {
+        msg = 'Trop de recherches d’affilée — attends ~1 min puis relance une seule fois.'
+      } else if (/abort/i.test(raw)) {
+        msg =
+          'Le serveur OpenStreetMap n’a pas répondu à temps (souvent surchargé). Attends ~1 min puis relance une seule fois.'
+      } else {
+        msg = `Recherche indisponible (${raw}). Réessaie ou réduis le rayon.`
+      }
       setDiscover((d) => (d ? { ...d, status: 'error', error: msg } : d))
     }
   }, [spots])
