@@ -18,7 +18,7 @@ const ENDPOINTS = [
   'https://overpass.openstreetmap.fr/api/interpreter',
 ]
 
-const UA = 'UrbexAtlas/2.15 (+https://urbex-phi.vercel.app; contact via GitHub milax1905/bento-budget)'
+const UA = 'UrbexAtlas/2.16 (+https://urbex-phi.vercel.app; contact via GitHub milax1905/bento-budget)'
 const HEADERS = {
   'Content-Type': 'application/x-www-form-urlencoded',
   'User-Agent': UA,
@@ -57,24 +57,46 @@ function getBody(req) {
 // titre évoquant un lieu explorable (fort, château, ruine, mine, usine,
 // sanatorium…). Le rayon geosearch de Wikipédia est plafonné à 10 km ; au-delà,
 // OSM et Wikidata couvrent le reste. Best-effort.
+// Mots-clés au TITRE (frontières de mot pour éviter « fort » dans « Rochefort »).
 const WP_KEYWORDS =
-  /ch[aâ]teau|fort(?:in|eresse)?\b|citadelle|redoute|blockhaus|bunker|caserne|ruine|abbaye|prieur|monast|couvent|chartreuse|sanatorium|h[oô]pital|asile|usine|manufacture|fonderie|aci[eé]rie|verrerie|tuilerie|briqueterie|filature|papeterie|minoterie|mine\b|mines\b|carri[eè]re|ardoisi[eè]re|tunnel|viaduc|aqueduc|moulin|four \?[aà] chaux|silo|gazom|centrale|barrage|t[eé]l[eé]ph[eé]rique|funiculaire|gare\b|ancien|ancienne|d[eé]saffect|abandonn|frich/i
+  /ch[aâ]teau|manoir|\bfort\b|forteresse|citadelle|redoute|blockhaus|bunker|caserne|ruine|abbaye|prieur|monast|couvent|chartreuse|sanatorium|h[oô]pital|asile|pr[eé]ventorium|orphelinat|\busine\b|manufacture|fonderie|aci[eé]rie|verrerie|tuilerie|briqueterie|filature|papeterie|minoterie|\bmine\b|carri[eè]re|ardoisi[eè]re|tunnel|viaduc|aqueduc|\bmoulin\b|\bsilo\b|gazom|centrale|barrage|t[eé]l[eé]ph[eé]rique|funiculaire|\bfriche\b|d[eé]saffect|abandonn/i
+
+// Écarte les articles qui sont en fait des communes / lieux habités / éléments
+// géographiques (repérés par leur courte description Wikipédia).
+const WP_EXCLUDE =
+  /commune (fran|de |asso)|est une commune|ancienne commune|\bvillage\b|hameau|rivi[eè]re|fleuve|ruisseau|torrent|\blac\b|[eé]tang|massif|sommet|montagne|\bcol de|cours d'eau|quartier|arrondissement|\bcanton\b|paroisse|a[eé]roport/i
+
+async function wpJson(url, signal) {
+  const r = await fetch(url, { headers: { 'User-Agent': UA, Accept: 'application/json' }, signal })
+  if (!r.ok) throw new Error('wp ' + r.status)
+  return r.json()
+}
 
 async function wikipediaAround(lat, lng, radiusKm, signal) {
   const rad = Math.min(Math.max(Number(radiusKm) || 5, 1), 10) * 1000
-  const url =
+  const gs = await wpJson(
     `https://fr.wikipedia.org/w/api.php?action=query&list=geosearch` +
-    `&gscoord=${lat}%7C${lng}&gsradius=${rad}&gslimit=200&format=json&origin=*`
-  const res = await fetch(url, { headers: { 'User-Agent': UA, Accept: 'application/json' }, signal })
-  if (!res.ok) throw new Error('wp ' + res.status)
-  const d = await res.json()
-  const out = []
-  for (const g of d.query?.geosearch || []) {
-    if (!g.title || g.lat == null || g.lon == null) continue
-    if (!WP_KEYWORDS.test(g.title)) continue // on ne garde que les titres « urbex »
-    out.push({ pageid: g.pageid, title: g.title, lat: g.lat, lng: g.lon })
+      `&gscoord=${lat}%7C${lng}&gsradius=${rad}&gslimit=200&format=json&formatversion=2&origin=*`,
+    signal,
+  )
+  let cands = (gs.query?.geosearch || []).filter((g) => g.title && g.lat != null && g.lon != null && WP_KEYWORDS.test(g.title))
+  if (!cands.length) return []
+  // 2ᵉ passe : on récupère la description courte pour écarter communes/reliefs.
+  try {
+    const ids = cands.map((c) => c.pageid).filter(Boolean).slice(0, 50).join('|')
+    if (ids) {
+      const dd = await wpJson(
+        `https://fr.wikipedia.org/w/api.php?action=query&prop=description&pageids=${ids}&format=json&formatversion=2&origin=*`,
+        signal,
+      )
+      const desc = {}
+      for (const p of dd.query?.pages || []) desc[p.pageid] = p.description || ''
+      cands = cands.filter((c) => !WP_EXCLUDE.test(desc[c.pageid] || ''))
+    }
+  } catch {
+    /* pas de descriptions : on garde le filtrage par titre seul */
   }
-  return out
+  return cands.map((g) => ({ pageid: g.pageid, title: g.title, lat: g.lat, lng: g.lon }))
 }
 
 // Wikidata : lieux « ruines » (et sous-classes) + villages fantômes autour du

@@ -31,6 +31,15 @@ function effectiveDanger(r) {
   return r.danger || null
 }
 
+// Lieu à écarter : jugé non-urbex par l'IA, ou description Wikipédia de commune/
+// relief (filet de sécurité si l'IA n'a pas (encore) analysé ce lieu).
+function isExcluded(r) {
+  const ai = r.enrichment?.ai
+  if (ai && ai.urbex === false) return true
+  const ex = r.enrichment?.wiki?.extract || ''
+  return /est une commune|commune française|ancienne commune|\bvillage\b|hameau|\brivière|\bfleuve|massif|sommet|montagne|\bcol de/i.test(ex)
+}
+
 function DangerBadge({ danger, small }) {
   if (!danger) return null
   return (
@@ -210,9 +219,13 @@ export default function DiscoverPanel({
 }) {
   const { radiusKm, status, results, error, center, enriching, aiEnabled } = discover
   const [docsOnly, setDocsOnly] = useState(false)
+  const [showExcluded, setShowExcluded] = useState(false)
 
   const notableCount = results.filter((r) => r.notable).length
-  const shown = docsOnly ? results.filter((r) => r.notable) : results
+  const base = docsOnly ? results.filter((r) => r.notable) : results
+  const kept = base.filter((r) => !isExcluded(r))
+  const excluded = base.filter((r) => isExcluded(r))
+  const shown = showExcluded ? [...kept, ...excluded] : kept
 
   return (
     <div className="glass pointer-events-auto pt-safe pb-safe flex h-full w-full flex-col overflow-hidden rounded-none sm:rounded-2xl">
@@ -306,10 +319,10 @@ export default function DiscoverPanel({
         {status === 'done' && results.length > 0 && (
           <div className="flex items-center justify-between px-3 pb-1 pt-1">
             <span className="flex items-center gap-1.5 text-[11px] text-zinc-500">
-              {shown.length} lieu{shown.length > 1 ? 'x' : ''}
+              {kept.length} lieu{kept.length > 1 ? 'x' : ''}
               {aiEnabled && (
                 <span className="flex items-center gap-0.5 text-emerald-300/80">
-                  <Sparkles size={10} /> triés par l'IA
+                  <Sparkles size={10} /> filtrés par l'IA
                 </span>
               )}
               {enriching && <Loader2 size={11} className="animate-spin text-zinc-600" />}
@@ -327,8 +340,20 @@ export default function DiscoverPanel({
           </div>
         )}
         {shown.map((r) => (
-          <DiscoverResult key={r.id} r={r} onAdd={onAdd} onSelect={onSelect} />
+          <div key={r.id} className={showExcluded && isExcluded(r) ? 'opacity-45' : ''}>
+            <DiscoverResult r={r} onAdd={onAdd} onSelect={onSelect} />
+          </div>
         ))}
+        {status === 'done' && excluded.length > 0 && (
+          <button
+            onClick={() => setShowExcluded((v) => !v)}
+            className="mx-auto mt-1 flex items-center gap-1 rounded-lg px-3 py-1.5 text-[11px] text-zinc-500 transition hover:text-zinc-300"
+          >
+            {showExcluded
+              ? 'Masquer les lieux écartés'
+              : `Voir ${excluded.length} lieu${excluded.length > 1 ? 'x' : ''} écarté${excluded.length > 1 ? 's' : ''} (village / actif)`}
+          </button>
+        )}
       </div>
 
       <div className="border-t border-white/10 px-4 py-2.5">
