@@ -34,7 +34,7 @@ function DangerDots({ level }) {
 }
 
 export default function Sidebar({ onClose, selectedId, onSelect, userPos, onOpenSettings, onOpenTeam }) {
-  const { spots, mode, user, profileName, signOut, importSpots, showToast, loading } = useStore()
+  const { spots, mode, user, profileName, signOut, importSpots, importRefSpots, showToast, loading } = useStore()
   const [query, setQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState(null)
   const [categoryFilter, setCategoryFilter] = useState('')
@@ -71,6 +71,18 @@ export default function Sidebar({ onClose, selectedId, onSelect, userPos, onOpen
     if (!file) return
     try {
       const text = await file.text()
+      // Fichier « base de découverte » (carte perso) → stocké sur l'appareil,
+      // sert à proposer des lieux dans Découvrir sans encombrer la carte.
+      let data
+      try {
+        data = JSON.parse(text)
+      } catch {
+        data = null
+      }
+      if (data?.kind === 'urbex-discover-db' && Array.isArray(data.refs)) {
+        await importRefSpots(data.refs)
+        return
+      }
       await importSpots(parseImportedJson(text))
     } catch (err) {
       showToast(`Import impossible : ${err.message}`, 'error')

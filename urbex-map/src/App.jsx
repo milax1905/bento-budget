@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Plus, PanelLeftOpen, Loader2, X, Undo2, Check } from 'lucide-react'
 import { StoreProvider, useStore } from './lib/store'
 import { trailRoute, directRoute, walkMinutes } from './lib/routing'
-import { discoverAbandoned, enrichDiscoveries } from './lib/discover'
+import { discoverAbandoned, enrichDiscoveries, refCandidates } from './lib/discover'
 import { formatDistance, distanceKm } from './lib/geo'
 import MapView from './components/MapView'
 import MapControls from './components/MapControls'
@@ -37,7 +37,7 @@ function Toast() {
 
 function Shell() {
   const store = useStore()
-  const { mode, user, authReady, membership, spots, showToast, updateSpot, addSpot } = store
+  const { mode, user, authReady, membership, spots, refSpots, showToast, updateSpot, addSpot } = store
 
   const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 640)
   const [layerId, setLayerId] = useState(() => localStorage.getItem(LS_LAYER) || 'esri')
@@ -257,8 +257,14 @@ function Shell() {
     setDiscover((d) => (d ? { ...d, status: 'loading', error: '' } : d))
     const seq = ++discoverSeq.current
     try {
-      const found = await discoverAbandoned(center, radiusKm)
+      const online = await discoverAbandoned(center, radiusKm)
       if (discoverSeq.current !== seq) return
+      // Base de découverte perso (carte importée) d'abord — curée, en tête —
+      // puis les sources en ligne en écartant les doublons proches (< 80 m).
+      const refs = refCandidates(refSpots, center, radiusKm)
+      const found = [...refs, ...online.filter((o) => !refs.some((rf) => distanceKm(rf, o) < 0.08))].sort(
+        (a, b) => b.score - a.score || a.distanceKm - b.distanceKm,
+      )
       // On écarte les candidats déjà présents dans la carte (< 60 m d'un spot).
       const fresh = found.filter((c) => !spots.some((s) => distanceKm(s, c) < 0.06))
       setDiscover((d) => (d ? { ...d, status: 'done', results: fresh, enriching: fresh.length > 0 } : d))
@@ -304,7 +310,7 @@ function Shell() {
       }
       setDiscover((d) => (d ? { ...d, status: 'error', error: msg } : d))
     }
-  }, [spots])
+  }, [spots, refSpots])
 
   const recenterDiscover = () => {
     if (!navigator.geolocation) {

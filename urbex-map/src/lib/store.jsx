@@ -110,6 +110,10 @@ export function StoreProvider({ children }) {
   // 'guest' = connecté mais pas invité. En local, tout le monde est « membre ».
   const [membership, setMembership] = useState(cloud ? 'unknown' : 'member')
   const [members, setMembers] = useState([])
+  // Base de découverte perso (ex. carte payée) : stockée sur l'appareil
+  // (IndexedDB), JAMAIS dans le cloud ni le code — sert à proposer des lieux
+  // dans « Découvrir » sans encombrer la carte.
+  const [refSpots, setRefSpots] = useState([])
   const toastTimer = useRef(null)
   const loadedOnce = useRef(false)
   const localReady = useRef(false)
@@ -383,6 +387,44 @@ export function StoreProvider({ children }) {
     [supabase, spots, showToast]
   )
 
+  // Charge la base de découverte perso depuis l'appareil au démarrage.
+  useEffect(() => {
+    idbGet('refSpots')
+      .then((v) => {
+        if (Array.isArray(v)) setRefSpots(v)
+      })
+      .catch(() => {})
+  }, [])
+
+  const importRefSpots = useCallback(
+    async (refs) => {
+      const clean = []
+      for (const r of Array.isArray(refs) ? refs : []) {
+        const name = String(r?.name || '').slice(0, 200).trim()
+        const lat = Number(r?.lat)
+        const lng = Number(r?.lng)
+        if (!name || !Number.isFinite(lat) || lat < -90 || lat > 90) continue
+        if (!Number.isFinite(lng) || lng < -180 || lng > 180) continue
+        clean.push({
+          name,
+          lat,
+          lng,
+          category: String(r?.category || 'autre').slice(0, 30),
+          status: r?.status === 'perdu' ? 'perdu' : 'repere',
+          dept: String(r?.dept || '').slice(0, 60),
+        })
+      }
+      if (!clean.length) {
+        showToast('Aucun lieu valide dans ce fichier', 'error')
+        return
+      }
+      await idbSet('refSpots', clean).catch(() => {})
+      setRefSpots(clean)
+      showToast(`Base de découverte importée : ${clean.length} lieux`, 'success')
+    },
+    [showToast]
+  )
+
   const importSpots = useCallback(
     async (imported) => {
       const now = new Date().toISOString()
@@ -480,6 +522,8 @@ export function StoreProvider({ children }) {
     updateSpot,
     deleteSpot,
     importSpots,
+    refSpots,
+    importRefSpots,
     signIn,
     signUp,
     signOut,

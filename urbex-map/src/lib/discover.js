@@ -366,6 +366,43 @@ function parseWikipedia(items, center, radiusKm) {
   return out
 }
 
+// Candidats issus de la base de découverte perso (carte importée sur l'appareil)
+// situés dans le rayon. Les lieux marqués « perdu » (réhabilités) sont écartés.
+export function refCandidates(refs, center, radiusKm) {
+  const out = []
+  for (const r of refs || []) {
+    if (r?.status === 'perdu') continue
+    const lat = Number(r?.lat)
+    const lng = Number(r?.lng)
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue
+    const dist = distanceKm(center, { lat, lng })
+    if (radiusKm && dist > radiusKm * 1.05) continue
+    const category = r.category || 'autre'
+    out.push({
+      id: `perso/${lat.toFixed(5)},${lng.toFixed(5)}`,
+      lat,
+      lng,
+      name: r.name || 'Lieu (ma carte)',
+      category,
+      typeLabel: 'Ma carte',
+      facts: r.dept ? [{ label: 'Secteur', value: r.dept }] : [],
+      osmDescription: null,
+      danger: assessDanger(category, {}),
+      tagline: 'Ma carte',
+      source: 'perso',
+      osmUrl: null,
+      distanceKm: dist,
+      score: 9, // curée par l'utilisateur → tout en haut
+      notable: true,
+      wiki: null,
+      wikipedia: null,
+      wikidata: null,
+      wikidataUrl: null,
+    })
+  }
+  return out
+}
+
 // Fusionne toutes les sources dans l'ordre (OSM d'abord car il porte les tags),
 // en écartant les doublons (même id, ou < 80 m d'un lieu déjà retenu).
 function mergeSources(lists, center) {
