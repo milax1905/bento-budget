@@ -2,7 +2,9 @@ import { distanceKm } from './geo'
 import { parseWikipediaTag } from './wiki'
 
 export const MAX_DISCOVER_RADIUS_KM = 100
-const REQUEST_TIMEOUT_MS = 25000
+// Le proxy serveur a un budget de 25 s ; le client attend un peu plus pour ne
+// pas abandonner avant que le serveur ait répondu.
+const REQUEST_TIMEOUT_MS = 35000
 
 // Recherche de lieux potentiellement abandonnés autour d'un point via
 // l'Overpass API (données OpenStreetMap, gratuit, sans clé). On cible les
@@ -54,7 +56,7 @@ function bboxOf(lat, lng, radiusKm) {
 function buildQuery(bbox) {
   const b = `(${bbox.s.toFixed(5)},${bbox.w.toFixed(5)},${bbox.n.toFixed(5)},${bbox.e.toFixed(5)})`
   const lines = KEYS.map((k) => `  nwr["${k}"]${b};`).join('\n')
-  return `[out:json][timeout:60];
+  return `[out:json][timeout:25];
 (
 ${lines}
   nwr["ruins"="yes"]${b};
