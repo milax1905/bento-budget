@@ -3,6 +3,25 @@ import { LogIn, UserPlus, Loader2 } from 'lucide-react'
 import { useStore } from '../lib/store'
 import { getConfig, clearStoredConfig, getSupabase } from '../lib/supabase'
 
+// supabase-js n'ajoute pas la clé API à l'URL /auth/v1/authorize, or certains
+// projets Supabase l'exigent (« No API key found in request »). On récupère
+// donc l'URL sans rediriger, on y ajoute apikey, puis on redirige nous-mêmes.
+async function redirectToGoogle() {
+  const supabase = getSupabase()
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo: window.location.origin, skipBrowserRedirect: true },
+  })
+  if (error) throw error
+  if (!data?.url) throw new Error("Impossible d'ouvrir la connexion Google")
+  const url = new URL(data.url)
+  if (!url.searchParams.has('apikey')) {
+    const key = getConfig()?.anonKey
+    if (key) url.searchParams.set('apikey', key)
+  }
+  window.location.href = url.toString()
+}
+
 export default function AuthScreen() {
   const { signIn, signUp } = useStore()
   const [tab, setTab] = useState('login')
@@ -53,11 +72,7 @@ export default function AuthScreen() {
     setInfo('')
     setBusy(true)
     try {
-      const { error: err } = await getSupabase().auth.signInWithOAuth({
-        provider: 'google',
-        options: { redirectTo: window.location.origin },
-      })
-      if (err) throw err
+      await redirectToGoogle()
       // La page va être redirigée vers Google : on laisse busy actif.
     } catch (err) {
       setError(
