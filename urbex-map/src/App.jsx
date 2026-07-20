@@ -262,11 +262,13 @@ function Shell() {
       // On écarte les candidats déjà présents dans la carte (< 60 m d'un spot).
       const fresh = found.filter((c) => !spots.some((s) => distanceKm(s, c) < 0.06))
       setDiscover((d) => (d ? { ...d, status: 'done', results: fresh } : d))
-    } catch {
+    } catch (err) {
       if (discoverSeq.current !== seq) return
-      setDiscover((d) =>
-        d ? { ...d, status: 'error', error: 'Recherche indisponible — réessaie dans un instant ou réduis le rayon.' } : d
-      )
+      const raw = err?.message || 'réseau'
+      const msg = /HTTP 429|429/.test(raw)
+        ? 'Trop de recherches d’affilée — attends ~1 min puis réessaie.'
+        : `Recherche indisponible (${raw}). Réessaie ou réduis le rayon.`
+      setDiscover((d) => (d ? { ...d, status: 'error', error: msg } : d))
     }
   }, [spots])
 
