@@ -2,7 +2,7 @@ import { distanceKm } from './geo'
 import { parseWikipediaTag } from './wiki'
 
 export const MAX_DISCOVER_RADIUS_KM = 100
-const REQUEST_TIMEOUT_MS = 45000
+const REQUEST_TIMEOUT_MS = 25000
 
 // Recherche de lieux potentiellement abandonnés autour d'un point via
 // l'Overpass API (données OpenStreetMap, gratuit, sans clé). On cible les
@@ -180,29 +180,32 @@ function parseElements(elements, center, radiusKm) {
 export async function discoverAbandoned(center, radiusKm, { signal } = {}) {
   const radius = Math.min(Math.max(radiusKm, 0.5), MAX_DISCOVER_RADIUS_KM)
   const query = buildQuery(bboxOf(center.lat, center.lng, radius))
-  let lastErr
-  for (const ep of ENDPOINTS) {
-    // Timeout dur par endpoint : évite le « chargement à l'infini » si un
-    // serveur Overpass ne répond jamais.
-    const timeout = new AbortController()
-    const timer = setTimeout(() => timeout.abort(), REQUEST_TIMEOUT_MS)
-    const onAbort = () => timeout.abort()
-    signal?.addEventListener('abort', onAbort)
-    try {
-      // GET : le plus simple et le plus compatible (pas de corps ni d'en-tête
-      // à faire correspondre côté serveur).
-      const url = `${ep}?data=${encodeURIComponent(query)}`
-      const res = await fetch(url, { signal: timeout.signal })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const data = await res.json()
-      return parseElements(data.elements || [], center, radius)
-    } catch (err) {
-      if (signal?.aborted) throw err
-      lastErr = err // timeout / réseau / rejet : on tente le miroir suivant
-    } finally {
-      clearTimeout(timer)
-      signal?.removeEventListener('abort', onAbort)
-    }
+  const controllers = []
+
+  const attempt = (ep) => {
+    const c = new AbortController()
+    controllers.push(c)
+    const timer = setTimeout(() => c.abort(), REQUEST_TIMEOUT_MS)
+    // GET : le plus simple et compatible (pas de corps ni d'en-tête à
+    // faire correspondre côté serveur).
+    return fetch(`${ep}?data=${encodeURIComponent(query)}`, { signal: c.signal })
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        return res.json()
+      })
+      .finally(() => clearTimeout(timer))
   }
-  throw lastErr || new Error('réseau')
+
+  try {
+    // On interroge les miroirs EN PARALLÈLE : le premier qui répond gagne,
+    // au lieu d'attendre le délai complet sur chacun l'un après l'autre.
+    const data = await Promise.any(ENDPOINTS.map(attempt))
+    return parseElements(data.elements || [], center, radius)
+  } catch (err) {
+    if (signal?.aborted) throw err
+    // Promise.any lève un AggregateError : on remonte la 1re cause réelle.
+    throw err?.errors?.[0] || err || new Error('réseau')
+  } finally {
+    controllers.forEach((c) => c.abort()) // annule les requêtes encore en vol
+  }
 }
