@@ -10,6 +10,7 @@ const REQUEST_TIMEOUT_MS = 45000
 const ENDPOINTS = [
   'https://overpass-api.de/api/interpreter',
   'https://overpass.kumi.systems/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter',
 ]
 
 // On interroge des clés PRÉCISES (indexées par Overpass) plutôt qu'un motif
@@ -178,7 +179,7 @@ function parseElements(elements, center, radiusKm) {
 
 export async function discoverAbandoned(center, radiusKm, { signal } = {}) {
   const radius = Math.min(Math.max(radiusKm, 0.5), MAX_DISCOVER_RADIUS_KM)
-  const body = 'data=' + encodeURIComponent(buildQuery(bboxOf(center.lat, center.lng, radius)))
+  const query = buildQuery(bboxOf(center.lat, center.lng, radius))
   let lastErr
   for (const ep of ENDPOINTS) {
     // Timeout dur par endpoint : évite le « chargement à l'infini » si un
@@ -188,24 +189,20 @@ export async function discoverAbandoned(center, radiusKm, { signal } = {}) {
     const onAbort = () => timeout.abort()
     signal?.addEventListener('abort', onAbort)
     try {
-      // Sans ce Content-Type, Overpass prend tout le corps « data=… » pour la
-      // requête (au lieu d'en extraire le paramètre) et la rejette.
-      const res = await fetch(ep, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body,
-        signal: timeout.signal,
-      })
-      if (!res.ok) throw new Error(`Overpass ${res.status}`)
+      // GET : le plus simple et le plus compatible (pas de corps ni d'en-tête
+      // à faire correspondre côté serveur).
+      const url = `${ep}?data=${encodeURIComponent(query)}`
+      const res = await fetch(url, { signal: timeout.signal })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = await res.json()
       return parseElements(data.elements || [], center, radius)
     } catch (err) {
       if (signal?.aborted) throw err
-      lastErr = err // timeout ou erreur réseau : on tente le miroir suivant
+      lastErr = err // timeout / réseau / rejet : on tente le miroir suivant
     } finally {
       clearTimeout(timer)
       signal?.removeEventListener('abort', onAbort)
     }
   }
-  throw lastErr || new Error('Recherche indisponible')
+  throw lastErr || new Error('réseau')
 }
