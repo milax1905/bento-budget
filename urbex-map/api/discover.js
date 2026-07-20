@@ -18,7 +18,7 @@ const ENDPOINTS = [
   'https://overpass.openstreetmap.fr/api/interpreter',
 ]
 
-const UA = 'UrbexAtlas/2.14 (+https://urbex-phi.vercel.app; contact via GitHub milax1905/bento-budget)'
+const UA = 'UrbexAtlas/2.15 (+https://urbex-phi.vercel.app; contact via GitHub milax1905/bento-budget)'
 const HEADERS = {
   'Content-Type': 'application/x-www-form-urlencoded',
   'User-Agent': UA,
@@ -51,6 +51,30 @@ function getBody(req) {
     }
   }
   return { data: b && typeof b.data === 'string' ? b.data : '', geo: b?.geo || null }
+}
+
+// Wikipédia (3ᵉ source) : articles géolocalisés autour du point, filtrés sur un
+// titre évoquant un lieu explorable (fort, château, ruine, mine, usine,
+// sanatorium…). Le rayon geosearch de Wikipédia est plafonné à 10 km ; au-delà,
+// OSM et Wikidata couvrent le reste. Best-effort.
+const WP_KEYWORDS =
+  /ch[aâ]teau|fort(?:in|eresse)?\b|citadelle|redoute|blockhaus|bunker|caserne|ruine|abbaye|prieur|monast|couvent|chartreuse|sanatorium|h[oô]pital|asile|usine|manufacture|fonderie|aci[eé]rie|verrerie|tuilerie|briqueterie|filature|papeterie|minoterie|mine\b|mines\b|carri[eè]re|ardoisi[eè]re|tunnel|viaduc|aqueduc|moulin|four \?[aà] chaux|silo|gazom|centrale|barrage|t[eé]l[eé]ph[eé]rique|funiculaire|gare\b|ancien|ancienne|d[eé]saffect|abandonn|frich/i
+
+async function wikipediaAround(lat, lng, radiusKm, signal) {
+  const rad = Math.min(Math.max(Number(radiusKm) || 5, 1), 10) * 1000
+  const url =
+    `https://fr.wikipedia.org/w/api.php?action=query&list=geosearch` +
+    `&gscoord=${lat}%7C${lng}&gsradius=${rad}&gslimit=200&format=json&origin=*`
+  const res = await fetch(url, { headers: { 'User-Agent': UA, Accept: 'application/json' }, signal })
+  if (!res.ok) throw new Error('wp ' + res.status)
+  const d = await res.json()
+  const out = []
+  for (const g of d.query?.geosearch || []) {
+    if (!g.title || g.lat == null || g.lon == null) continue
+    if (!WP_KEYWORDS.test(g.title)) continue // on ne garde que les titres « urbex »
+    out.push({ pageid: g.pageid, title: g.title, lat: g.lat, lng: g.lon })
+  }
+  return out
 }
 
 // Wikidata : lieux « ruines » (et sous-classes) + villages fantômes autour du
@@ -103,18 +127,21 @@ export default async function handler(req, res) {
     return text
   }
 
-  // Overpass (le 1er miroir qui répond gagne) ET Wikidata, en parallèle.
+  // Overpass (le 1er miroir qui répond gagne) + Wikidata + Wikipédia, en parallèle.
   const overpassP = Promise.any(ENDPOINTS.map(attempt)).then(
     (text) => ({ ok: true, text }),
     (agg) => ({ ok: false, agg }),
   )
-  const wikidataP =
-    geo && geo.lat != null && geo.lng != null
-      ? wikidataAround(geo.lat, geo.lng, geo.radiusKm, controller.signal).catch(() => [])
-      : Promise.resolve([])
+  const hasGeo = geo && geo.lat != null && geo.lng != null
+  const wikidataP = hasGeo
+    ? wikidataAround(geo.lat, geo.lng, geo.radiusKm, controller.signal).catch(() => [])
+    : Promise.resolve([])
+  const wikipediaP = hasGeo
+    ? wikipediaAround(geo.lat, geo.lng, geo.radiusKm, controller.signal).catch(() => [])
+    : Promise.resolve([])
 
   try {
-    const [op, wd] = await Promise.all([overpassP, wikidataP])
+    const [op, wd, wp] = await Promise.all([overpassP, wikidataP, wikipediaP])
     controller.abort() // coupe les fetch encore en vol
 
     let elements = []
@@ -126,8 +153,8 @@ export default async function handler(req, res) {
       }
     }
 
-    // Échec total (Overpass KO ET Wikidata vide) → vrai code HTTP + détail.
-    if (!op.ok && elements.length === 0 && wd.length === 0) {
+    // Échec total (toutes les sources vides ET Overpass KO) → vrai code HTTP.
+    if (!op.ok && elements.length === 0 && wd.length === 0 && wp.length === 0) {
       const errs = Array.isArray(op.agg?.errors) ? op.agg.errors : []
       const detail = ENDPOINTS.map((ep, i) => `${label(ep)}:${errs[i]?.message || '?'}`).join(', ')
       res.status(502).json({ error: 'Overpass injoignable', detail })
@@ -136,7 +163,7 @@ export default async function handler(req, res) {
 
     res.setHeader('Content-Type', 'application/json; charset=utf-8')
     res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=600')
-    res.status(200).json({ elements, wikidata: wd })
+    res.status(200).json({ elements, wikidata: wd, wikipedia: wp })
   } catch {
     res.status(502).json({ error: 'Découverte indisponible' })
   } finally {

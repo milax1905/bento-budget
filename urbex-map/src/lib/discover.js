@@ -314,12 +314,70 @@ function parseWikidata(items, center, radiusKm) {
   return out
 }
 
-// Fusionne OSM + Wikidata en écartant les doublons (< 80 m d'un lieu OSM).
-function mergeSources(osm, wd, center) {
-  const out = [...osm]
-  for (const w of wd) {
-    if (osm.some((r) => distanceKm(r, w) < 0.08)) continue
-    out.push(w)
+// Devine une catégorie à partir d'un titre Wikipédia.
+const WP_CAT = [
+  [/ch[aâ]teau|manoir|palais/i, 'chateau'],
+  [/fort|citadelle|blockhaus|bunker|caserne|redoute|militaire/i, 'militaire'],
+  [/mine|carri[eè]re|ardoisi[eè]re|tunnel|souterrain/i, 'tunnel'],
+  [/usine|manufacture|fonderie|aci[eé]rie|verrerie|tuilerie|briqueterie|filature|papeterie|minoterie|moulin|centrale|silo|gazom/i, 'usine'],
+  [/sanatorium|h[oô]pital|asile/i, 'hopital'],
+  [/abbaye|prieur|monast|couvent|chartreuse|[eé]glise|chapelle|basilique/i, 'eglise'],
+  [/gare|ferrovi|viaduc|t[eé]l[eé]ph[eé]rique|funiculaire/i, 'gare'],
+  [/piscine|thermes|bains/i, 'piscine'],
+]
+function guessCategory(title) {
+  for (const [re, cat] of WP_CAT) if (re.test(title)) return cat
+  return 'autre'
+}
+
+// Résultats Wikipédia (3ᵉ base) → même forme. Le tag wiki permet l'enrichissement.
+function parseWikipedia(items, center, radiusKm) {
+  const out = []
+  const seen = new Set()
+  for (const it of items || []) {
+    if (it?.lat == null || it?.lng == null || !it.title) continue
+    const dist = distanceKm(center, { lat: it.lat, lng: it.lng })
+    if (radiusKm && dist > radiusKm * 1.05) continue
+    const id = `wp/${it.pageid || it.title}`
+    if (seen.has(id)) continue
+    seen.add(id)
+    const category = guessCategory(it.title)
+    out.push({
+      id,
+      lat: it.lat,
+      lng: it.lng,
+      name: it.title,
+      category,
+      typeLabel: 'Lieu documenté (Wikipédia)',
+      facts: [],
+      osmDescription: null,
+      danger: assessDanger(category, {}),
+      tagline: 'Wikipédia',
+      osmUrl: null,
+      distanceKm: dist,
+      score: 5,
+      notable: true,
+      wiki: { lang: 'fr', title: it.title },
+      wikipedia: `fr:${it.title}`,
+      wikidata: null,
+      wikidataUrl: null,
+    })
+  }
+  return out
+}
+
+// Fusionne toutes les sources dans l'ordre (OSM d'abord car il porte les tags),
+// en écartant les doublons (même id, ou < 80 m d'un lieu déjà retenu).
+function mergeSources(lists, center) {
+  const out = []
+  const seenId = new Set()
+  for (const list of lists) {
+    for (const r of list) {
+      if (seenId.has(r.id)) continue
+      if (out.some((e) => distanceKm(e, r) < 0.08)) continue
+      seenId.add(r.id)
+      out.push(r)
+    }
   }
   return out.sort((a, b) => b.score - a.score || a.distanceKm - b.distanceKm)
 }
@@ -374,7 +432,8 @@ export async function discoverAbandoned(center, radiusKm, { signal } = {}) {
     )
     const osm = parseElements(data.elements || [], center, radius)
     const wd = parseWikidata(data.wikidata || [], center, radius)
-    return mergeSources(osm, wd, center)
+    const wp = parseWikipedia(data.wikipedia || [], center, radius)
+    return mergeSources([osm, wd, wp], center)
   } catch (proxyErr) {
     if (signal?.aborted) throw proxyErr
     // En production, le proxy EST le chemin fiable : on remonte sa vraie erreur
@@ -397,7 +456,7 @@ export async function discoverAbandoned(center, radiusKm, { signal } = {}) {
 // et ne casse jamais la découverte si ça échoue.
 export async function enrichDiscoveries(sites, { signal } = {}) {
   if (!sites?.length) return {}
-  const payload = sites.slice(0, 16).map((r) => ({
+  const payload = sites.slice(0, 20).map((r) => ({
     id: r.id,
     lat: r.lat,
     lng: r.lng,

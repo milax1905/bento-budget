@@ -11,7 +11,7 @@
 export const config = { maxDuration: 60 }
 
 const BUDGET_MS = 25000
-const UA = 'UrbexAtlas/2.14 (+https://urbex-phi.vercel.app; contact via GitHub milax1905/bento-budget)'
+const UA = 'UrbexAtlas/2.15 (+https://urbex-phi.vercel.app; contact via GitHub milax1905/bento-budget)'
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash'
 
 function parseWikipediaTag(tag) {
@@ -116,9 +116,15 @@ async function aiAnalyze(sites, wikiMap, signal) {
 
   const prompt = `Tu es un expert en urbex (exploration de lieux abandonnés) francophone. Pour CHAQUE lieu ci-dessous, à partir uniquement des informations fournies (type OpenStreetMap + extrait Wikipédia s'il existe), rédige une analyse. N'invente JAMAIS de faits historiques précis (dates, noms, événements) si l'extrait Wikipédia ne les donne pas : dans ce cas, décris le type de lieu et reste général et honnête ("peu d'informations disponibles").
 
+Tri important : privilégie les lieux réellement ABANDONNÉS / explorables (urbex).
+Un site encore actif, restauré, ouvert au public ou touristique (musée, château
+visitable, monument entretenu) doit avoir un intérêt bas et un verdict
+"quelconque" — sauf s'il présente une partie clairement abandonnée. À l'inverse,
+une friche, une ruine, une usine/mine/sanatorium/fort désaffecté = intérêt élevé.
+
 Pour chaque lieu renvoie :
-- "resume" : 2 à 3 phrases utiles à un explorateur (ce que c'est, son histoire si connue, ce qu'on peut y voir).
-- "interet" : entier de 1 (quelconque) à 5 (incontournable).
+- "resume" : 2 à 3 phrases utiles à un explorateur (ce que c'est, son histoire si connue, ce qu'on peut y voir, s'il est abandonné ou encore actif).
+- "interet" : entier de 1 (quelconque/actif) à 5 (incontournable pour l'urbex).
 - "verdict" : "top" | "moyen" | "quelconque".
 - "danger" : { "niveau": entier 1 (faible) à 4 (extrême), "label": "Faible|Modéré|Élevé|Extrême", "risques": [2 à 4 risques concrets] }.
 - "conseils" : 1 phrase de conseil de prudence/accès.
@@ -164,7 +170,7 @@ export default async function handler(req, res) {
       bodyIn = {}
     }
   }
-  const sites = Array.isArray(bodyIn?.sites) ? bodyIn.sites.slice(0, 16) : []
+  const sites = Array.isArray(bodyIn?.sites) ? bodyIn.sites.slice(0, 20) : []
   if (!sites.length) {
     res.status(400).json({ error: 'aucun site' })
     return
