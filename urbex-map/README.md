@@ -63,6 +63,29 @@ tester tout de suite, sans aucun compte.
 > ⚠️ Tes spots créés en mode local restent dans le navigateur : exporte-les en **JSON**
 > (bouton en bas de la liste) avant d'activer la synchro, puis réimporte-les.
 
+### Inviter quelqu'un (une fois les inscriptions fermées)
+
+**Authentication → Users → Invite user** dans le dashboard Supabase : la personne
+reçoit un email d'invitation et peut créer son mot de passe, même quand les
+inscriptions publiques sont désactivées. C'est la façon propre d'ajouter un
+troisième explorateur plus tard. 😎
+
+### Connexion Google (optionnel)
+
+Le bouton « Continuer avec Google » est intégré à l'app, mais il faut activer le
+fournisseur côté Supabase (sinon il affichera une erreur explicite) :
+
+1. Supabase → **Authentication → Sign In / Providers → Google** → Enable, et copie
+   l'**URL de callback** affichée.
+2. Sur [console.cloud.google.com](https://console.cloud.google.com) : crée un projet →
+   **APIs & Services → Credentials → Create credentials → OAuth client ID** (type
+   *Web application*) → ajoute l'URL de callback Supabase dans *Authorized redirect URIs*.
+3. Colle le **Client ID** et le **Client secret** dans la page Google de Supabase.
+
+> 💡 Franchement, pour deux utilisateurs, l'email + mot de passe marche très bien et
+> évite cette config — et la connexion Google dans une PWA installée sur iOS peut
+> parfois rouvrir Safari au lieu de l'app. À activer seulement si vous y tenez.
+
 ## 📲 Installer l'app sur vos téléphones (iPhone, iPad, Android)
 
 Urbex Atlas est une **PWA** : une fois l'app en ligne (voir ci-dessous), chacun peut
@@ -78,12 +101,20 @@ même sans réseau. 📵
 
 ## 🌍 Mettre l'app en ligne (pour y accéder depuis vos téléphones)
 
-Le plus simple : [Vercel](https://vercel.com) ou [Netlify](https://netlify.com) (gratuit).
+Le plus simple : [Vercel](https://vercel.com) (gratuit) — avec **mise à jour
+automatique à chaque push GitHub**, fini les zips à téléverser :
 
 1. Pousse ce dossier sur GitHub (c'est déjà fait si tu lis ceci 😉).
-2. Sur Vercel : **New Project** → importe le repo → *Root Directory* : `urbex-map` →
-   ajoute les variables d'environnement `VITE_SUPABASE_URL` et `VITE_SUPABASE_ANON_KEY` → Deploy.
-3. Envoie l'URL à ton cousin — il crée son compte et c'est parti.
+2. Sur Vercel : **Sign up with GitHub** → **Add New → Project** → importe le repo →
+   *Root Directory* : `urbex-map` (framework Vite détecté tout seul) →
+   ajoute les variables d'environnement `VITE_SUPABASE_URL` et `VITE_SUPABASE_ANON_KEY`
+   (comme ça la synchro est active pour tout le monde sans rien coller dans l'app) → **Deploy**.
+3. Chaque push sur la branche principale redéploie le site automatiquement en ~1 min
+   (et chaque branche a son URL de prévisualisation).
+4. Envoie l'URL à ton cousin — il crée son compte et c'est parti.
+
+(Hébergement statique classique type Hostinger : ça marche aussi, mais sans
+mise à jour automatique — il faut re-téléverser un build à chaque version.)
 
 ## 🛰️ À propos des vues satellite
 

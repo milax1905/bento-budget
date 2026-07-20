@@ -226,7 +226,12 @@ export function StoreProvider({ children }) {
     }
   }, [supabase, userId, showToast])
 
-  const profileName = user?.user_metadata?.pseudo || user?.email?.split('@')[0] || ''
+  const profileName =
+    user?.user_metadata?.pseudo ||
+    user?.user_metadata?.name ||
+    user?.user_metadata?.full_name ||
+    user?.email?.split('@')[0] ||
+    ''
 
   // ----- CRUD (optimiste : état local d'abord, puis push) -----
   const addSpot = useCallback(
