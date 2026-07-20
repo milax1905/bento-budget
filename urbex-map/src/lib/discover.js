@@ -35,17 +35,32 @@ const KEYS = [
   'disused:aeroway',
 ]
 
-function buildQuery(lat, lng, radiusM) {
-  const a = `(around:${radiusM},${lat.toFixed(5)},${lng.toFixed(5)})`
-  const lines = KEYS.map((k) => `  nwr["${k}"]${a};`).join('\n')
+// Boîte englobante (rectangle) autour du centre. Un filtre bbox utilise
+// l'index spatial d'Overpass et est BEAUCOUP plus rapide qu'un filtre
+// « around » (qui calcule une distance pour chaque objet). On affine ensuite
+// en cercle côté client.
+function bboxOf(lat, lng, radiusKm) {
+  const dLat = radiusKm / 111.32
+  const dLng = radiusKm / (111.32 * Math.max(0.05, Math.cos((lat * Math.PI) / 180)))
+  return {
+    s: lat - dLat,
+    w: lng - dLng,
+    n: lat + dLat,
+    e: lng + dLng,
+  }
+}
+
+function buildQuery(bbox) {
+  const b = `(${bbox.s.toFixed(5)},${bbox.w.toFixed(5)},${bbox.n.toFixed(5)},${bbox.e.toFixed(5)})`
+  const lines = KEYS.map((k) => `  nwr["${k}"]${b};`).join('\n')
   return `[out:json][timeout:60];
 (
 ${lines}
-  nwr["ruins"="yes"]${a};
-  nwr["building"="ruins"]${a};
-  nwr["historic"="ruins"]${a};
+  nwr["ruins"="yes"]${b};
+  nwr["building"="ruins"]${b};
+  nwr["historic"="ruins"]${b};
 );
-out center tags 400;`
+out center tags 500;`
 }
 
 const DEFAULT_NAME = {
@@ -124,7 +139,7 @@ function interestOf(tags) {
   return { score, notable, wiki: parseWikipediaTag(tags.wikipedia), wikidata: tags.wikidata || null }
 }
 
-function parseElements(elements, center) {
+function parseElements(elements, center, radiusKm) {
   const seen = new Set()
   const out = []
   for (const el of elements) {
@@ -133,6 +148,10 @@ function parseElements(elements, center) {
     if (lat == null || lng == null) continue
     const tags = el.tags || {}
     if (!qualifies(tags)) continue
+    const dist = distanceKm(center, { lat, lng })
+    // On a interrogé un rectangle : on ne garde que ce qui est vraiment dans
+    // le cercle demandé (+5 % de marge).
+    if (radiusKm && dist > radiusKm * 1.05) continue
     const id = `${el.type}/${el.id}`
     if (seen.has(id)) continue
     seen.add(id)
@@ -146,7 +165,7 @@ function parseElements(elements, center) {
       category,
       tagline: tagline(tags),
       osmUrl: `https://www.openstreetmap.org/${el.type}/${el.id}`,
-      distanceKm: distanceKm(center, { lat, lng }),
+      distanceKm: dist,
       score,
       notable,
       wiki, // { lang, title } ou null
@@ -158,8 +177,8 @@ function parseElements(elements, center) {
 }
 
 export async function discoverAbandoned(center, radiusKm, { signal } = {}) {
-  const radiusM = Math.round(Math.min(Math.max(radiusKm, 0.5), MAX_DISCOVER_RADIUS_KM) * 1000)
-  const body = 'data=' + encodeURIComponent(buildQuery(center.lat, center.lng, radiusM))
+  const radius = Math.min(Math.max(radiusKm, 0.5), MAX_DISCOVER_RADIUS_KM)
+  const body = 'data=' + encodeURIComponent(buildQuery(bboxOf(center.lat, center.lng, radius)))
   let lastErr
   for (const ep of ENDPOINTS) {
     // Timeout dur par endpoint : évite le « chargement à l'infini » si un
@@ -172,7 +191,7 @@ export async function discoverAbandoned(center, radiusKm, { signal } = {}) {
       const res = await fetch(ep, { method: 'POST', body, signal: timeout.signal })
       if (!res.ok) throw new Error(`Overpass ${res.status}`)
       const data = await res.json()
-      return parseElements(data.elements || [], center)
+      return parseElements(data.elements || [], center, radius)
     } catch (err) {
       if (signal?.aborted) throw err
       lastErr = err // timeout ou erreur réseau : on tente le miroir suivant
