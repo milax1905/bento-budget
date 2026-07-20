@@ -2,7 +2,7 @@ import { distanceKm } from './geo'
 import { parseWikipediaTag } from './wiki'
 
 export const MAX_DISCOVER_RADIUS_KM = 100
-const REQUEST_TIMEOUT_MS = 30000
+const REQUEST_TIMEOUT_MS = 45000
 
 // Recherche de lieux potentiellement abandonnés autour d'un point via
 // l'Overpass API (données OpenStreetMap, gratuit, sans clé). On cible les
@@ -12,11 +12,35 @@ const ENDPOINTS = [
   'https://overpass.kumi.systems/api/interpreter',
 ]
 
+// On interroge des clés PRÉCISES (indexées par Overpass) plutôt qu'un motif
+// générique « abandoned* » : c'est bien plus rapide et ça tient sur de grands
+// rayons (le motif générique faisait expirer les requêtes ≥ ~50 km).
+const KEYS = [
+  'abandoned',
+  'abandoned:building',
+  'abandoned:railway',
+  'abandoned:man_made',
+  'abandoned:amenity',
+  'abandoned:industrial',
+  'abandoned:military',
+  'abandoned:power',
+  'abandoned:aeroway',
+  'disused',
+  'disused:building',
+  'disused:railway',
+  'disused:man_made',
+  'disused:amenity',
+  'disused:industrial',
+  'disused:military',
+  'disused:aeroway',
+]
+
 function buildQuery(lat, lng, radiusM) {
   const a = `(around:${radiusM},${lat.toFixed(5)},${lng.toFixed(5)})`
-  return `[out:json][timeout:40];
+  const lines = KEYS.map((k) => `  nwr["${k}"]${a};`).join('\n')
+  return `[out:json][timeout:60];
 (
-  nwr[~"^(abandoned|disused)"~"."]${a};
+${lines}
   nwr["ruins"="yes"]${a};
   nwr["building"="ruins"]${a};
   nwr["historic"="ruins"]${a};
