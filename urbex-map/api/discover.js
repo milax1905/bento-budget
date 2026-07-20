@@ -12,6 +12,7 @@
 const ENDPOINTS = [
   'https://overpass.kumi.systems/api/interpreter',
   'https://overpass-api.de/api/interpreter',
+  'https://overpass.osm.ch/api/interpreter',
   'https://overpass.private.coffee/api/interpreter',
   'https://overpass.openstreetmap.fr/api/interpreter',
 ]
@@ -20,20 +21,23 @@ const ENDPOINTS = [
 // de datacenters. Un User-Agent descriptif est requis par leur politique d'usage.
 const HEADERS = {
   'Content-Type': 'application/x-www-form-urlencoded',
-  'User-Agent': 'UrbexAtlas/2.10 (+https://urbex-phi.vercel.app)',
+  'User-Agent': 'UrbexAtlas/2.13 (+https://urbex-phi.vercel.app)',
   Accept: 'application/json',
 }
 
 // Le plan Vercel gratuit autorise jusqu'à 60 s par fonction : on laisse à
-// Overpass le temps de répondre (il est souvent en file d'attente).
+// Overpass beaucoup de temps (il est souvent en file d'attente, surtout sur un
+// grand rayon). Le premier miroir qui répond gagne, donc c'est transparent sur
+// les petits rayons (réponse en quelques secondes).
 export const config = { maxDuration: 60 }
 
-const BUDGET_MS = 25000
+const BUDGET_MS = 45000
 
 // Étiquette courte par miroir, pour un diagnostic lisible côté client.
 function label(ep) {
   if (ep.includes('overpass-api.de')) return 'de'
   if (ep.includes('kumi')) return 'kumi'
+  if (ep.includes('osm.ch')) return 'ch'
   if (ep.includes('private.coffee')) return 'coffee'
   if (ep.includes('openstreetmap.fr')) return 'fr'
   return 'x'

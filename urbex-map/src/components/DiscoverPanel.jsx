@@ -74,8 +74,16 @@ function DiscoverResult({ r, onAdd, onSelect }) {
             <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-zinc-500">
               <DangerBadge danger={danger} small />
               <span>{formatDistance(r.distanceKm)}</span>
+              {ai?.interet > 0 && (
+                <span className="flex items-center gap-0.5 text-amber-300/80" title={`Intérêt ${ai.interet}/5`}>
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <Star key={i} size={9} className={i < ai.interet ? 'fill-amber-300/80' : 'text-zinc-700'} />
+                  ))}
+                </span>
+              )}
               {r.typeLabel && <span className="truncate text-zinc-400">{r.typeLabel}</span>}
             </span>
+            {summary && <span className="mt-1 line-clamp-2 text-[11px] leading-snug text-zinc-400">{summary}</span>}
           </span>
         </button>
         <button
@@ -246,8 +254,10 @@ export default function DiscoverPanel({
             onChange={(e) => onRadius(Number(e.target.value))}
             className="w-full accent-violet-400"
           />
-          {radiusKm >= 50 && (
-            <p className="mt-1 text-[10px] text-zinc-600">Grand rayon : la recherche peut prendre quelques secondes.</p>
+          {radiusKm >= 20 && (
+            <p className="mt-1 text-[10px] text-zinc-600">
+              Grand rayon : les serveurs OpenStreetMap sont plus lents, laisse jusqu'à ~40 s (ne relance pas en boucle).
+            </p>
           )}
         </div>
         <button
