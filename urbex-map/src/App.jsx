@@ -269,8 +269,7 @@ function Shell() {
       if (/429/.test(raw)) {
         msg = 'Trop de recherches d’affilée — attends ~1 min puis relance une seule fois.'
       } else if (/HTTP 5\d\d/.test(raw)) {
-        msg =
-          'Les serveurs OpenStreetMap sont lents ou surchargés en ce moment. Attends ~1 min puis réessaie (ou réduis le rayon).'
+        msg = `Serveurs OpenStreetMap indisponibles (${raw}). Attends ~1 min puis réessaie (ou réduis le rayon).`
       } else if (/abort/i.test(raw)) {
         msg =
           'La recherche a mis trop de temps à répondre. Attends ~1 min puis réessaie (ou réduis le rayon).'

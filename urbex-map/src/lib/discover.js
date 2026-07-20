@@ -63,7 +63,7 @@ ${lines}
   nwr["building"="ruins"]${b};
   nwr["historic"="ruins"]${b};
 );
-out center tags 500;`
+out center 500;`
 }
 
 const DEFAULT_NAME = {
@@ -186,7 +186,18 @@ async function fetchJson(url, opts, extSignal) {
   extSignal?.addEventListener('abort', onAbort)
   try {
     const res = await fetch(url, { ...opts, signal: c.signal })
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    if (!res.ok) {
+      // Le proxy renvoie un détail par miroir (ex. « de:HTTP 429, fr:HTTP 400 »)
+      // qui permet de diagnostiquer précisément la cause.
+      let detail = ''
+      try {
+        const j = await res.json()
+        if (j?.detail) detail = ` — ${j.detail}`
+      } catch {
+        /* corps non-JSON : on garde juste le code */
+      }
+      throw new Error(`HTTP ${res.status}${detail}`)
+    }
     return await res.json()
   } finally {
     clearTimeout(timer)
