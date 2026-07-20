@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Plus, PanelLeftOpen, Loader2, X, Undo2, Check } from 'lucide-react'
 import { StoreProvider, useStore } from './lib/store'
 import { trailRoute, directRoute, walkMinutes } from './lib/routing'
-import { discoverAbandoned } from './lib/discover'
+import { discoverAbandoned, enrichDiscoveries } from './lib/discover'
 import { formatDistance, distanceKm } from './lib/geo'
 import MapView from './components/MapView'
 import MapControls from './components/MapControls'
@@ -261,7 +261,20 @@ function Shell() {
       if (discoverSeq.current !== seq) return
       // On écarte les candidats déjà présents dans la carte (< 60 m d'un spot).
       const fresh = found.filter((c) => !spots.some((s) => distanceKm(s, c) < 0.06))
-      setDiscover((d) => (d ? { ...d, status: 'done', results: fresh } : d))
+      setDiscover((d) => (d ? { ...d, status: 'done', results: fresh, enriching: fresh.length > 0 } : d))
+      // Enrichissement (histoire Wikipédia + analyse IA gratuite si configurée),
+      // en tâche de fond : la liste s'affiche tout de suite, les infos arrivent.
+      enrichDiscoveries(fresh)
+        .then((enr) => {
+          if (discoverSeq.current !== seq) return
+          const map = enr?.results || {}
+          setDiscover((d) => {
+            if (!d) return d
+            const results = d.results.map((r) => (map[r.id] ? { ...r, enrichment: map[r.id] } : r))
+            return { ...d, results, aiEnabled: Boolean(enr?.aiEnabled), enriching: false }
+          })
+        })
+        .catch(() => setDiscover((d) => (d ? { ...d, enriching: false } : d)))
     } catch (err) {
       if (discoverSeq.current !== seq) return
       const raw = err?.message || 'réseau'
@@ -306,13 +319,24 @@ function Shell() {
   }
 
   const addDiscovered = async (c) => {
+    const ai = c.enrichment?.ai
+    const wiki = c.enrichment?.wiki
+    const parts = []
+    if (c.typeLabel) parts.push(c.typeLabel)
+    const dangerLabel = ai?.danger?.label || c.danger?.label
+    const dangerRisks = ai?.danger?.risques || c.danger?.risks || []
+    if (dangerLabel) parts.push(`⚠️ Danger ${dangerLabel}${dangerRisks.length ? ' : ' + dangerRisks.slice(0, 3).join(', ') : ''}`)
+    if (ai?.resume) parts.push(ai.resume)
+    else if (wiki?.extract) parts.push(wiki.extract)
+    else parts.push(`Suggéré par OpenStreetMap (${c.tagline}). À vérifier sur place.`)
+    if (ai?.conseils) parts.push(`Conseil : ${ai.conseils}`)
     const created = await addSpot({
       name: c.name,
       category: c.category,
       status: 'repere',
       lat: c.lat,
       lng: c.lng,
-      description: `Suggéré par OpenStreetMap (${c.tagline}). À vérifier sur place.`,
+      description: parts.join('\n\n'),
     })
     if (created) {
       setDiscover((d) => (d ? { ...d, results: d.results.filter((r) => r.id !== c.id) } : d))
