@@ -177,35 +177,40 @@ function parseElements(elements, center, radiusKm) {
   return out.sort((a, b) => b.score - a.score || a.distanceKm - b.distanceKm)
 }
 
+async function getJson(url, extSignal) {
+  const c = new AbortController()
+  const timer = setTimeout(() => c.abort(), REQUEST_TIMEOUT_MS)
+  const onAbort = () => c.abort()
+  extSignal?.addEventListener('abort', onAbort)
+  try {
+    const res = await fetch(url, { signal: c.signal })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    return await res.json()
+  } finally {
+    clearTimeout(timer)
+    extSignal?.removeEventListener('abort', onAbort)
+  }
+}
+
 export async function discoverAbandoned(center, radiusKm, { signal } = {}) {
   const radius = Math.min(Math.max(radiusKm, 0.5), MAX_DISCOVER_RADIUS_KM)
   const query = buildQuery(bboxOf(center.lat, center.lng, radius))
-  const controllers = []
+  const q = encodeURIComponent(query)
 
-  const attempt = (ep) => {
-    const c = new AbortController()
-    controllers.push(c)
-    const timer = setTimeout(() => c.abort(), REQUEST_TIMEOUT_MS)
-    // GET : le plus simple et compatible (pas de corps ni d'en-tête à
-    // faire correspondre côté serveur).
-    return fetch(`${ep}?data=${encodeURIComponent(query)}`, { signal: c.signal })
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        return res.json()
-      })
-      .finally(() => clearTimeout(timer))
-  }
-
+  // 1) Proxy même origine : fiable (pas de CORS ni de blocage côté navigateur).
   try {
-    // On interroge les miroirs EN PARALLÈLE : le premier qui répond gagne,
-    // au lieu d'attendre le délai complet sur chacun l'un après l'autre.
-    const data = await Promise.any(ENDPOINTS.map(attempt))
+    const data = await getJson(`/api/overpass?data=${q}`, signal)
     return parseElements(data.elements || [], center, radius)
-  } catch (err) {
-    if (signal?.aborted) throw err
-    // Promise.any lève un AggregateError : on remonte la 1re cause réelle.
-    throw err?.errors?.[0] || err || new Error('réseau')
-  } finally {
-    controllers.forEach((c) => c.abort()) // annule les requêtes encore en vol
+  } catch (proxyErr) {
+    if (signal?.aborted) throw proxyErr
+    // 2) Repli : miroirs Overpass directs, en parallèle (dev local, ou proxy
+    // temporairement indisponible).
+    try {
+      const data = await Promise.any(ENDPOINTS.map((ep) => getJson(`${ep}?data=${q}`, signal)))
+      return parseElements(data.elements || [], center, radius)
+    } catch (err) {
+      if (signal?.aborted) throw err
+      throw err?.errors?.[0] || err || proxyErr || new Error('réseau')
+    }
   }
 }
