@@ -21,7 +21,8 @@ Carte collaborative d'exploration urbaine — référencez vos spots **faits**, 
 - 👥 **Collaboration temps réel** : chaque spot ajouté ou modifié apparaît instantanément
   chez l'autre (Supabase, gratuit), avec « ajouté par »
 - 📱 **Pensé pour le terrain** : géolocalisation, lien Google Maps / Waze par spot,
-  export GPX pour GPS et applis hors-ligne (Organic Maps, OsmAnd), export/import JSON
+  exports GPX (Organic Maps, OsmAnd), **KML (Google Earth)** et JSON (sauvegarde /
+  import) — sur iPhone, l'export passe par la feuille de partage (Fichiers, AirDrop…)
 - 🔒 **Privé** : la carte n'est visible que par les comptes connectés — pense à
   **fermer les inscriptions** une fois vos deux comptes créés (voir plus bas)
 

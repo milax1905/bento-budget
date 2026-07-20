@@ -1,13 +1,27 @@
 import { CATEGORIES, STATUSES, MAX_PHOTOS, categoryById, statusById } from './constants'
 
-function download(filename, mime, content) {
-  const blob = new Blob([content], { type: mime })
-  const url = URL.createObjectURL(blob)
+// Sur iOS (surtout en PWA installée), le téléchargement programmatique est
+// ignoré : on passe par la feuille de partage quand elle est disponible
+// (Enregistrer dans Fichiers, AirDrop…), sinon téléchargement classique.
+async function download(filename, mime, content) {
+  const file = new File([content], filename, { type: mime })
+  if (navigator.canShare?.({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: filename })
+      return
+    } catch (err) {
+      if (err.name === 'AbortError') return // partage annulé par l'utilisateur
+      /* partage indisponible : repli sur le téléchargement */
+    }
+  }
+  const url = URL.createObjectURL(file)
   const a = document.createElement('a')
   a.href = url
   a.download = filename
+  document.body.appendChild(a)
   a.click()
-  URL.revokeObjectURL(url)
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 10000)
 }
 
 const stamp = () => new Date().toISOString().slice(0, 10)
@@ -60,6 +74,101 @@ ${s.approach.geometry.map(([la, lo]) => `      <trkpt lat="${la}" lon="${lo}"/>`
 ${[wpts, parkings, tracks].filter(Boolean).join('\n')}
 </gpx>`
   download(`urbex-atlas-${stamp()}.gpx`, 'application/gpx+xml', gpx)
+}
+
+// Couleur CSS #rrggbb -> format KML aabbggrr.
+const kmlColor = (hex) => {
+  const m = hex.match(/^#(..)(..)(..)$/)
+  return m ? `ff${m[3]}${m[2]}${m[1]}` : 'ffffffff'
+}
+
+// Le contenu des balloons est en CDATA : seule la séquence ]]> doit être neutralisée.
+const cdata = (s = '') => s.replace(/\]\]>/g, ']]&gt;')
+
+// Export KML pour Google Earth : spots groupés par statut (épingles colorées),
+// parkings et tracés d'approche.
+export function exportKml(spots) {
+  const styles = STATUSES.map(
+    (st) => `  <Style id="st-${st.id}">
+    <IconStyle><color>${kmlColor(st.color)}</color><Icon><href>https://maps.google.com/mapfiles/kml/paddle/wht-blank.png</href></Icon></IconStyle>
+  </Style>`
+  ).join('\n')
+
+  const folders = STATUSES.map((st) => {
+    const inStatus = spots.filter((s) => s.status === st.id)
+    if (!inStatus.length) return ''
+    const placemarks = inStatus
+      .map((s) => {
+        const cat = categoryById(s.category)
+        const desc = [
+          `<b>${st.label}</b> — ${cat.label}<br/>Danger : ${s.danger}/5`,
+          s.description ? s.description.replace(/\n/g, '<br/>') : '',
+          s.accessNotes ? `🔑 Accès : ${s.accessNotes.replace(/\n/g, '<br/>')}` : '',
+          `📍 ${s.lat}, ${s.lng}`,
+          s.createdBy ? `Ajouté par ${s.createdBy}` : '',
+        ]
+          .filter(Boolean)
+          .join('<br/><br/>')
+        return `    <Placemark>
+      <name>${xmlEscape(`${cat.emoji} ${s.name}`)}</name>
+      <styleUrl>#st-${st.id}</styleUrl>
+      <description><![CDATA[${cdata(desc)}]]></description>
+      <Point><coordinates>${s.lng},${s.lat},0</coordinates></Point>
+    </Placemark>`
+      })
+      .join('\n')
+    return `  <Folder>
+    <name>${xmlEscape(st.label)}</name>
+${placemarks}
+  </Folder>`
+  })
+    .filter(Boolean)
+    .join('\n')
+
+  const approaches = spots.filter((s) => s.approach?.geometry?.length > 1 || s.approach?.waypoints?.[0])
+  const approachFolder = approaches.length
+    ? `  <Folder>
+    <name>🥾 Approches</name>
+${approaches
+  .map((s) => {
+    const parts = []
+    const parking = s.approach.waypoints?.[0]
+    if (parking) {
+      parts.push(`    <Placemark>
+      <name>${xmlEscape(`🅿️ Parking — ${s.name}`)}</name>
+      <styleUrl>#st-parking</styleUrl>
+      <Point><coordinates>${parking.lng},${parking.lat},0</coordinates></Point>
+    </Placemark>`)
+    }
+    if (s.approach.geometry?.length > 1) {
+      const coords = s.approach.geometry.map(([la, lo]) => `${lo},${la},0`).join(' ')
+      parts.push(`    <Placemark>
+      <name>${xmlEscape(`Approche — ${s.name}`)}</name>
+      <styleUrl>#approach-line</styleUrl>
+      <LineString><tessellate>1</tessellate><coordinates>${coords}</coordinates></LineString>
+    </Placemark>`)
+    }
+    return parts.join('\n')
+  })
+  .join('\n')}
+  </Folder>`
+    : ''
+
+  const kml = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+<Document>
+  <name>Urbex Atlas</name>
+${styles}
+  <Style id="st-parking">
+    <IconStyle><color>ffeb6325</color><Icon><href>https://maps.google.com/mapfiles/kml/shapes/parking_lot.png</href></Icon></IconStyle>
+  </Style>
+  <Style id="approach-line">
+    <LineStyle><color>ff24bffb</color><width>4</width></LineStyle>
+  </Style>
+${[folders, approachFolder].filter(Boolean).join('\n')}
+</Document>
+</kml>`
+  download(`urbex-atlas-${stamp()}.kml`, 'application/vnd.google-earth.kml+xml', kml)
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i

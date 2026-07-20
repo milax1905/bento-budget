@@ -11,10 +11,11 @@ import {
   Cloud,
   LogOut,
   AlertTriangle,
+  Globe,
 } from 'lucide-react'
 import { CATEGORIES, STATUSES, categoryById, statusById } from '../lib/constants'
 import { distanceKm, formatDistance } from '../lib/geo'
-import { exportGpx, exportJson, parseImportedJson } from '../lib/exporters'
+import { exportGpx, exportJson, exportKml, parseImportedJson } from '../lib/exporters'
 import { useStore } from '../lib/store'
 
 function DangerDots({ level }) {
@@ -242,6 +243,13 @@ export default function Sidebar({ onClose, selectedId, onSelect, userPos, onOpen
           className="flex items-center gap-1.5 rounded-lg bg-zinc-800/70 px-2.5 py-1.5 text-[11px] text-zinc-300 transition hover:bg-zinc-700/70"
         >
           <Download size={12} /> GPX
+        </button>
+        <button
+          title="Exporter en KML (Google Earth)"
+          onClick={() => exportKml(spots)}
+          className="flex items-center gap-1.5 rounded-lg bg-zinc-800/70 px-2.5 py-1.5 text-[11px] text-zinc-300 transition hover:bg-zinc-700/70"
+        >
+          <Globe size={12} /> KML
         </button>
         <input ref={fileRef} type="file" accept=".json,application/json" className="hidden" onChange={handleImport} />
       </div>
