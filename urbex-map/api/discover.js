@@ -30,6 +30,15 @@ export const config = { maxDuration: 60 }
 
 const BUDGET_MS = 25000
 
+// Étiquette courte par miroir, pour un diagnostic lisible côté client.
+function label(ep) {
+  if (ep.includes('overpass-api.de')) return 'de'
+  if (ep.includes('kumi')) return 'kumi'
+  if (ep.includes('private.coffee')) return 'coffee'
+  if (ep.includes('openstreetmap.fr')) return 'fr'
+  return 'x'
+}
+
 // Récupère la requête Overpass (QL) depuis le corps POST (JSON) ou la query GET.
 // Le GET permet aussi de tester l'endpoint directement dans un navigateur.
 function getData(req) {
@@ -78,10 +87,13 @@ export default async function handler(req, res) {
     // ne re-sollicitent pas Overpass.
     res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=600')
     res.status(200).send(text)
-  } catch {
+  } catch (agg) {
     // Tous les miroirs ont échoué (ou dépassé le budget) : on renvoie un vrai
-    // code HTTP (504) — jamais une connexion coupée.
-    res.status(504).json({ error: 'Overpass lent ou injoignable' })
+    // code HTTP (jamais une connexion coupée), AVEC le détail par miroir pour
+    // diagnostiquer (Promise.any conserve l'ordre des erreurs).
+    const errs = Array.isArray(agg?.errors) ? agg.errors : []
+    const detail = ENDPOINTS.map((ep, i) => `${label(ep)}:${errs[i]?.message || '?'}`).join(', ')
+    res.status(502).json({ error: 'Overpass injoignable', detail })
   } finally {
     clearTimeout(timer)
   }
