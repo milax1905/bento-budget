@@ -393,7 +393,7 @@ export function refCandidates(refs, center, radiusKm) {
       osmUrl: null,
       distanceKm: dist,
       score: 9, // curée par l'utilisateur → tout en haut
-      notable: true,
+      notable: false,
       wiki: null,
       wikipedia: null,
       wikidata: null,
@@ -504,6 +504,7 @@ export async function enrichDiscoveries(sites, { signal } = {}) {
     wikipedia: r.wikipedia,
     wikidata: r.wikidata,
     danger: r.danger,
+    source: r.source || null,
   }))
   try {
     const data = await fetchJson(
