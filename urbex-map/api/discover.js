@@ -18,7 +18,7 @@ const ENDPOINTS = [
   'https://overpass.openstreetmap.fr/api/interpreter',
 ]
 
-const UA = 'UrbexAtlas/2.16 (+https://urbex-phi.vercel.app; contact via GitHub milax1905/bento-budget)'
+const UA = 'UrbexAtlas/2.18 (+https://urbex-phi.vercel.app; contact via GitHub milax1905/bento-budget)'
 const HEADERS = {
   'Content-Type': 'application/x-www-form-urlencoded',
   'User-Agent': UA,

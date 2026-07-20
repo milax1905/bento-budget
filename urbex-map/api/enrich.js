@@ -11,7 +11,7 @@
 export const config = { maxDuration: 60 }
 
 const BUDGET_MS = 25000
-const UA = 'UrbexAtlas/2.16 (+https://urbex-phi.vercel.app; contact via GitHub milax1905/bento-budget)'
+const UA = 'UrbexAtlas/2.18 (+https://urbex-phi.vercel.app; contact via GitHub milax1905/bento-budget)'
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash'
 
 function parseWikipediaTag(tag) {
@@ -62,12 +62,18 @@ async function fromWikidata(qid, signal) {
 async function geoTitle(lat, lng, signal) {
   const url =
     `https://fr.wikipedia.org/w/api.php?action=query&list=geosearch` +
-    `&gscoord=${lat}%7C${lng}&gsradius=250&gslimit=1&format=json&origin=*`
+    `&gscoord=${lat}%7C${lng}&gsradius=150&gslimit=1&format=json&origin=*`
   const d = await getJson(url, signal)
   const hit = d.query?.geosearch?.[0]
   if (!hit) return null
   return { lang: 'fr', title: hit.title, dist: Math.round(hit.dist) }
 }
+
+// Un article « attrapé à côté » ne doit pas être rattaché au lieu s'il décrit
+// une commune ou un site clairement ACTIF (école en service, musée…), sauf s'il
+// parle explicitement d'abandon.
+const GEO_ACTIVE = /est une commune|établissement (scolaire|d'enseignement)|\bcollège\b|\blycée\b|en activité|en service|ouvert au public|\bmusée\b|actuel|mairie/i
+const GEO_ABANDON = /abandonn|désaffect|en ruine|ancien|fermé|détruit|friche|vestige/i
 
 async function wikiFor(site, signal) {
   const wp = parseWikipediaTag(site.wikipedia)
@@ -92,10 +98,17 @@ async function wikiFor(site, signal) {
         }
     }
   }
-  const geo = await geoTitle(site.lat, site.lng, signal).catch(() => null)
-  if (geo) {
-    const s = await wikiSummary(geo.lang, geo.title, signal).catch(() => null)
-    if (s) return { ...s, source: 'geo', dist: geo.dist }
+  // Recherche géographique de secours : SEULEMENT si le lieu n'a pas de nom
+  // curé (les lieux « Ma carte » ont un nom fiable → ne pas leur coller un
+  // article voisin). Et on écarte les articles de commune / site actif.
+  if (site.source !== 'perso') {
+    const geo = await geoTitle(site.lat, site.lng, signal).catch(() => null)
+    if (geo) {
+      const s = await wikiSummary(geo.lang, geo.title, signal).catch(() => null)
+      if (s && (!GEO_ACTIVE.test(s.extract) || GEO_ABANDON.test(s.extract))) {
+        return { ...s, source: 'geo', dist: geo.dist }
+      }
+    }
   }
   return null
 }
@@ -114,7 +127,7 @@ async function aiAnalyze(sites, wikiMap, signal) {
     wikipedia: wikiMap[s.id]?.extract || null,
   }))
 
-  const prompt = `Tu es un expert en urbex (exploration de lieux abandonnés) francophone. Pour CHAQUE lieu ci-dessous, à partir uniquement des informations fournies (type OpenStreetMap + extrait Wikipédia s'il existe), rédige une analyse. N'invente JAMAIS de faits historiques précis (dates, noms, événements) si l'extrait Wikipédia ne les donne pas : dans ce cas, décris le type de lieu et reste général et honnête ("peu d'informations disponibles").
+  const prompt = `Tu es un expert en urbex (exploration de lieux abandonnés) francophone. Pour CHAQUE lieu ci-dessous, rédige une analyse en t'appuyant sur : le type OpenStreetMap fourni, l'extrait Wikipédia s'il existe, TES PROPRES CONNAISSANCES du lieu, et une recherche web quand l'outil est disponible. Si tu identifies le lieu de façon fiable, donne son histoire et ce qu'on peut y voir. Si tu n'as pas d'info fiable, reste général et honnête ("peu d'informations publiques sur ce lieu précis") — ne FABRIQUE JAMAIS de faux détails (fausses dates, faux noms, faux événements).
 
 FILTRAGE STRICT (le plus important) : ne retiens que les lieux réellement
 ABANDONNÉS et explorables (urbex). Mets "urbex": false pour TOUT ce qui n'est pas
@@ -145,26 +158,41 @@ ${JSON.stringify(brief)}`
 
   const url =
     `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(GEMINI_MODEL)}:generateContent?key=${encodeURIComponent(key)}`
-  const body = {
-    contents: [{ parts: [{ text: prompt }] }],
-    generationConfig: { responseMimeType: 'application/json', temperature: 0.4, maxOutputTokens: 4096 },
+
+  // Appel Gemini. Avec recherche web (grounding Google), on ne force pas le mime
+  // JSON (incompatible) → on extrait le JSON du texte. Sans, on force le JSON.
+  const callGemini = async (useSearch) => {
+    const body = {
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.3, maxOutputTokens: 8192, ...(useSearch ? {} : { responseMimeType: 'application/json' }) },
+      ...(useSearch ? { tools: [{ google_search: {} }] } : {}),
+    }
+    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal })
+    if (!r.ok) throw new Error('gemini HTTP ' + r.status)
+    const data = await r.json()
+    return data?.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('') || ''
   }
-  const r = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-    signal,
-  })
-  if (!r.ok) throw new Error('gemini HTTP ' + r.status)
-  const data = await r.json()
-  const text = data?.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('') || ''
+
+  // 1) On tente AVEC recherche web ; 2) repli sans (si le modèle/quota la refuse).
+  let text = ''
+  try {
+    text = await callGemini(true)
+  } catch {
+    text = await callGemini(false).catch(() => '')
+  }
+
   let parsed
   try {
     parsed = JSON.parse(text)
   } catch {
-    // Parfois entouré de ```json … ``` : on récupère le premier objet.
+    // Réponse en texte (grounding) ou entourée de ```json … ``` : on extrait le
+    // premier objet JSON.
     const m = text.match(/\{[\s\S]*\}/)
-    parsed = m ? JSON.parse(m[0]) : {}
+    try {
+      parsed = m ? JSON.parse(m[0]) : {}
+    } catch {
+      parsed = {}
+    }
   }
   return parsed && typeof parsed === 'object' ? parsed : {}
 }
