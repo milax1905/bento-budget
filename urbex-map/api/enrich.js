@@ -11,7 +11,7 @@
 export const config = { maxDuration: 60 }
 
 const BUDGET_MS = 25000
-const UA = 'UrbexAtlas/2.12 (+https://urbex-phi.vercel.app; contact via GitHub milax1905/bento-budget)'
+const UA = 'UrbexAtlas/2.14 (+https://urbex-phi.vercel.app; contact via GitHub milax1905/bento-budget)'
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash'
 
 function parseWikipediaTag(tag) {

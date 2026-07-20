@@ -29,6 +29,8 @@ const KEYS = [
   'abandoned:military',
   'abandoned:power',
   'abandoned:aeroway',
+  'abandoned:leisure',
+  'abandoned:landuse',
   'disused',
   'disused:building',
   'disused:railway',
@@ -37,6 +39,8 @@ const KEYS = [
   'disused:industrial',
   'disused:military',
   'disused:aeroway',
+  'disused:leisure',
+  'ruins',
 ]
 
 // Boîte englobante (rectangle) autour du centre. Un filtre bbox utilise
@@ -60,11 +64,16 @@ function buildQuery(bbox) {
   return `[out:json][timeout:45];
 (
 ${lines}
-  nwr["ruins"="yes"]${b};
   nwr["building"="ruins"]${b};
   nwr["historic"="ruins"]${b};
+  nwr["historic"="archaeological_site"]${b};
+  nwr["historic"="castle"]["ruins"="yes"]${b};
+  nwr["landuse"="brownfield"]${b};
+  nwr["man_made"="mineshaft"]${b};
+  nwr["man_made"="adit"]${b};
+  nwr["military"="bunker"]${b};
 );
-out center 500;`
+out center 600;`
 }
 
 const DEFAULT_NAME = {
@@ -97,7 +106,7 @@ function categorize(tags) {
   if (has(/castle|manor|chateau|palace/)) return 'chateau'
   if (has(/church|chapel|monaster|convent|cathedral|religious|abbey/)) return 'eglise'
   if (has(/school|university|college|kindergarten/)) return 'ecole'
-  if (has(/factor|works|industrial|manufactur|power|plant\b|mill|refinery|warehouse|silo|works=/)) return 'usine'
+  if (has(/factor|works|industrial|manufactur|power|plant\b|mill|refinery|warehouse|silo|brownfield|works=/)) return 'usine'
   if (has(/swimming|pool|lido/)) return 'piscine'
   if (has(/theme_park|attraction|amusement|fairground/)) return 'parc'
   if (has(/hotel|restaurant|motel|resort/)) return 'hotel'
@@ -111,9 +120,12 @@ function qualifies(tags) {
   for (const [k, v] of Object.entries(tags)) {
     if (/^(abandoned|disused)/.test(k) && v && v.toLowerCase() !== 'no') return true
   }
-  if (tags.ruins === 'yes') return true
+  if (tags.ruins && tags.ruins !== 'no') return true
   if (tags.building === 'ruins') return true
-  if (tags.historic === 'ruins') return true
+  if (tags.historic === 'ruins' || tags.historic === 'archaeological_site') return true
+  if (tags.landuse === 'brownfield') return true
+  if (tags.man_made === 'mineshaft' || tags.man_made === 'adit') return true
+  if (tags.military === 'bunker') return true
   return false
 }
 
@@ -166,6 +178,8 @@ const TYPE_LABELS = {
   'man_made=adit': 'Ancienne galerie de mine',
   'man_made=chimney': 'Cheminée d’usine',
   'man_made=water_works': 'Ancienne station des eaux',
+  'landuse=brownfield': 'Friche industrielle',
+  'historic=archaeological_site': 'Site archéologique / ruines',
   'military=bunker': 'Ancien bunker',
   'military=barracks': 'Anciennes casernes',
   'military=airfield': 'Ancien aérodrome militaire',
@@ -187,9 +201,13 @@ function primaryTag(tags) {
     const domain = key.includes(':') ? key.split(':')[1] : key
     return { domain, value: tags[key] }
   }
+  if (tags.landuse === 'brownfield') return { domain: 'landuse', value: 'brownfield' }
+  if (tags.historic === 'archaeological_site') return { domain: 'historic', value: 'archaeological_site' }
   if (tags.historic === 'ruins') return { domain: 'historic', value: 'ruins' }
+  if (tags.man_made === 'mineshaft' || tags.man_made === 'adit') return { domain: 'man_made', value: tags.man_made }
+  if (tags.military === 'bunker') return { domain: 'military', value: 'bunker' }
   if (tags.building === 'ruins') return { domain: 'building', value: 'ruins' }
-  if (tags.ruins === 'yes') return { domain: 'ruins', value: 'yes' }
+  if (tags.ruins && tags.ruins !== 'no') return { domain: 'ruins', value: 'yes' }
   return null
 }
 
@@ -261,6 +279,51 @@ function parseElements(elements, center, radiusKm) {
   return out.sort((a, b) => b.score - a.score || a.distanceKm - b.distanceKm)
 }
 
+// Résultats Wikidata (2ᵉ base) → même forme que les résultats OSM. Ce sont des
+// lieux documentés (ruines, villages fantômes…), donc score élevé et notable.
+function parseWikidata(items, center, radiusKm) {
+  const out = []
+  const seen = new Set()
+  for (const it of items || []) {
+    if (it?.lat == null || it?.lng == null || !it.qid) continue
+    const dist = distanceKm(center, { lat: it.lat, lng: it.lng })
+    if (radiusKm && dist > radiusKm * 1.05) continue
+    if (seen.has(it.qid)) continue
+    seen.add(it.qid)
+    out.push({
+      id: `wd/${it.qid}`,
+      lat: it.lat,
+      lng: it.lng,
+      name: it.name || 'Lieu documenté',
+      category: 'autre',
+      typeLabel: 'Ruines / lieu documenté',
+      facts: [],
+      osmDescription: null,
+      danger: assessDanger('autre', {}),
+      tagline: 'Wikidata',
+      osmUrl: null,
+      distanceKm: dist,
+      score: 6, // documenté → remonte
+      notable: true,
+      wiki: null,
+      wikipedia: null,
+      wikidata: it.qid,
+      wikidataUrl: `https://www.wikidata.org/wiki/${it.qid}`,
+    })
+  }
+  return out
+}
+
+// Fusionne OSM + Wikidata en écartant les doublons (< 80 m d'un lieu OSM).
+function mergeSources(osm, wd, center) {
+  const out = [...osm]
+  for (const w of wd) {
+    if (osm.some((r) => distanceKm(r, w) < 0.08)) continue
+    out.push(w)
+  }
+  return out.sort((a, b) => b.score - a.score || a.distanceKm - b.distanceKm)
+}
+
 async function fetchJson(url, opts, extSignal) {
   const c = new AbortController()
   const timer = setTimeout(() => c.abort(), REQUEST_TIMEOUT_MS)
@@ -297,19 +360,21 @@ export async function discoverAbandoned(center, radiusKm, { signal } = {}) {
   const query = buildQuery(bboxOf(center.lat, center.lng, radius))
 
   // 1) Proxy même origine (POST) : chemin fiable en production. La requête
-  // Overpass voyage dans le corps → pas d'URL géante, et « /api/discover »
-  // n'a aucun mot susceptible d'être filtré par un bloqueur.
+  // Overpass voyage dans le corps (+ la géo pour la recherche Wikidata) → pas
+  // d'URL géante, et « /api/discover » n'a aucun mot filtré par un bloqueur.
   try {
     const data = await fetchJson(
       '/api/discover',
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ data: query }),
+        body: JSON.stringify({ data: query, geo: { lat: center.lat, lng: center.lng, radiusKm: radius } }),
       },
       signal,
     )
-    return parseElements(data.elements || [], center, radius)
+    const osm = parseElements(data.elements || [], center, radius)
+    const wd = parseWikidata(data.wikidata || [], center, radius)
+    return mergeSources(osm, wd, center)
   } catch (proxyErr) {
     if (signal?.aborted) throw proxyErr
     // En production, le proxy EST le chemin fiable : on remonte sa vraie erreur

@@ -171,14 +171,16 @@ function DiscoverResult({ r, onAdd, onSelect }) {
             >
               <Search size={11} /> Web
             </a>
-            <a
-              href={r.osmUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-center gap-1 rounded-lg bg-zinc-700/60 px-2 py-1.5 text-[11px] text-zinc-200 transition hover:bg-zinc-600/60"
-            >
-              <ExternalLink size={11} /> OpenStreetMap
-            </a>
+            {r.osmUrl && (
+              <a
+                href={r.osmUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-1 rounded-lg bg-zinc-700/60 px-2 py-1.5 text-[11px] text-zinc-200 transition hover:bg-zinc-600/60"
+              >
+                <ExternalLink size={11} /> OpenStreetMap
+              </a>
+            )}
             {r.wikidataUrl && !wiki && (
               <a
                 href={r.wikidataUrl}
