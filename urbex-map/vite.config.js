@@ -9,6 +9,9 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
+      // On enregistre le service worker nous-mêmes dans main.jsx pour pouvoir
+      // vérifier les mises à jour au retour au premier plan (crucial sur iOS).
+      injectRegister: false,
       manifest: {
         name: 'Urbex Atlas',
         short_name: 'Urbex Atlas',

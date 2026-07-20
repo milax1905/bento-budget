@@ -5,6 +5,25 @@ import '@fontsource-variable/inter'
 import './index.css'
 import App from './App'
 import { idbGet, idbSet } from './lib/localdb'
+import { registerSW } from 'virtual:pwa-register'
+
+// Mise à jour de la PWA : en plus du contrôle au chargement, on revérifie à
+// chaque retour au premier plan (iOS met souvent l'app en veille sans
+// re-vérifier) et toutes les minutes. En mode autoUpdate, la nouvelle version
+// s'installe et la page se recharge automatiquement dès qu'elle est détectée.
+registerSW({
+  immediate: true,
+  onRegisteredSW(_url, registration) {
+    if (!registration) return
+    const check = () => {
+      if (navigator.onLine) registration.update().catch(() => {})
+    }
+    setInterval(check, 60 * 1000)
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') check()
+    })
+  },
+})
 
 // Filet de sécurité : si l'app plante (donnée corrompue, bug…), on affiche un
 // écran de récupération au lieu d'une page noire, avec de quoi sauvegarder
