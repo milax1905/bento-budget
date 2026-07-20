@@ -204,6 +204,9 @@ export default function DiscoverPanel({
             onChange={(e) => onRadius(Number(e.target.value))}
             className="w-full accent-violet-400"
           />
+          {radiusKm >= 50 && (
+            <p className="mt-1 text-[10px] text-zinc-600">Grand rayon : la recherche peut prendre quelques secondes.</p>
+          )}
         </div>
         <button
           onClick={onSearch}
