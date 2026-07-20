@@ -177,9 +177,11 @@ export function StoreProvider({ children }) {
   }, [supabase])
 
   // ----- Mode cloud : temps réel + chargement (une fois abonné) -----
+  // On n'ouvre le canal et ne charge les spots que pour un MEMBRE : un guest
+  // n'a aucune donnée à recevoir (RLS) et n'a pas à ouvrir de websocket.
   const userId = user?.id
   useEffect(() => {
-    if (!supabase || !userId) return
+    if (!supabase || !userId || membership !== 'member') return
     let cancelled = false
 
     const applyRow = (row) => {
@@ -234,7 +236,7 @@ export function StoreProvider({ children }) {
       cancelled = true
       supabase.removeChannel(channel)
     }
-  }, [supabase, userId, showToast])
+  }, [supabase, userId, membership, showToast])
 
   const profileName =
     user?.user_metadata?.pseudo ||
@@ -259,8 +261,14 @@ export function StoreProvider({ children }) {
       if (cancelled) return
       if (error) {
         // Fonction absente (schéma pas encore migré) : on n'enferme personne.
-        setMembership('member')
-        loadMembers()
+        // Sur toute AUTRE erreur (réseau, 500…), on reste en 'unknown' (loader)
+        // au lieu d'ouvrir la carte par erreur.
+        if (error.code === 'PGRST202' || error.code === '42883') {
+          setMembership('member')
+          loadMembers()
+        } else {
+          showToast('Vérification de l’accès impossible — réessaie', 'error')
+        }
         return
       }
       setMembership(data ? 'member' : 'guest')
@@ -269,7 +277,7 @@ export function StoreProvider({ children }) {
     return () => {
       cancelled = true
     }
-  }, [supabase, userId, loadMembers])
+  }, [supabase, userId, loadMembers, showToast])
 
   const addMember = useCallback(
     async (email) => {
@@ -465,6 +473,7 @@ export function StoreProvider({ children }) {
     profileName,
     membership,
     members,
+    loadMembers,
     addMember,
     removeMember,
     addSpot,

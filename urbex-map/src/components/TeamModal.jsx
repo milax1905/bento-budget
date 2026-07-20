@@ -1,12 +1,17 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { X, Users, UserPlus, Trash2, Crown } from 'lucide-react'
 import { useStore } from '../lib/store'
 
 export default function TeamModal({ onClose }) {
-  const { members, addMember, removeMember, userEmail } = useStore()
+  const { members, loadMembers, addMember, removeMember, userEmail } = useStore()
   const [email, setEmail] = useState('')
   const [busy, setBusy] = useState(false)
   const [confirmRemove, setConfirmRemove] = useState(null)
+
+  // Rafraîchit la liste à l'ouverture (elle a pu changer depuis un autre appareil).
+  useEffect(() => {
+    loadMembers()
+  }, [loadMembers])
 
   const invite = async (e) => {
     e.preventDefault()
@@ -81,6 +86,7 @@ export default function TeamModal({ onClose }) {
                     </span>
                   </span>
                   {!isMe &&
+                    m.added_by !== 'bootstrap' &&
                     (confirmRemove === m.email ? (
                       <button
                         onClick={() => {
@@ -105,7 +111,8 @@ export default function TeamModal({ onClose }) {
           </div>
 
           <p className="text-[10px] leading-relaxed text-zinc-600">
-            Astuce : retirer un membre lui coupe immédiatement l'accès à la carte.
+            Retirer un membre lui coupe l'accès à sa prochaine ouverture. Le créateur de la carte (👑) ne peut pas
+            être retiré.
           </p>
         </div>
       </div>

@@ -37,14 +37,26 @@ create table if not exists public.members (
   added_at timestamptz not null default now()
 );
 
--- 👉 BOOTSTRAP OBLIGATOIRE : ajoute TON email ici (en minuscules) avant de
--- resserrer les règles ci-dessous, sinon tu perdrais l'accès à tes propres
--- spots. Remplace l'adresse puis garde cette ligne :
-insert into public.members (email, added_by)
-  values ('ton-email@example.com', 'bootstrap')
-  on conflict (email) do nothing;
+-- 👉 BOOTSTRAP OBLIGATOIRE : mets TON email ci-dessous (en minuscules).
+-- Ce bloc s'arrête volontairement tant que le placeholder n'est pas remplacé,
+-- pour t'éviter de te verrouiller toi-même hors de tes propres spots.
+do $$
+declare
+  owner_email text := 'ton-email@example.com';  -- 👈 REMPLACE par ton email
+begin
+  if owner_email = 'ton-email@example.com' then
+    raise exception 'Bootstrap : remplace ton-email@example.com par ton vrai email avant d''exécuter le script.';
+  end if;
+  insert into public.members (email, added_by)
+    values (lower(owner_email), 'bootstrap')
+    on conflict (email) do nothing;
+end $$;
 
--- Un compte connecté est « membre » si son email est dans public.members.
+-- Un compte connecté est « membre » si son email (vérifié) est dans members.
+-- ⚠️ La sécurité de l'invitation REPOSE sur la vérification d'email : garde
+-- « Confirm email » ACTIVÉ (Authentication → Providers → Email), sinon
+-- quelqu'un pourrait créer un compte avec l'email d'un invité sans le posséder.
+-- La connexion Google est déjà vérifiée par Google.
 create or replace function public.is_member()
 returns boolean
 language sql
@@ -68,9 +80,16 @@ drop policy if exists "members invite" on public.members;
 create policy "members invite" on public.members
   for insert to authenticated with check (public.is_member());
 
+-- Un membre peut retirer un autre membre, MAIS pas la ligne « bootstrap »
+-- (l'owner) ni lui-même — évite les prises de contrôle et les verrouillages.
 drop policy if exists "members remove" on public.members;
 create policy "members remove" on public.members
-  for delete to authenticated using (public.is_member());
+  for delete to authenticated
+  using (
+    public.is_member()
+    and added_by <> 'bootstrap'
+    and lower(email) <> lower(auth.jwt() ->> 'email')
+  );
 
 -- ─────────────────────────── Sécurité des spots ───────────────────────────
 -- Seuls les membres invités ont accès. Quelqu'un qui se connecte sans être
@@ -105,7 +124,11 @@ exception
   when duplicate_object then null;
 end $$;
 
--- Astuce confort : Authentication → Providers → Email → désactiver
--- « Confirm email » simplifie la première connexion (pas de mail à valider).
--- Avec le système d'invitation ci-dessus, laisser les inscriptions ouvertes
--- n'expose plus tes spots : un non-membre ne voit rien.
+-- ─────────────────────────── Sécurité : à retenir ───────────────────────────
+-- 1. GARDE « Confirm email » ACTIVÉ (Authentication → Providers → Email).
+--    C'est ce qui empêche quelqu'un de s'inscrire avec l'email d'un invité
+--    sans posséder cette boîte mail. La connexion Google est déjà vérifiée.
+-- 2. Tu peux, en plus, fermer les inscriptions une fois vos comptes créés
+--    (Authentication → Sign In / Providers → « Allow new user signups »).
+-- 3. Seuls les emails de la table members voient la carte ; l'owner (ligne
+--    « bootstrap ») ne peut pas être retiré depuis l'app.

@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { X, ImagePlus, Trash2, Save, Crosshair, Loader2, Check, Star, Plus, ListChecks } from 'lucide-react'
-import { CATEGORIES, STATUSES, MAX_PHOTOS } from '../lib/constants'
+import { CATEGORIES, STATUSES, MAX_PHOTOS, MAX_CHECKLIST } from '../lib/constants'
 import { formatCoords } from '../lib/geo'
 import { fileToCompressedDataUrl } from '../lib/images'
 import { useStore } from '../lib/store'
@@ -39,7 +39,14 @@ export default function SpotForm({
   const addCheckItem = () => {
     const text = checkItem.trim().slice(0, 80)
     if (!text) return
-    setChecklist((prev) => [...prev, { text, done: false }])
+    setChecklist((prev) => {
+      if (prev.length >= MAX_CHECKLIST) {
+        showToast(`Maximum ${MAX_CHECKLIST} éléments`, 'error')
+        return prev
+      }
+      if (prev.some((i) => i.text.toLowerCase() === text.toLowerCase())) return prev
+      return [...prev, { text, done: false }]
+    })
     setCheckItem('')
   }
 
@@ -74,6 +81,12 @@ export default function SpotForm({
       return
     }
     setSaving(true)
+    // On récupère l'élément de checklist en cours de saisie (non validé).
+    const pending = checkItem.trim().slice(0, 80)
+    const finalChecklist =
+      pending && !checklist.some((i) => i.text.toLowerCase() === pending.toLowerCase())
+        ? [...checklist, { text: pending, done: false }].slice(0, MAX_CHECKLIST)
+        : checklist
     const fields = {
       name: trimmed,
       category,
@@ -83,10 +96,20 @@ export default function SpotForm({
       accessNotes: accessNotes.trim(),
       visitedAt: visitedAt || null,
       photos,
-      favorite,
-      checklist,
       lat,
       lng,
+    }
+    // favorite/checklist se modifient aussi HORS formulaire (étoile et cases à
+    // cocher de la fiche). On ne les réécrit que si l'utilisateur les a changés
+    // ici, pour ne pas écraser une coche/un favori posé par un coéquipier.
+    if (!editing) {
+      fields.favorite = favorite
+      fields.checklist = finalChecklist
+    } else {
+      if (favorite !== Boolean(spot.favorite)) fields.favorite = favorite
+      if (JSON.stringify(finalChecklist) !== JSON.stringify(spot.checklist || [])) {
+        fields.checklist = finalChecklist
+      }
     }
     if (editing) {
       const ok = await updateSpot(spot.id, fields)
