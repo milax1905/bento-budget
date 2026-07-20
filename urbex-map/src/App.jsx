@@ -271,6 +271,16 @@ function Shell() {
           setDiscover((d) => {
             if (!d) return d
             const results = d.results.map((r) => (map[r.id] ? { ...r, enrichment: map[r.id] } : r))
+            // L'IA trie : les lieux « top » et les plus intéressants remontent,
+            // les « quelconque » descendent. À défaut d'IA, on garde l'ordre
+            // (score documenté puis distance).
+            const rank = (r) => {
+              const ai = r.enrichment?.ai
+              if (!ai) return 0
+              const base = ai.verdict === 'top' ? 100 : ai.verdict === 'quelconque' ? -100 : 0
+              return base + (Number(ai.interet) || 0)
+            }
+            results.sort((a, b) => rank(b) - rank(a) || b.score - a.score || a.distanceKm - b.distanceKm)
             return { ...d, results, aiEnabled: Boolean(enr?.aiEnabled), enriching: false }
           })
         })
