@@ -1,4 +1,8 @@
 import { distanceKm } from './geo'
+import { parseWikipediaTag } from './wiki'
+
+export const MAX_DISCOVER_RADIUS_KM = 100
+const REQUEST_TIMEOUT_MS = 30000
 
 // Recherche de lieux potentiellement abandonnés autour d'un point via
 // l'Overpass API (données OpenStreetMap, gratuit, sans clé). On cible les
@@ -10,14 +14,14 @@ const ENDPOINTS = [
 
 function buildQuery(lat, lng, radiusM) {
   const a = `(around:${radiusM},${lat.toFixed(5)},${lng.toFixed(5)})`
-  return `[out:json][timeout:25];
+  return `[out:json][timeout:40];
 (
   nwr[~"^(abandoned|disused)"~"."]${a};
   nwr["ruins"="yes"]${a};
   nwr["building"="ruins"]${a};
   nwr["historic"="ruins"]${a};
 );
-out center tags 200;`
+out center tags 400;`
 }
 
 const DEFAULT_NAME = {
@@ -79,6 +83,23 @@ function tagline(tags) {
   return 'OpenStreetMap'
 }
 
+// Score d'« intérêt » : un lieu documenté (Wikipédia/patrimoine) ou nommé
+// remonte au-dessus des ruines anonymes.
+function interestOf(tags) {
+  const wiki = parseWikipediaTag(tags.wikipedia) || (tags.wikidata ? { wikidata: tags.wikidata } : null)
+  const heritage = Boolean(tags.heritage || tags['heritage:operator'] || tags.historic)
+  const hasName = Boolean(tags.name || tags['name:fr'])
+  const hasImage = Boolean(tags.image || tags.wikimedia_commons)
+  let score = 0
+  if (tags.wikipedia || tags.wikidata) score += 6
+  if (heritage) score += 4
+  if (hasName) score += 3
+  if (hasImage) score += 2
+  if (tags.start_date || tags.architect || tags['building:architecture']) score += 1
+  const notable = Boolean(tags.wikipedia || tags.wikidata || heritage)
+  return { score, notable, wiki: parseWikipediaTag(tags.wikipedia), wikidata: tags.wikidata || null }
+}
+
 function parseElements(elements, center) {
   const seen = new Set()
   const out = []
@@ -92,6 +113,7 @@ function parseElements(elements, center) {
     if (seen.has(id)) continue
     seen.add(id)
     const category = categorize(tags)
+    const { score, notable, wiki, wikidata } = interestOf(tags)
     out.push({
       id,
       lat,
@@ -101,24 +123,38 @@ function parseElements(elements, center) {
       tagline: tagline(tags),
       osmUrl: `https://www.openstreetmap.org/${el.type}/${el.id}`,
       distanceKm: distanceKm(center, { lat, lng }),
+      score,
+      notable,
+      wiki, // { lang, title } ou null
+      wikidataUrl: wikidata ? `https://www.wikidata.org/wiki/${wikidata}` : null,
     })
   }
-  return out.sort((a, b) => a.distanceKm - b.distanceKm)
+  // Les lieux documentés/notables d'abord, puis les plus proches.
+  return out.sort((a, b) => b.score - a.score || a.distanceKm - b.distanceKm)
 }
 
 export async function discoverAbandoned(center, radiusKm, { signal } = {}) {
-  const radiusM = Math.round(Math.min(Math.max(radiusKm, 0.5), 30) * 1000)
+  const radiusM = Math.round(Math.min(Math.max(radiusKm, 0.5), MAX_DISCOVER_RADIUS_KM) * 1000)
   const body = 'data=' + encodeURIComponent(buildQuery(center.lat, center.lng, radiusM))
   let lastErr
   for (const ep of ENDPOINTS) {
+    // Timeout dur par endpoint : évite le « chargement à l'infini » si un
+    // serveur Overpass ne répond jamais.
+    const timeout = new AbortController()
+    const timer = setTimeout(() => timeout.abort(), REQUEST_TIMEOUT_MS)
+    const onAbort = () => timeout.abort()
+    signal?.addEventListener('abort', onAbort)
     try {
-      const res = await fetch(ep, { method: 'POST', body, signal })
+      const res = await fetch(ep, { method: 'POST', body, signal: timeout.signal })
       if (!res.ok) throw new Error(`Overpass ${res.status}`)
       const data = await res.json()
       return parseElements(data.elements || [], center)
     } catch (err) {
-      if (err.name === 'AbortError') throw err
-      lastErr = err
+      if (signal?.aborted) throw err
+      lastErr = err // timeout ou erreur réseau : on tente le miroir suivant
+    } finally {
+      clearTimeout(timer)
+      signal?.removeEventListener('abort', onAbort)
     }
   }
   throw lastErr || new Error('Recherche indisponible')
