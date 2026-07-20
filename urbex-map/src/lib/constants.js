@@ -29,7 +29,7 @@ export const MAX_PHOTOS = 8
 
 // Affichée dans le pied de la liste — incrémentée à chaque livraison pour
 // vérifier d'un coup d'œil quelle version est déployée.
-export const APP_VERSION = '1.6'
+export const APP_VERSION = '1.7'
 
 // Fonds de carte. L'imagerie Esri est mise à jour très régulièrement au niveau
 // mondial ; l'ortho IGN est la plus détaillée sur la France.
