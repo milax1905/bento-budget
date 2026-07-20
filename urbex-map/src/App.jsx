@@ -268,9 +268,15 @@ function Shell() {
       let msg
       if (/429/.test(raw)) {
         msg = 'Trop de recherches d’affilée — attends ~1 min puis relance une seule fois.'
+      } else if (/HTTP 5\d\d/.test(raw)) {
+        msg =
+          'Les serveurs OpenStreetMap sont lents ou surchargés en ce moment. Attends ~1 min puis réessaie (ou réduis le rayon).'
       } else if (/abort/i.test(raw)) {
         msg =
-          'Le serveur OpenStreetMap n’a pas répondu à temps (souvent surchargé). Attends ~1 min puis relance une seule fois.'
+          'La recherche a mis trop de temps à répondre. Attends ~1 min puis réessaie (ou réduis le rayon).'
+      } else if (/load failed|failed to fetch|networkerror/i.test(raw)) {
+        msg =
+          'Connexion au serveur impossible. Si Safari a un bloqueur de pub/contenu ou un VPN actif, désactive-le pour ce site puis réessaie.'
       } else {
         msg = `Recherche indisponible (${raw}). Réessaie ou réduis le rayon.`
       }

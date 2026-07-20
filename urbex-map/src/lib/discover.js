@@ -177,13 +177,13 @@ function parseElements(elements, center, radiusKm) {
   return out.sort((a, b) => b.score - a.score || a.distanceKm - b.distanceKm)
 }
 
-async function getJson(url, extSignal) {
+async function fetchJson(url, opts, extSignal) {
   const c = new AbortController()
   const timer = setTimeout(() => c.abort(), REQUEST_TIMEOUT_MS)
   const onAbort = () => c.abort()
   extSignal?.addEventListener('abort', onAbort)
   try {
-    const res = await fetch(url, { signal: c.signal })
+    const res = await fetch(url, { ...opts, signal: c.signal })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     return await res.json()
   } finally {
@@ -192,21 +192,38 @@ async function getJson(url, extSignal) {
   }
 }
 
+// En dev (vite), il n'y a pas de fonction serverless : on interroge alors les
+// miroirs Overpass directement. En production, on passe toujours par le proxy.
+const isLocalhost =
+  typeof location !== 'undefined' && /^(localhost|127\.|0\.0\.0\.0|\[?::1)/.test(location.hostname)
+
 export async function discoverAbandoned(center, radiusKm, { signal } = {}) {
   const radius = Math.min(Math.max(radiusKm, 0.5), MAX_DISCOVER_RADIUS_KM)
   const query = buildQuery(bboxOf(center.lat, center.lng, radius))
-  const q = encodeURIComponent(query)
 
-  // 1) Proxy même origine : fiable (pas de CORS ni de blocage côté navigateur).
+  // 1) Proxy même origine (POST) : chemin fiable en production. La requête
+  // Overpass voyage dans le corps → pas d'URL géante, et « /api/discover »
+  // n'a aucun mot susceptible d'être filtré par un bloqueur.
   try {
-    const data = await getJson(`/api/overpass?data=${q}`, signal)
+    const data = await fetchJson(
+      '/api/discover',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data: query }),
+      },
+      signal,
+    )
     return parseElements(data.elements || [], center, radius)
   } catch (proxyErr) {
     if (signal?.aborted) throw proxyErr
-    // 2) Repli : miroirs Overpass directs, en parallèle (dev local, ou proxy
-    // temporairement indisponible).
+    // En production, le proxy EST le chemin fiable : on remonte sa vraie erreur
+    // tout de suite (un repli vers Overpass en direct échouerait pareil et
+    // masquerait la cause). Le repli n'a de sens qu'en dev local.
+    if (!isLocalhost) throw proxyErr
+    const q = encodeURIComponent(query)
     try {
-      const data = await Promise.any(ENDPOINTS.map((ep) => getJson(`${ep}?data=${q}`, signal)))
+      const data = await Promise.any(ENDPOINTS.map((ep) => fetchJson(`${ep}?data=${q}`, {}, signal)))
       return parseElements(data.elements || [], center, radius)
     } catch (err) {
       if (signal?.aborted) throw err
