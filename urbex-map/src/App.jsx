@@ -1,0 +1,460 @@
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Plus, PanelLeftOpen, Loader2, X, Undo2, Check } from 'lucide-react'
+import { StoreProvider, useStore } from './lib/store'
+import { trailRoute, directRoute, walkMinutes } from './lib/routing'
+import { formatDistance } from './lib/geo'
+import MapView from './components/MapView'
+import MapControls from './components/MapControls'
+import Sidebar from './components/Sidebar'
+import SpotDetail from './components/SpotDetail'
+import SpotForm from './components/SpotForm'
+import AuthScreen from './components/AuthScreen'
+import SettingsModal from './components/SettingsModal'
+
+const LS_LAYER = 'urbex-atlas:layer'
+const LS_LABELS = 'urbex-atlas:labels'
+
+function Toast() {
+  const { toast } = useStore()
+  if (!toast) return null
+  const colors = {
+    info: 'bg-zinc-800 text-zinc-100 border-white/10',
+    success: 'bg-emerald-500/15 text-emerald-200 border-emerald-400/30',
+    error: 'bg-rose-500/15 text-rose-200 border-rose-400/30',
+  }
+  return (
+    <div
+      className={`pointer-events-none fixed bottom-[calc(1.25rem+env(safe-area-inset-bottom))] left-1/2 z-[3000] max-w-[90vw] -translate-x-1/2 rounded-xl border px-4 py-2.5 text-sm shadow-2xl backdrop-blur-xl ${colors[toast.kind] || colors.info}`}
+    >
+      {toast.message}
+    </div>
+  )
+}
+
+function Shell() {
+  const store = useStore()
+  const { mode, user, authReady, spots, showToast, updateSpot } = store
+
+  const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 640)
+  const [layerId, setLayerId] = useState(() => localStorage.getItem(LS_LAYER) || 'esri')
+  const [labelsOn, setLabelsOn] = useState(() => localStorage.getItem(LS_LABELS) !== '0')
+  const [selectedId, setSelectedId] = useState(null)
+  const [addMode, setAddMode] = useState(false)
+  const [draftPos, setDraftPos] = useState(null)
+  const [formState, setFormState] = useState(null) // null | {mode:'create'} | {mode:'edit', spot}
+  const [adjusting, setAdjusting] = useState(false) // formulaire replié pendant qu'on déplace le marqueur
+  const [approachEdit, setApproachEdit] = useState(null) // édition de l'itinéraire d'approche d'un spot
+  const approachSeq = useRef(0)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [flyTarget, setFlyTarget] = useState(null)
+  const [userPos, setUserPos] = useState(null)
+  const [locating, setLocating] = useState(false)
+  const mapRef = useRef(null)
+
+  useEffect(() => localStorage.setItem(LS_LAYER, layerId), [layerId])
+  useEffect(() => localStorage.setItem(LS_LABELS, labelsOn ? '1' : '0'), [labelsOn])
+
+  const selectedSpot = spots.find((s) => s.id === selectedId)
+
+  const select = useCallback(
+    (id) => {
+      // Un formulaire ou un tracé en cours contient du travail non
+      // enregistré : on ne l'écrase pas silencieusement.
+      if (formState || approachEdit) {
+        showToast(
+          approachEdit
+            ? "Termine ou annule d'abord le tracé d'approche"
+            : "Enregistre ou annule d'abord le formulaire en cours",
+          'info'
+        )
+        return false
+      }
+      setAddMode(false)
+      setDraftPos(null)
+      setSelectedId(id)
+      return true
+    },
+    [formState, approachEdit, showToast]
+  )
+
+  const selectAndFly = useCallback(
+    (id) => {
+      if (!select(id)) return
+      const spot = spots.find((s) => s.id === id)
+      if (spot) setFlyTarget({ lat: spot.lat, lng: spot.lng, ts: Date.now() })
+      if (window.innerWidth < 640) setSidebarOpen(false)
+    },
+    [spots, select]
+  )
+
+  const startAdd = () => {
+    setAddMode(true)
+    setFormState(null)
+    setSelectedId(null)
+    setDraftPos(null)
+  }
+
+  const cancelAll = useCallback(() => {
+    setAddMode(false)
+    setDraftPos(null)
+    setFormState(null)
+    setAdjusting(false)
+  }, [])
+
+  // Calcule (ou recalcule) le tracé d'approche pendant l'édition. `seq`
+  // ignore les réponses obsolètes si l'utilisateur enchaîne les clics.
+  const computeApproach = useCallback(
+    async (spotId, waypoints, routeMode) => {
+      const spot = spots.find((s) => s.id === spotId)
+      if (!spot) return
+      const seq = ++approachSeq.current
+      if (!waypoints.length) {
+        setApproachEdit((prev) =>
+          prev ? { ...prev, waypoints, mode: routeMode, geometry: [], distance: 0, routedMode: routeMode, loading: false } : prev
+        )
+        return
+      }
+      setApproachEdit((prev) => (prev ? { ...prev, waypoints, mode: routeMode, loading: true } : prev))
+      const points = [...waypoints, { lat: spot.lat, lng: spot.lng }]
+      let result
+      if (routeMode === 'trail') {
+        try {
+          result = await trailRoute(points)
+        } catch {
+          result = directRoute(points)
+        }
+      } else {
+        result = directRoute(points)
+      }
+      if (approachSeq.current !== seq) return
+      setApproachEdit((prev) =>
+        prev
+          ? { ...prev, geometry: result.geometry, distance: result.distance, routedMode: result.routedMode, loading: false }
+          : prev
+      )
+    },
+    [spots]
+  )
+
+  const startApproachEdit = useCallback((spot) => {
+    setFormState(null)
+    setAddMode(false)
+    setDraftPos(null)
+    setAdjusting(false)
+    const a = spot.approach
+    setApproachEdit({
+      spotId: spot.id,
+      waypoints: a?.waypoints || [],
+      mode: a?.mode || 'trail',
+      geometry: a?.geometry || [],
+      distance: a?.distance || 0,
+      routedMode: a?.mode || 'trail',
+      loading: false,
+    })
+  }, [])
+
+  const saveApproach = async () => {
+    const a = approachEdit
+    if (!a || a.loading) return
+    const value = a.waypoints.length
+      ? { waypoints: a.waypoints, geometry: a.geometry, distance: a.distance, mode: a.routedMode }
+      : null
+    const ok = await updateSpot(a.spotId, { approach: value })
+    if (ok) {
+      setApproachEdit(null)
+      setSelectedId(a.spotId)
+      showToast(value ? "Itinéraire d'approche enregistré" : 'Tracé supprimé', 'success')
+    }
+  }
+
+  const handleMapClick = useCallback(
+    (latlng) => {
+      if (addMode) {
+        setDraftPos({ lat: latlng.lat, lng: latlng.lng })
+        setAddMode(false)
+        setFormState({ mode: 'create' })
+      } else if (approachEdit) {
+        computeApproach(
+          approachEdit.spotId,
+          [...approachEdit.waypoints, { lat: latlng.lat, lng: latlng.lng }],
+          approachEdit.mode
+        )
+      } else if (adjusting) {
+        setDraftPos({ lat: latlng.lat, lng: latlng.lng })
+      } else if (!formState) {
+        setSelectedId(null)
+      }
+    },
+    [addMode, approachEdit, computeApproach, adjusting, formState]
+  )
+
+  const handleSaved = (id) => {
+    setFormState(null)
+    setDraftPos(null)
+    setAdjusting(false)
+    setSelectedId(id)
+  }
+
+  const handleEdit = (spot) => {
+    setFormState({ mode: 'edit', spot })
+  }
+
+  const handleStartAdjust = () => {
+    if (formState?.mode === 'edit' && !draftPos) {
+      setDraftPos({ lat: formState.spot.lat, lng: formState.spot.lng })
+    }
+    setAdjusting(true)
+  }
+
+  const locate = () => {
+    if (!navigator.geolocation) {
+      showToast('Géolocalisation non disponible', 'error')
+      return
+    }
+    setLocating(true)
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const p = { lat: pos.coords.latitude, lng: pos.coords.longitude }
+        setUserPos(p)
+        setFlyTarget({ ...p, zoom: 15, ts: Date.now() })
+        setLocating(false)
+      },
+      () => {
+        showToast('Position introuvable — vérifie les autorisations', 'error')
+        setLocating(false)
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    )
+  }
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'Escape') {
+        if (addMode) setAddMode(false)
+        else if (approachEdit) setApproachEdit(null)
+        else if (adjusting) setAdjusting(false)
+        else if (settingsOpen) setSettingsOpen(false)
+        else if (!formState) setSelectedId(null)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [addMode, approachEdit, adjusting, settingsOpen, formState])
+
+  if (mode === 'cloud' && !authReady) {
+    return (
+      <div className="flex h-dvh w-screen items-center justify-center bg-zinc-950">
+        <Loader2 size={28} className="animate-spin text-amber-400" />
+      </div>
+    )
+  }
+
+  if (mode === 'cloud' && !user) {
+    return (
+      <>
+        <AuthScreen />
+        <Toast />
+      </>
+    )
+  }
+
+  const panelOpen = formState || selectedSpot
+
+  return (
+    <div className="relative h-dvh w-screen overflow-hidden bg-zinc-950 text-zinc-100">
+      <MapView
+        spots={spots}
+        selectedId={selectedId}
+        onSelect={selectAndFly}
+        layerId={layerId}
+        labelsOn={labelsOn}
+        addMode={addMode || Boolean(approachEdit)}
+        draftPos={draftPos}
+        onMapClick={handleMapClick}
+        onDraftMove={setDraftPos}
+        userPos={userPos}
+        flyTarget={flyTarget}
+        mapRef={mapRef}
+        approachDraft={approachEdit}
+        onApproachWaypointMove={(i, pos) => {
+          if (!approachEdit) return
+          const wps = approachEdit.waypoints.map((w, j) => (j === i ? pos : w))
+          computeApproach(approachEdit.spotId, wps, approachEdit.mode)
+        }}
+      />
+
+      {/* Sidebar */}
+      {sidebarOpen ? (
+        <div className="pointer-events-none absolute bottom-0 left-0 top-0 z-[1000] w-full p-0 sm:w-[380px] sm:p-3">
+          <Sidebar
+            onClose={() => setSidebarOpen(false)}
+            selectedId={selectedId}
+            onSelect={selectAndFly}
+            userPos={userPos}
+            onOpenSettings={() => setSettingsOpen(true)}
+          />
+        </div>
+      ) : (
+        <button
+          title="Ouvrir la liste"
+          onClick={() => setSidebarOpen(true)}
+          className="glass absolute left-3 top-[calc(0.75rem+env(safe-area-inset-top))] z-[1000] flex h-11 w-11 items-center justify-center rounded-xl text-zinc-200 shadow-lg transition hover:bg-zinc-700/70"
+        >
+          <PanelLeftOpen size={18} />
+        </button>
+      )}
+
+      {/* Panneau droit : détail ou formulaire */}
+      {/* Barre d'édition de l'itinéraire d'approche */}
+      {approachEdit && (
+        <div className="pointer-events-none absolute bottom-0 right-0 z-[1100] w-full sm:w-[400px] sm:p-3">
+          <div className="glass pointer-events-auto pb-safe w-full rounded-none px-4 py-3 sm:rounded-2xl">
+            <p className="text-[11px] leading-relaxed text-zinc-400">
+              🥾 Touche la carte : d'abord le <span className="font-semibold text-sky-300">parking 🅿️</span>, puis
+              chaque étape jusqu'au spot. Les points se déplacent en les faisant glisser.
+            </p>
+            <div className="mt-1.5 text-sm text-zinc-100">
+              {approachEdit.loading ? (
+                <span className="flex items-center gap-1.5 text-zinc-400">
+                  <Loader2 size={13} className="animate-spin" /> calcul du tracé…
+                </span>
+              ) : approachEdit.waypoints.length ? (
+                <span>
+                  {approachEdit.waypoints.length} point{approachEdit.waypoints.length > 1 ? 's' : ''} ·{' '}
+                  {formatDistance(approachEdit.distance / 1000)} · ~{walkMinutes(approachEdit.distance)} min
+                  {approachEdit.mode === 'trail' && approachEdit.routedMode === 'direct' && (
+                    <span className="text-amber-300"> · sentiers indisponibles, tracé direct</span>
+                  )}
+                </span>
+              ) : (
+                <span className="text-zinc-500">Aucun point posé</span>
+              )}
+            </div>
+            <div className="mt-2 flex items-center gap-1.5">
+              <div className="flex rounded-lg bg-zinc-800/70 p-0.5 text-[11px] font-medium">
+                <button
+                  onClick={() => computeApproach(approachEdit.spotId, approachEdit.waypoints, 'trail')}
+                  className={`rounded-md px-2.5 py-1.5 transition ${
+                    approachEdit.mode === 'trail' ? 'bg-sky-500/30 text-sky-200' : 'text-zinc-400'
+                  }`}
+                >
+                  Sentiers
+                </button>
+                <button
+                  onClick={() => computeApproach(approachEdit.spotId, approachEdit.waypoints, 'direct')}
+                  className={`rounded-md px-2.5 py-1.5 transition ${
+                    approachEdit.mode === 'direct' ? 'bg-sky-500/30 text-sky-200' : 'text-zinc-400'
+                  }`}
+                >
+                  Direct
+                </button>
+              </div>
+              <button
+                title="Retirer le dernier point"
+                disabled={!approachEdit.waypoints.length}
+                onClick={() =>
+                  computeApproach(approachEdit.spotId, approachEdit.waypoints.slice(0, -1), approachEdit.mode)
+                }
+                className="rounded-lg bg-zinc-800/70 p-2 text-zinc-300 transition hover:bg-zinc-700/70 disabled:opacity-40"
+              >
+                <Undo2 size={14} />
+              </button>
+              <span className="flex-1" />
+              <button
+                onClick={() => setApproachEdit(null)}
+                className="rounded-lg bg-zinc-800/70 px-3 py-2 text-xs font-medium text-zinc-300 transition hover:bg-zinc-700/70"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={saveApproach}
+                disabled={approachEdit.loading}
+                className="flex items-center gap-1.5 rounded-lg bg-amber-400 px-3 py-2 text-xs font-bold text-zinc-950 transition hover:bg-amber-300 disabled:opacity-50"
+              >
+                <Check size={14} /> Enregistrer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!approachEdit && panelOpen && (
+        <div
+          className={`pointer-events-none absolute bottom-0 right-0 z-[1100] w-full sm:w-[400px] sm:p-3 ${
+            formState && adjusting ? '' : 'top-0'
+          }`}
+        >
+          {formState ? (
+            <SpotForm
+              key={formState.mode === 'edit' ? formState.spot.id : 'new'}
+              spot={formState.mode === 'edit' ? formState.spot : null}
+              position={draftPos}
+              adjusting={adjusting}
+              onStartAdjust={handleStartAdjust}
+              onEndAdjust={() => setAdjusting(false)}
+              onSaved={handleSaved}
+              onCancel={cancelAll}
+            />
+          ) : (
+            <SpotDetail
+              key={selectedSpot.id}
+              spot={selectedSpot}
+              onClose={() => setSelectedId(null)}
+              onEdit={handleEdit}
+              onEditApproach={startApproachEdit}
+            />
+          )}
+        </div>
+      )}
+
+      {/* Contrôles carte (cachés sur mobile quand la liste est ouverte) */}
+      <div className={sidebarOpen ? 'hidden sm:contents' : 'contents'}>
+        <MapControls
+        layerId={layerId}
+        onLayerChange={setLayerId}
+        labelsOn={labelsOn}
+        onLabelsToggle={() => setLabelsOn((v) => !v)}
+        onLocate={locate}
+        locating={locating}
+        onZoom={(dir) => (dir > 0 ? mapRef.current?.zoomIn() : mapRef.current?.zoomOut())}
+          onGoto={(t) => setFlyTarget({ ...t, ts: Date.now() })}
+          shifted={Boolean(panelOpen) && !adjusting && !approachEdit}
+        />
+      </div>
+
+      {/* Bannière mode ajout */}
+      {addMode && (
+        <div className="glass no-select pointer-events-auto absolute left-1/2 top-[calc(0.75rem+env(safe-area-inset-top))] z-[1200] flex -translate-x-1/2 items-center gap-3 rounded-xl px-4 py-2.5 text-sm text-zinc-100 shadow-2xl">
+          <span className="hidden sm:inline">🎯 Clique sur la carte pour placer le spot</span>
+          <span className="sm:hidden">🎯 Touche la carte pour placer le spot</span>
+          <button onClick={() => setAddMode(false)} className="rounded-lg p-1 text-zinc-400 hover:text-zinc-200">
+            <X size={15} />
+          </button>
+        </div>
+      )}
+
+      {/* Bouton ajouter */}
+      {!addMode && !formState && !approachEdit && (
+        <button
+          onClick={startAdd}
+          className={`absolute bottom-[calc(1.5rem+env(safe-area-inset-bottom))] left-1/2 z-[1000] -translate-x-1/2 items-center gap-2 rounded-full bg-amber-400 px-5 py-3 text-sm font-bold text-zinc-950 shadow-2xl shadow-amber-400/20 transition hover:bg-amber-300 active:scale-95 ${
+            sidebarOpen ? 'hidden sm:flex' : 'flex'
+          }`}
+        >
+          <Plus size={18} strokeWidth={2.5} /> Spot
+        </button>
+      )}
+
+      {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
+      <Toast />
+    </div>
+  )
+}
+
+export default function App() {
+  return (
+    <StoreProvider>
+      <Shell />
+    </StoreProvider>
+  )
+}
