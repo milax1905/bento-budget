@@ -1,14 +1,15 @@
-// Proxy Overpass côté serveur (fonction serverless Vercel).
+// Proxy « Découvrir » côté serveur (fonction serverless Vercel).
 // Le navigateur n'appelle QUE /api/discover (même origine que l'app) : aucun
 // souci de CORS, de bloqueur de contenu, ni de relais privé iCloud côté client.
-// C'est ce serveur qui interroge Overpass (aucune restriction CORS côté serveur)
-// et renvoie le JSON.
 //
-// On interroge plusieurs miroirs EN PARALLÈLE : le premier qui répond
-// correctement gagne. Un plafond global (< maxDuration) garantit que la fonction
-// renvoie toujours une vraie réponse HTTP (200, ou 504 si Overpass est lent) —
-// jamais une connexion coupée (« Load failed ») due à une fonction tuée par la
-// plateforme.
+// Recherche MULTI-SOURCES, en parallèle :
+//   • OpenStreetMap (Overpass) — via plusieurs miroirs, le premier qui répond
+//     gagne ; un plafond global garantit une vraie réponse HTTP (jamais de
+//     connexion coupée « Load failed »).
+//   • Wikidata (query.wikidata.org) — lieux documentés (ruines, villages
+//     fantômes…) autour du point, souvent absents des tags OSM « abandoned ».
+// Si Overpass est lent/injoignable mais que Wikidata répond, on renvoie quand
+// même les résultats Wikidata (et inversement).
 const ENDPOINTS = [
   'https://overpass.kumi.systems/api/interpreter',
   'https://overpass-api.de/api/interpreter',
@@ -17,23 +18,16 @@ const ENDPOINTS = [
   'https://overpass.openstreetmap.fr/api/interpreter',
 ]
 
-// Les services OpenStreetMap brident (ou refusent) les requêtes anonymes issues
-// de datacenters. Un User-Agent descriptif est requis par leur politique d'usage.
+const UA = 'UrbexAtlas/2.14 (+https://urbex-phi.vercel.app; contact via GitHub milax1905/bento-budget)'
 const HEADERS = {
   'Content-Type': 'application/x-www-form-urlencoded',
-  'User-Agent': 'UrbexAtlas/2.13 (+https://urbex-phi.vercel.app)',
+  'User-Agent': UA,
   Accept: 'application/json',
 }
 
-// Le plan Vercel gratuit autorise jusqu'à 60 s par fonction : on laisse à
-// Overpass beaucoup de temps (il est souvent en file d'attente, surtout sur un
-// grand rayon). Le premier miroir qui répond gagne, donc c'est transparent sur
-// les petits rayons (réponse en quelques secondes).
 export const config = { maxDuration: 60 }
-
 const BUDGET_MS = 45000
 
-// Étiquette courte par miroir, pour un diagnostic lisible côté client.
 function label(ep) {
   if (ep.includes('overpass-api.de')) return 'de'
   if (ep.includes('kumi')) return 'kumi'
@@ -43,32 +37,61 @@ function label(ep) {
   return 'x'
 }
 
-// Récupère la requête Overpass (QL) depuis le corps POST (JSON) ou la query GET.
-// Le GET permet aussi de tester l'endpoint directement dans un navigateur.
-function getData(req) {
+// Corps : { data: <QL Overpass>, geo: { lat, lng, radiusKm } }. GET ?data= aussi.
+function getBody(req) {
   if (req.method === 'GET') {
-    return typeof req.query?.data === 'string' ? req.query.data : ''
+    return { data: typeof req.query?.data === 'string' ? req.query.data : '', geo: null }
   }
-  let body = req.body
-  if (typeof body === 'string') {
+  let b = req.body
+  if (typeof b === 'string') {
     try {
-      body = JSON.parse(body)
+      b = JSON.parse(b)
     } catch {
-      return ''
+      return { data: '', geo: null }
     }
   }
-  return body && typeof body.data === 'string' ? body.data : ''
+  return { data: b && typeof b.data === 'string' ? b.data : '', geo: b?.geo || null }
+}
+
+// Wikidata : lieux « ruines » (et sous-classes) + villages fantômes autour du
+// point, avec coordonnées. Best-effort.
+async function wikidataAround(lat, lng, radiusKm, signal) {
+  const r = Math.min(Math.max(Number(radiusKm) || 5, 1), 100)
+  const q = `SELECT ?item ?itemLabel ?coord WHERE {
+  SERVICE wikibase:around {
+    ?item wdt:P625 ?coord .
+    bd:serviceParam wikibase:center "Point(${lng} ${lat})"^^geo:wktLiteral .
+    bd:serviceParam wikibase:radius "${r}" .
+  }
+  { ?item wdt:P31/wdt:P279* wd:Q19860854 . } UNION { ?item wdt:P31 wd:Q74047 . }
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "fr,en". }
+} LIMIT 80`
+  const url = 'https://query.wikidata.org/sparql?format=json&query=' + encodeURIComponent(q)
+  const res = await fetch(url, {
+    headers: { 'User-Agent': UA, Accept: 'application/sparql-results+json' },
+    signal,
+  })
+  if (!res.ok) throw new Error('wd ' + res.status)
+  const d = await res.json()
+  const out = []
+  for (const b of d.results?.bindings || []) {
+    const m = /Point\(([-\d.]+) ([-\d.]+)\)/.exec(b.coord?.value || '')
+    if (!m) continue
+    const qid = (b.item?.value || '').split('/').pop()
+    if (!qid) continue
+    out.push({ qid, name: b.itemLabel?.value || null, lat: parseFloat(m[2]), lng: parseFloat(m[1]) })
+  }
+  return out
 }
 
 export default async function handler(req, res) {
-  const data = getData(req)
+  const { data, geo } = getBody(req)
   if (!data || data.length > 20000) {
     res.status(400).json({ error: 'requête invalide' })
     return
   }
   const body = 'data=' + encodeURIComponent(data)
 
-  // Plafond global : la fonction répond en ≤ BUDGET_MS quoi qu'il arrive.
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), BUDGET_MS)
 
@@ -76,28 +99,46 @@ export default async function handler(req, res) {
     const r = await fetch(ep, { method: 'POST', headers: HEADERS, body, signal: controller.signal })
     if (!r.ok) throw new Error('HTTP ' + r.status)
     const text = await r.text()
-    // Un miroir surchargé peut renvoyer 200 + une page HTML : on ne garde que
-    // du vrai JSON Overpass.
     if (!text.trimStart().startsWith('{')) throw new Error('non-JSON')
     return text
   }
 
+  // Overpass (le 1er miroir qui répond gagne) ET Wikidata, en parallèle.
+  const overpassP = Promise.any(ENDPOINTS.map(attempt)).then(
+    (text) => ({ ok: true, text }),
+    (agg) => ({ ok: false, agg }),
+  )
+  const wikidataP =
+    geo && geo.lat != null && geo.lng != null
+      ? wikidataAround(geo.lat, geo.lng, geo.radiusKm, controller.signal).catch(() => [])
+      : Promise.resolve([])
+
   try {
-    // Le premier miroir qui répond correctement gagne.
-    const text = await Promise.any(ENDPOINTS.map(attempt))
-    controller.abort() // coupe les requêtes concurrentes encore en vol
+    const [op, wd] = await Promise.all([overpassP, wikidataP])
+    controller.abort() // coupe les fetch encore en vol
+
+    let elements = []
+    if (op.ok) {
+      try {
+        elements = JSON.parse(op.text).elements || []
+      } catch {
+        /* JSON invalide : on garde [] */
+      }
+    }
+
+    // Échec total (Overpass KO ET Wikidata vide) → vrai code HTTP + détail.
+    if (!op.ok && elements.length === 0 && wd.length === 0) {
+      const errs = Array.isArray(op.agg?.errors) ? op.agg.errors : []
+      const detail = ENDPOINTS.map((ep, i) => `${label(ep)}:${errs[i]?.message || '?'}`).join(', ')
+      res.status(502).json({ error: 'Overpass injoignable', detail })
+      return
+    }
+
     res.setHeader('Content-Type', 'application/json; charset=utf-8')
-    // Cache court au bord de Vercel : deux recherches identiques rapprochées
-    // ne re-sollicitent pas Overpass.
     res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=600')
-    res.status(200).send(text)
-  } catch (agg) {
-    // Tous les miroirs ont échoué (ou dépassé le budget) : on renvoie un vrai
-    // code HTTP (jamais une connexion coupée), AVEC le détail par miroir pour
-    // diagnostiquer (Promise.any conserve l'ordre des erreurs).
-    const errs = Array.isArray(agg?.errors) ? agg.errors : []
-    const detail = ENDPOINTS.map((ep, i) => `${label(ep)}:${errs[i]?.message || '?'}`).join(', ')
-    res.status(502).json({ error: 'Overpass injoignable', detail })
+    res.status(200).json({ elements, wikidata: wd })
+  } catch {
+    res.status(502).json({ error: 'Découverte indisponible' })
   } finally {
     clearTimeout(timer)
   }
