@@ -188,7 +188,14 @@ export async function discoverAbandoned(center, radiusKm, { signal } = {}) {
     const onAbort = () => timeout.abort()
     signal?.addEventListener('abort', onAbort)
     try {
-      const res = await fetch(ep, { method: 'POST', body, signal: timeout.signal })
+      // Sans ce Content-Type, Overpass prend tout le corps « data=… » pour la
+      // requête (au lieu d'en extraire le paramètre) et la rejette.
+      const res = await fetch(ep, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body,
+        signal: timeout.signal,
+      })
       if (!res.ok) throw new Error(`Overpass ${res.status}`)
       const data = await res.json()
       return parseElements(data.elements || [], center, radius)
