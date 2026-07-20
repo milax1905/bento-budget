@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import {
   Radar,
   X,
@@ -11,44 +11,59 @@ import {
   BookOpen,
   Search,
   ChevronDown,
+  AlertTriangle,
+  Sparkles,
+  Star,
 } from 'lucide-react'
 import { categoryById } from '../lib/constants'
 import { formatDistance } from '../lib/geo'
 import { MAX_DISCOVER_RADIUS_KM } from '../lib/discover'
-import { fetchWikiSummary, webSearchUrl } from '../lib/wiki'
+import { webSearchUrl } from '../lib/wiki'
+
+const DANGER_COLORS = { 1: '#10b981', 2: '#f59e0b', 3: '#f97316', 4: '#ef4444' }
+
+// Danger effectif : celui de l'IA s'il existe, sinon celui calculé localement.
+function effectiveDanger(r) {
+  const ai = r.enrichment?.ai?.danger
+  if (ai && ai.niveau) {
+    return { level: ai.niveau, label: ai.label || '', color: DANGER_COLORS[ai.niveau] || '#f59e0b', risks: ai.risques || [] }
+  }
+  return r.danger || null
+}
+
+function DangerBadge({ danger, small }) {
+  if (!danger) return null
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full font-semibold ${small ? 'px-1.5 py-px text-[9px]' : 'px-2 py-0.5 text-[11px]'}`}
+      style={{ backgroundColor: `${danger.color}22`, color: danger.color }}
+    >
+      <AlertTriangle size={small ? 9 : 11} /> {danger.label}
+    </span>
+  )
+}
 
 function DiscoverResult({ r, onAdd, onSelect }) {
   const cat = categoryById(r.category)
   const [open, setOpen] = useState(false)
-  const [wiki, setWiki] = useState({ status: 'idle', data: null })
-
-  // Pas de wiki.status dans les dépendances : sinon le setWith('loading')
-  // relancerait l'effet, dont le cleanup annulerait sa propre requête.
-  useEffect(() => {
-    if (!open || !r.wiki) return
-    let cancelled = false
-    const controller = new AbortController()
-    setWiki({ status: 'loading', data: null })
-    fetchWikiSummary(r.wiki, { signal: controller.signal })
-      .then((data) => {
-        if (!cancelled) setWiki({ status: 'done', data })
-      })
-      .catch((err) => {
-        if (!cancelled && err.name !== 'AbortError') setWiki({ status: 'error', data: null })
-      })
-    return () => {
-      cancelled = true
-      controller.abort()
-    }
-  }, [open, r.wiki])
+  const ai = r.enrichment?.ai || null
+  const wiki = r.enrichment?.wiki || null
+  const danger = effectiveDanger(r)
+  const summary = ai?.resume || wiki?.extract || null
+  const quelconque = ai?.verdict === 'quelconque'
 
   return (
-    <div className="mb-1 rounded-xl transition hover:bg-zinc-800/50">
+    <div className={`mb-1 rounded-xl transition hover:bg-zinc-800/50 ${quelconque ? 'opacity-60' : ''}`}>
       <div className="flex items-center gap-3 px-3 py-2.5">
         <button onClick={() => onSelect(r)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
           <span className="text-xl">{cat.emoji}</span>
           <span className="min-w-0 flex-1">
-            <span className="flex items-center gap-1.5 truncate text-sm font-medium text-zinc-100">
+            <span className="flex items-center gap-1.5 text-sm font-medium text-zinc-100">
+              {ai?.verdict === 'top' && (
+                <span className="flex shrink-0 items-center gap-0.5 rounded bg-amber-500/25 px-1 py-px text-[9px] font-semibold text-amber-200">
+                  <Star size={9} /> Top
+                </span>
+              )}
               {r.notable && (
                 <span className="flex shrink-0 items-center gap-0.5 rounded bg-violet-500/25 px-1 py-px text-[9px] font-semibold text-violet-200">
                   <BookOpen size={9} /> Doc.
@@ -56,18 +71,17 @@ function DiscoverResult({ r, onAdd, onSelect }) {
               )}
               <span className="truncate">{r.name}</span>
             </span>
-            <span className="mt-0.5 flex items-center gap-2 text-[11px] text-zinc-500">
+            <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-zinc-500">
+              <DangerBadge danger={danger} small />
               <span>{formatDistance(r.distanceKm)}</span>
-              <span className="truncate font-mono text-[10px] text-zinc-600">{r.tagline}</span>
+              {r.typeLabel && <span className="truncate text-zinc-400">{r.typeLabel}</span>}
             </span>
           </span>
         </button>
         <button
           onClick={() => setOpen((v) => !v)}
           title="Plus d'infos"
-          className={`rounded-lg p-1.5 text-zinc-500 transition hover:bg-zinc-700/60 hover:text-zinc-300 ${
-            open ? 'rotate-180' : ''
-          }`}
+          className={`rounded-lg p-1.5 text-zinc-500 transition hover:bg-zinc-700/60 hover:text-zinc-300 ${open ? 'rotate-180' : ''}`}
         >
           <ChevronDown size={15} />
         </button>
@@ -81,45 +95,73 @@ function DiscoverResult({ r, onAdd, onSelect }) {
       </div>
 
       {open && (
-        <div className="px-3 pb-3">
-          {r.wiki && wiki.status === 'loading' && (
-            <div className="flex items-center gap-2 py-2 text-xs text-zinc-500">
-              <Loader2 size={13} className="animate-spin" /> recherche d'infos…
-            </div>
-          )}
-          {wiki.status === 'done' && wiki.data && (
+        <div className="space-y-2.5 px-3 pb-3">
+          {/* Résumé (IA ou Wikipédia) */}
+          {summary && (
             <div className="rounded-lg bg-zinc-900/50 p-2.5">
               <div className="flex gap-2.5">
-                {wiki.data.thumbnail && (
-                  <img
-                    src={wiki.data.thumbnail}
-                    alt=""
-                    className="h-16 w-16 shrink-0 rounded-lg object-cover"
-                  />
+                {wiki?.thumbnail && (
+                  <img src={wiki.thumbnail} alt="" className="h-16 w-16 shrink-0 rounded-lg object-cover" />
                 )}
-                <p className="text-[11px] leading-relaxed text-zinc-300 line-clamp-5">{wiki.data.extract}</p>
+                <p className="text-[11px] leading-relaxed text-zinc-300">{summary}</p>
               </div>
-              <a
-                href={wiki.data.url}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-violet-300 hover:text-violet-200"
-              >
-                <BookOpen size={11} /> Lire sur Wikipédia
-              </a>
+              <div className="mt-1.5 flex items-center gap-2 text-[10px] text-zinc-500">
+                {ai && (
+                  <span className="flex items-center gap-1 text-emerald-300/80">
+                    <Sparkles size={10} /> Analyse IA
+                  </span>
+                )}
+                {wiki?.url && (
+                  <a href={wiki.url} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-violet-300 hover:text-violet-200">
+                    <BookOpen size={10} /> Wikipédia{wiki.source === 'geo' && wiki.dist != null ? ` (à ~${wiki.dist} m)` : ''}
+                  </a>
+                )}
+              </div>
             </div>
           )}
-          {r.wiki && wiki.status === 'error' && (
-            <p className="py-1 text-[11px] text-zinc-500">Résumé Wikipédia indisponible.</p>
+
+          {/* Danger + risques */}
+          {danger && (
+            <div className="rounded-lg bg-zinc-900/50 p-2.5">
+              <div className="flex items-center gap-2">
+                <DangerBadge danger={danger} />
+                <span className="text-[11px] font-medium text-zinc-300">Niveau de danger</span>
+              </div>
+              {danger.risks?.length > 0 && (
+                <ul className="mt-1.5 flex flex-wrap gap-1">
+                  {danger.risks.map((risk, i) => (
+                    <li key={i} className="rounded bg-zinc-800/80 px-1.5 py-0.5 text-[10px] text-zinc-300">
+                      {risk}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {ai?.conseils && <p className="mt-1.5 text-[10px] italic text-zinc-400">💡 {ai.conseils}</p>}
+            </div>
           )}
-          <div className="mt-2 flex flex-wrap gap-1.5">
+
+          {/* Faits (tags OSM) */}
+          {(r.facts?.length > 0 || r.osmDescription) && (
+            <div className="rounded-lg bg-zinc-900/50 p-2.5 text-[11px] text-zinc-300">
+              {r.facts?.map((f, i) => (
+                <div key={i} className="flex gap-1.5">
+                  <span className="text-zinc-500">{f.label} :</span>
+                  <span>{f.value}</span>
+                </div>
+              ))}
+              {r.osmDescription && <p className="mt-1 text-zinc-400">{r.osmDescription}</p>}
+            </div>
+          )}
+
+          {/* Liens */}
+          <div className="flex flex-wrap gap-1.5">
             <a
               href={webSearchUrl(r.name, r.lat, r.lng)}
               target="_blank"
               rel="noreferrer"
               className="flex items-center gap-1 rounded-lg bg-zinc-700/60 px-2 py-1.5 text-[11px] text-zinc-200 transition hover:bg-zinc-600/60"
             >
-              <Search size={11} /> Rechercher sur le web
+              <Search size={11} /> Web
             </a>
             <a
               href={r.osmUrl}
@@ -129,7 +171,7 @@ function DiscoverResult({ r, onAdd, onSelect }) {
             >
               <ExternalLink size={11} /> OpenStreetMap
             </a>
-            {r.wikidataUrl && !r.wiki && (
+            {r.wikidataUrl && !wiki && (
               <a
                 href={r.wikidataUrl}
                 target="_blank"
@@ -156,7 +198,7 @@ export default function DiscoverPanel({
   onRecenter,
   locating,
 }) {
-  const { radiusKm, status, results, error, center } = discover
+  const { radiusKm, status, results, error, center, enriching, aiEnabled } = discover
   const [docsOnly, setDocsOnly] = useState(false)
 
   const notableCount = results.filter((r) => r.notable).length
@@ -251,9 +293,14 @@ export default function DiscoverPanel({
         )}
         {status === 'done' && results.length > 0 && (
           <div className="flex items-center justify-between px-3 pb-1 pt-1">
-            <span className="text-[11px] text-zinc-500">
+            <span className="flex items-center gap-1.5 text-[11px] text-zinc-500">
               {shown.length} lieu{shown.length > 1 ? 'x' : ''}
-              {notableCount > 0 && <span className="text-violet-300"> · {notableCount} documenté{notableCount > 1 ? 's' : ''}</span>}
+              {aiEnabled && (
+                <span className="flex items-center gap-0.5 text-emerald-300/80">
+                  <Sparkles size={10} /> triés par l'IA
+                </span>
+              )}
+              {enriching && <Loader2 size={11} className="animate-spin text-zinc-600" />}
             </span>
             {notableCount > 0 && (
               <button

@@ -1,5 +1,6 @@
 import { distanceKm } from './geo'
 import { parseWikipediaTag } from './wiki'
+import { assessDanger } from './danger'
 
 export const MAX_DISCOVER_RADIUS_KM = 100
 // Le proxy serveur a un budget de 25 s ; le client attend un peu plus pour ne
@@ -142,6 +143,79 @@ function interestOf(tags) {
   return { score, notable, wiki: parseWikipediaTag(tags.wikipedia), wikidata: tags.wikidata || null }
 }
 
+// Libellé de type précis à partir du tag « domaine=valeur » qualifiant.
+const TYPE_LABELS = {
+  'railway=station': 'Ancienne gare',
+  'railway=halt': 'Ancienne halte ferroviaire',
+  'railway=rails': 'Voie ferrée désaffectée',
+  'railway=tracks': 'Voie ferrée désaffectée',
+  'railway=platform': 'Quai désaffecté',
+  'railway=turntable': 'Plaque tournante ferroviaire',
+  'railway=yard': 'Gare de triage abandonnée',
+  'amenity=hospital': 'Ancien hôpital',
+  'amenity=fire_station': 'Ancienne caserne de pompiers',
+  'amenity=school': 'Ancienne école',
+  'amenity=prison': 'Ancienne prison',
+  'amenity=place_of_worship': 'Édifice religieux désaffecté',
+  'amenity=fuel': 'Ancienne station-service',
+  'amenity=cinema': 'Ancien cinéma',
+  'amenity=theatre': 'Ancien théâtre',
+  'amenity=restaurant': 'Ancien restaurant',
+  'man_made=works': 'Ancienne usine',
+  'man_made=mineshaft': 'Ancien puits de mine',
+  'man_made=adit': 'Ancienne galerie de mine',
+  'man_made=chimney': 'Cheminée d’usine',
+  'man_made=water_works': 'Ancienne station des eaux',
+  'military=bunker': 'Ancien bunker',
+  'military=barracks': 'Anciennes casernes',
+  'military=airfield': 'Ancien aérodrome militaire',
+  'power=plant': 'Ancienne centrale électrique',
+  'power=substation': 'Ancien poste électrique',
+  'building=hospital': 'Ancien hôpital',
+  'building=church': 'Église désaffectée',
+  'building=chapel': 'Chapelle désaffectée',
+  'building=school': 'Ancienne école',
+  'building=industrial': 'Bâtiment industriel abandonné',
+  'building=warehouse': 'Entrepôt abandonné',
+  'building=farm': 'Ferme abandonnée',
+  'building=ruins': 'Bâtiment en ruine',
+}
+
+function primaryTag(tags) {
+  const key = Object.keys(tags).find((k) => /^(abandoned|disused)/.test(k) && tags[k] && tags[k] !== 'no')
+  if (key) {
+    const domain = key.includes(':') ? key.split(':')[1] : key
+    return { domain, value: tags[key] }
+  }
+  if (tags.historic === 'ruins') return { domain: 'historic', value: 'ruins' }
+  if (tags.building === 'ruins') return { domain: 'building', value: 'ruins' }
+  if (tags.ruins === 'yes') return { domain: 'ruins', value: 'yes' }
+  return null
+}
+
+// Détails exploitables tirés des tags OSM : type précis, faits (année, ancien
+// nom, exploitant, patrimoine…), description éventuelle.
+function describeSite(tags, category) {
+  const p = primaryTag(tags)
+  let typeLabel = DEFAULT_NAME[category]
+  if (p) {
+    typeLabel = TYPE_LABELS[`${p.domain}=${p.value}`] || TYPE_LABELS[`building=${tags.building}`] || typeLabel
+  }
+  const name =
+    tags.name || tags['name:fr'] || tags.old_name || tags.former_name || typeLabel
+
+  const facts = []
+  const year = (tags.start_date || '').match(/\d{3,4}/)?.[0]
+  if (year) facts.push({ label: 'Année', value: year })
+  if (tags.old_name || tags.former_name) facts.push({ label: 'Ancien nom', value: tags.old_name || tags.former_name })
+  if (tags.operator) facts.push({ label: 'Exploitant', value: tags.operator })
+  if (tags.heritage || tags['heritage:operator'] || /monument|classé|inscrit/i.test(tags.historic || ''))
+    facts.push({ label: 'Patrimoine', value: 'Protégé / historique' })
+  if (tags.architect) facts.push({ label: 'Architecte', value: tags.architect })
+
+  return { name, typeLabel, facts, description: tags.description || tags.note || null }
+}
+
 function parseElements(elements, center, radiusKm) {
   const seen = new Set()
   const out = []
@@ -160,18 +234,26 @@ function parseElements(elements, center, radiusKm) {
     seen.add(id)
     const category = categorize(tags)
     const { score, notable, wiki, wikidata } = interestOf(tags)
+    const details = describeSite(tags, category)
+    const danger = assessDanger(category, tags)
     out.push({
       id,
       lat,
       lng,
-      name: tags.name || tags['name:fr'] || DEFAULT_NAME[category],
+      name: details.name,
       category,
+      typeLabel: details.typeLabel,
+      facts: details.facts,
+      osmDescription: details.description,
+      danger, // { level, label, color, risks }
       tagline: tagline(tags),
       osmUrl: `https://www.openstreetmap.org/${el.type}/${el.id}`,
       distanceKm: dist,
       score,
       notable,
       wiki, // { lang, title } ou null
+      wikipedia: tags.wikipedia || null, // brut, pour l'enrichissement serveur
+      wikidata: wikidata, // brut (Q…)
       wikidataUrl: wikidata ? `https://www.wikidata.org/wiki/${wikidata}` : null,
     })
   }
@@ -242,5 +324,38 @@ export async function discoverAbandoned(center, radiusKm, { signal } = {}) {
       if (signal?.aborted) throw err
       throw err?.errors?.[0] || err || proxyErr || new Error('réseau')
     }
+  }
+}
+
+// Enrichissement des lieux (histoire Wikipédia + analyse IA gratuite si
+// configurée), côté serveur. Best-effort : renvoie une map { id: enrichissement }
+// et ne casse jamais la découverte si ça échoue.
+export async function enrichDiscoveries(sites, { signal } = {}) {
+  if (!sites?.length) return {}
+  const payload = sites.slice(0, 16).map((r) => ({
+    id: r.id,
+    lat: r.lat,
+    lng: r.lng,
+    name: r.name,
+    category: r.category,
+    typeLabel: r.typeLabel,
+    tagline: r.tagline,
+    wikipedia: r.wikipedia,
+    wikidata: r.wikidata,
+    danger: r.danger,
+  }))
+  try {
+    const data = await fetchJson(
+      '/api/enrich',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sites: payload }),
+      },
+      signal,
+    )
+    return data && typeof data === 'object' ? data : {}
+  } catch {
+    return {}
   }
 }
