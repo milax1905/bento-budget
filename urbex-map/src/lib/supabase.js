@@ -24,16 +24,28 @@ export function clearStoredConfig() {
 }
 
 export function isValidSupabaseUrl(url) {
-  return typeof url === 'string' && SUPABASE_URL_RE.test(url)
+  return typeof url === 'string' && SUPABASE_URL_RE.test(toOrigin(url))
+}
+
+// Ne garde que le domaine (protocole + hôte), sans chemin ni slash final :
+// une URL collée avec « /rest/v1 », « /auth/v1 » ou un « / » en trop casserait
+// toutes les requêtes (le client Supabase ajoute lui-même /auth/v1, /rest/v1…).
+function toOrigin(url) {
+  try {
+    return new URL(url).origin
+  } catch {
+    return (url || '').trim().replace(/\/+$/, '')
+  }
 }
 
 export function getConfig() {
   const envUrl = import.meta.env.VITE_SUPABASE_URL
   const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY
-  if (envUrl && envKey) return { url: envUrl, anonKey: envKey, source: 'env' }
+  if (envUrl && envKey) return { url: toOrigin(envUrl), anonKey: envKey, source: 'env' }
   const stored = getStoredConfig()
-  if (stored?.url && stored?.anonKey && isValidSupabaseUrl(stored.url)) {
-    return { ...stored, source: 'app' }
+  if (stored?.url && stored?.anonKey) {
+    const origin = toOrigin(stored.url)
+    if (isValidSupabaseUrl(origin)) return { url: origin, anonKey: stored.anonKey, source: 'app' }
   }
   return null
 }
