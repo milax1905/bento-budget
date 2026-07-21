@@ -239,7 +239,7 @@ export default function DiscoverPanel({
     enriching || aiEnabled == null
       ? null
       : aiEnabled === false
-        ? { tone: 'amber', text: 'IA non configurée', title: 'Aucune clé IA en production (ANTHROPIC_API_KEY ou GROQ_API_KEY) — à ajouter sur Vercel → Settings → Environment Variables (portée Production), puis redéploie.' }
+        ? { tone: 'amber', text: 'IA non configurée', title: 'Aucune clé IA. Le plus simple : Réglages (⚙️) → « Analyse IA » → colle ta clé Groq (gratuite) ou Claude. Rien à configurer sur Vercel.' }
         : anyAi
           ? { tone: 'emerald', text: "filtrés par l'IA", title: 'Analyse et tri par Gemini (gratuit).' }
           : {
