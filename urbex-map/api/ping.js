@@ -14,7 +14,7 @@ export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store')
   const key = (process.env.GEMINI_API_KEY || '').trim()
   const configured = process.env.GEMINI_MODEL || 'gemini-2.0-flash'
-  const base = { ok: true, service: 'urbex-discover', version: '2.21', gemini: Boolean(key), geminiModel: configured }
+  const base = { ok: true, service: 'urbex-discover', version: '2.22', gemini: Boolean(key), geminiModel: configured }
 
   const wantAi = /[?&]ai=1(?:&|$)/.test(req.url || '') || req.query?.ai === '1'
   if (!wantAi || !key) {
@@ -43,6 +43,37 @@ export default async function handler(req, res) {
     const names = (data.models || [])
       .filter((m) => (m.supportedGenerationMethods || []).includes('generateContent'))
       .map((m) => (m.name || '').replace(/^models\//, ''))
+    // Sonde EN DIRECT d'un vrai appel generateContent (minuscule) : c'est ce qui
+    // révèle un quota épuisé (429). ListModels seul ne consomme pas de quota et
+    // réussit même quand generateContent est bloqué.
+    const probeModel = names.includes(configured) ? configured : names.find((n) => /flash/i.test(n)) || names[0] || configured
+    let probe = null
+    if (probeModel) {
+      try {
+        const pr = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(probeModel)}:generateContent?key=${encodeURIComponent(key)}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contents: [{ parts: [{ text: 'ping' }] }], generationConfig: { maxOutputTokens: 1 } }),
+            signal: controller.signal,
+          },
+        )
+        if (pr.ok) {
+          probe = { ok: true, model: probeModel }
+        } else {
+          let error = ''
+          try {
+            error = (await pr.text()).replace(/\s+/g, ' ').slice(0, 260)
+          } catch {
+            /* corps illisible */
+          }
+          probe = { ok: false, model: probeModel, status: pr.status, error }
+        }
+      } catch (e) {
+        probe = { ok: false, model: probeModel, error: e?.message || 'exception' }
+      }
+    }
     res.status(200).json({
       ...base,
       aiTest: {
@@ -50,6 +81,7 @@ export default async function handler(req, res) {
         configuredModelAvailable: names.includes(configured),
         flashModels: names.filter((n) => /flash/i.test(n)).slice(0, 12),
         modelCount: names.length,
+        probe,
       },
     })
   } catch (e) {

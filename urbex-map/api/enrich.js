@@ -11,7 +11,7 @@
 export const config = { maxDuration: 60 }
 
 const BUDGET_MS = 55000
-const UA = 'UrbexAtlas/2.21 (+https://urbex-phi.vercel.app; contact via GitHub milax1905/bento-budget)'
+const UA = 'UrbexAtlas/2.22 (+https://urbex-phi.vercel.app; contact via GitHub milax1905/bento-budget)'
 const DEFAULT_MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash'
 
 // Modèles Gemini candidats, du plus souhaitable au moins : si celui configuré a
@@ -276,26 +276,28 @@ ${JSON.stringify(brief)}`
     }
   }
 
-  // 1) On tente AVEC recherche web (analyse la plus riche), bornée à ~25 s.
-  // 2) Repli SANS recherche (mime JSON forcé, chemin le plus fiable) dès que le
-  //    grounding échoue, est trop lent, ou ne couvre pas TOUS les lieux : le
-  //    mode JSON pur comble alors les manques (les résultats « grounded »
-  //    restent prioritaires là où ils existent). Sinon aucune analyse IA ne
-  //    s'afficherait — c'est le filet de sécurité.
   // Une entrée n'est retenue que si elle contient réellement une analyse (objet
   // non vide) : un `null` ou un stub `{}` renvoyé par le modèle ne doit ni
   // écraser un bon résultat, ni faire croire qu'un lieu est couvert.
   const usable = (v) => v && typeof v === 'object' && Object.keys(v).length > 0
 
+  // Recherche web (grounding Google) : COÛTEUSE en quota (quota gratuit bien
+  // plus petit, et 2 appels au lieu d'1). Désactivée par défaut pour tenir dans
+  // l'offre GRATUITE ; réactivable via GEMINI_GROUNDING=1 si le compte a du
+  // quota. Le mode JSON pur (1 appel) reste l'analyse par défaut, fiable.
+  const wantGrounding = process.env.GEMINI_GROUNDING === '1'
+
   let grounded = {}
   let lastError = null
-  try {
-    grounded = await callGemini(true, 25000)
-  } catch (e) {
-    lastError = `web: ${e.message}`
+  if (wantGrounding) {
+    try {
+      grounded = await callGemini(true, 25000)
+    } catch (e) {
+      lastError = `web: ${e.message}`
+    }
   }
-  // Repli JSON pur si le grounding n'a pas couvert TOUS les lieux (par une
-  // analyse exploitable). Le repli est lui aussi borné pour rester sous budget.
+  // JSON pur (mime forcé) pour tout lieu non déjà couvert par une analyse
+  // exploitable. Borné pour rester sous budget.
   const missing = sites.some((s) => !usable(grounded[s.id]))
   let plain = {}
   if (missing) {
@@ -312,7 +314,14 @@ ${JSON.stringify(brief)}`
     if (usable(grounded[s.id])) map[s.id] = grounded[s.id]
     else if (usable(plain[s.id])) map[s.id] = plain[s.id]
   }
-  return { map, error: Object.keys(map).length ? null : lastError || 'aucune analyse renvoyée' }
+  // Message clair pour les causes fréquentes (quota gratuit épuisé…).
+  let error = null
+  if (!Object.keys(map).length) {
+    error = /\b429\b|quota|RESOURCE_EXHAUSTED|billing/i.test(lastError || '')
+      ? 'Quota gratuit Gemini épuisé pour le moment (l’offre gratuite est plafonnée et se réinitialise chaque jour).'
+      : lastError || 'aucune analyse renvoyée'
+  }
+  return { map, error }
 }
 
 export default async function handler(req, res) {
