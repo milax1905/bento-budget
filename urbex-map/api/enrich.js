@@ -11,8 +11,49 @@
 export const config = { maxDuration: 60 }
 
 const BUDGET_MS = 55000
-const UA = 'UrbexAtlas/2.20 (+https://urbex-phi.vercel.app; contact via GitHub milax1905/bento-budget)'
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash'
+const UA = 'UrbexAtlas/2.21 (+https://urbex-phi.vercel.app; contact via GitHub milax1905/bento-budget)'
+const DEFAULT_MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash'
+
+// Modèles Gemini candidats, du plus souhaitable au moins : si celui configuré a
+// été retiré par Google (cause probable d'« IA indisponible » alors que la clé
+// est présente — tous les appels renvoient 404), on bascule automatiquement sur
+// le premier modèle « flash » réellement disponible pour ce compte.
+const MODEL_PREFERENCE = [
+  DEFAULT_MODEL,
+  'gemini-2.0-flash',
+  'gemini-2.5-flash',
+  'gemini-flash-latest',
+  'gemini-2.0-flash-001',
+  'gemini-1.5-flash',
+]
+
+// Résout (une fois par conteneur chaud) un modèle qui existe vraiment pour cette
+// clé, via l'API ListModels. Best-effort : en cas d'échec, on garde le défaut.
+let RESOLVED_MODEL = null
+async function resolveModel(key, signal) {
+  if (RESOLVED_MODEL) return RESOLVED_MODEL
+  try {
+    const r = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}`,
+      { headers: { 'User-Agent': UA }, signal },
+    )
+    if (!r.ok) return DEFAULT_MODEL // clé invalide / quota : l'appel principal remontera la vraie erreur
+    const data = await r.json()
+    const names = (data.models || [])
+      .filter((m) => (m.supportedGenerationMethods || []).includes('generateContent'))
+      .map((m) => (m.name || '').replace(/^models\//, ''))
+    if (!names.length) return DEFAULT_MODEL
+    const pick =
+      MODEL_PREFERENCE.find((m) => names.includes(m)) ||
+      names.find((n) => /flash/i.test(n) && !/(thinking|lite|8b|vision)/i.test(n)) ||
+      names.find((n) => /flash/i.test(n)) ||
+      names[0]
+    RESOLVED_MODEL = pick
+    return pick
+  } catch {
+    return DEFAULT_MODEL
+  }
+}
 
 function parseWikipediaTag(tag) {
   if (typeof tag !== 'string' || !tag.trim()) return null
@@ -156,8 +197,11 @@ Réponds STRICTEMENT en JSON, un objet dont les clés sont les identifiants :
 Lieux :
 ${JSON.stringify(brief)}`
 
+  // Modèle réellement disponible pour cette clé (auto-bascule si celui par
+  // défaut a été retiré). Best-effort : à défaut on tente quand même le défaut.
+  const model = await resolveModel(key, signal).catch(() => DEFAULT_MODEL)
   const url =
-    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(GEMINI_MODEL)}:generateContent?key=${encodeURIComponent(key)}`
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`
 
   // Extrait un objet JSON d'une réponse texte : soit c'est déjà du JSON pur,
   // soit il est entouré de prose / ```json … ``` (cas du grounding web).

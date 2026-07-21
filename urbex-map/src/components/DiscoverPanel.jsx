@@ -242,7 +242,13 @@ export default function DiscoverPanel({
         ? { tone: 'amber', text: 'IA non configurée', title: 'La clé GEMINI_API_KEY est absente en production (Vercel → Settings → Environment Variables, portée Production, puis redéploie).' }
         : anyAi
           ? { tone: 'emerald', text: "filtrés par l'IA", title: 'Analyse et tri par Gemini (gratuit).' }
-          : { tone: 'amber', text: 'IA indisponible', title: aiError || 'Gemini n’a rien renvoyé cette fois — réessaie dans un instant.' }
+          : {
+              tone: 'amber',
+              text: 'IA indisponible',
+              title: aiError
+                ? `Gemini n’a rien renvoyé — ${aiError}`
+                : 'Gemini n’a rien renvoyé cette fois — réessaie dans un instant.',
+            }
   const base = docsOnly ? results.filter((r) => r.notable) : results
   const kept = base.filter((r) => !isExcluded(r))
   const excluded = base.filter((r) => isExcluded(r))
@@ -335,6 +341,11 @@ export default function DiscoverPanel({
           <p className="px-4 py-8 text-center text-sm text-zinc-500">
             Aucun lieu abandonné référencé dans ce rayon. Élargis la zone, ou explore par toi-même : tout n'est pas
             dans OpenStreetMap 😉
+          </p>
+        )}
+        {status === 'done' && results.length > 0 && aiStatus?.tone === 'amber' && (
+          <p className="mx-3 mb-1 mt-0.5 rounded-lg bg-amber-500/10 px-2.5 py-1.5 text-[10px] leading-snug text-amber-200/90">
+            {aiStatus.title}
           </p>
         )}
         {status === 'done' && results.length > 0 && (
