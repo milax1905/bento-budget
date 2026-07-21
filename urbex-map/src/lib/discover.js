@@ -3,6 +3,12 @@ import { parseWikipediaTag } from './wiki'
 import { assessDanger } from './danger'
 
 export const MAX_DISCOVER_RADIUS_KM = 100
+
+// Filet de sécurité (indépendant de l'IA) pour écarter les lieux « encore
+// debout ». Défini dans un module sans dépendance (testable en Node pur) et
+// ré-exporté ici pour rester le point d'accès unique de la découverte.
+export { extractLooksActive } from './discoverFilter'
+
 // Le proxy serveur a un budget de 45 s (grand rayon = file d'attente Overpass) ;
 // le client attend un peu plus pour ne pas abandonner avant la réponse serveur.
 const REQUEST_TIMEOUT_MS = 55000
@@ -516,8 +522,13 @@ export async function enrichDiscoveries(sites, { signal } = {}) {
       },
       signal,
     )
-    return data && typeof data === 'object' ? data : {}
+    // Réponse bien formée uniquement si elle porte `results`. Sinon (corps
+    // inattendu), on la traite comme un échec → l'appelant saura que l'état de
+    // l'IA est INCONNU (à ne pas confondre avec « clé absente »).
+    return data && typeof data === 'object' && data.results ? data : null
   } catch {
-    return {}
+    // Échec total (réseau, HTTP, timeout) : on renvoie null (état IA inconnu),
+    // pas un objet vide qui ferait croire à « IA non configurée ».
+    return null
   }
 }
