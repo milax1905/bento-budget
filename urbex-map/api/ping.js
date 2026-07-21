@@ -1,24 +1,31 @@
 // Diagnostic. En ouvrant https://<app>/api/ping on vérifie que les fonctions
-// serverless sont déployées et joignables. `gemini` indique si la clé d'analyse
-// IA est présente EN PRODUCTION (booléen seulement, la clé n'est jamais exposée).
+// serverless sont déployées et joignables. `anthropic` / `groq` indiquent si une
+// clé d'analyse IA est présente EN PRODUCTION (booléens seulement — les clés ne
+// sont jamais exposées).
 //
 // Diagnostic IA EN DIRECT : https://<app>/api/ping?ai=1
-//   Interroge Google (ListModels) avec la clé et renvoie `aiTest` :
-//   - clé invalide/quota → aiTest.ok=false + status + message d'erreur ;
-//   - clé OK → liste des modèles « flash » disponibles + si le modèle configuré
-//     existe encore. Sert à diagnostiquer « IA indisponible » (clé présente mais
-//     appels en échec, typiquement un modèle retiré par Google).
+//   Fait un vrai petit appel à chaque fournisseur configuré et renvoie `aiTest` :
+//   - clé invalide / crédit épuisé / quota → ok:false + status + message ;
+//   - clé OK → ok:true. Sert à diagnostiquer un badge « IA indisponible ».
 export const config = { maxDuration: 20 }
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store')
-  const key = (process.env.GEMINI_API_KEY || '').trim()
+  const anthropicKey = (process.env.ANTHROPIC_API_KEY || '').trim()
   const groqKey = (process.env.GROQ_API_KEY || '').trim()
-  const configured = process.env.GEMINI_MODEL || 'gemini-2.0-flash'
-  const base = { ok: true, service: 'urbex-discover', version: '2.23', gemini: Boolean(key), groq: Boolean(groqKey), geminiModel: configured }
+  const anthropicModel = process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5'
+  const groqModel = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile'
+  const base = {
+    ok: true,
+    service: 'urbex-discover',
+    version: '2.24',
+    anthropic: Boolean(anthropicKey),
+    groq: Boolean(groqKey),
+    anthropicModel,
+  }
 
   const wantAi = /[?&]ai=1(?:&|$)/.test(req.url || '') || req.query?.ai === '1'
-  if (!wantAi || (!key && !groqKey)) {
+  if (!wantAi || (!anthropicKey && !groqKey)) {
     res.status(200).json(base)
     return
   }
@@ -34,61 +41,33 @@ export default async function handler(req, res) {
   }
   const aiTest = {}
   try {
-    // ── Groq (fournisseur prioritaire) : sonde chat completions minuscule ──
-    if (groqKey) {
-      const groqModel = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile'
+    // ── Claude (Anthropic) : petit appel Messages ──────────────────────────
+    if (anthropicKey) {
       try {
-        const gr = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        const r = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-api-key': anthropicKey, 'anthropic-version': '2023-06-01' },
+          body: JSON.stringify({ model: anthropicModel, max_tokens: 1, messages: [{ role: 'user', content: 'ping' }] }),
+          signal: controller.signal,
+        })
+        aiTest.anthropic = r.ok ? { ok: true, model: anthropicModel } : { ok: false, model: anthropicModel, status: r.status, error: await readErr(r) }
+      } catch (e) {
+        aiTest.anthropic = { ok: false, model: anthropicModel, error: e?.message || 'exception' }
+      }
+    }
+
+    // ── Groq : petit appel chat completions ────────────────────────────────
+    if (groqKey) {
+      try {
+        const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${groqKey}` },
           body: JSON.stringify({ model: groqModel, messages: [{ role: 'user', content: 'ping' }], max_tokens: 1 }),
           signal: controller.signal,
         })
-        aiTest.groq = gr.ok ? { ok: true, model: groqModel } : { ok: false, model: groqModel, status: gr.status, error: await readErr(gr) }
+        aiTest.groq = r.ok ? { ok: true, model: groqModel } : { ok: false, model: groqModel, status: r.status, error: await readErr(r) }
       } catch (e) {
         aiTest.groq = { ok: false, model: groqModel, error: e?.message || 'exception' }
-      }
-    }
-
-    // ── Gemini : ListModels (quota-free) + sonde generateContent (révèle 429) ──
-    if (key) {
-      try {
-        const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}`, { signal: controller.signal })
-        if (!r.ok) {
-          aiTest.gemini = { ok: false, status: r.status, error: await readErr(r) }
-        } else {
-          const data = await r.json()
-          const names = (data.models || [])
-            .filter((m) => (m.supportedGenerationMethods || []).includes('generateContent'))
-            .map((m) => (m.name || '').replace(/^models\//, ''))
-          const probeModel = names.includes(configured) ? configured : names.find((n) => /flash/i.test(n)) || names[0] || configured
-          let probe = null
-          if (probeModel) {
-            try {
-              const pr = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(probeModel)}:generateContent?key=${encodeURIComponent(key)}`,
-                {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ contents: [{ parts: [{ text: 'ping' }] }], generationConfig: { maxOutputTokens: 1 } }),
-                  signal: controller.signal,
-                },
-              )
-              probe = pr.ok ? { ok: true, model: probeModel } : { ok: false, model: probeModel, status: pr.status, error: await readErr(pr) }
-            } catch (e) {
-              probe = { ok: false, model: probeModel, error: e?.message || 'exception' }
-            }
-          }
-          aiTest.gemini = {
-            ok: true,
-            configuredModelAvailable: names.includes(configured),
-            flashModels: names.filter((n) => /flash/i.test(n)).slice(0, 12),
-            modelCount: names.length,
-            probe,
-          }
-        }
-      } catch (e) {
-        aiTest.gemini = { ok: false, error: e?.message || 'exception' }
       }
     }
     res.status(200).json({ ...base, aiTest })

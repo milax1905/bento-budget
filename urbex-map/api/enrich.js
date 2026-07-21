@@ -3,57 +3,19 @@
 // Deux niveaux, tous deux best-effort (ne cassent jamais la découverte) :
 //   1) GRATUIT, sans configuration : histoire réelle via Wikipédia/Wikidata
 //      (tag OSM wikipedia/wikidata, sinon recherche géographique autour du point).
-//   2) IA GRATUITE, si la variable d'environnement GEMINI_API_KEY est définie :
-//      Google Gemini (offre gratuite) analyse chaque lieu à partir des tags +
-//      de l'extrait Wikipédia, écrit un résumé utile, évalue l'intérêt et le
-//      danger, et FILTRE les lieux quelconques (verdict). L'appel se fait côté
-//      serveur : aucun blocage réseau du navigateur (relais privé / bloqueur).
+//   2) IA, si une clé est configurée : l'IA analyse chaque lieu (tags + extrait
+//      Wikipédia), écrit un résumé utile, évalue l'intérêt et le danger, et
+//      FILTRE les lieux quelconques (verdict). Fournisseurs essayés dans l'ordre :
+//        • Claude (Anthropic, ANTHROPIC_API_KEY) — payant mais très bon marché
+//          en Haiku (~1-2 centimes/recherche) ;
+//        • Groq (GROQ_API_KEY) — gratuit, en secours.
+//      L'appel se fait côté serveur : aucun blocage réseau du navigateur.
 export const config = { maxDuration: 60 }
 
 const BUDGET_MS = 55000
-const UA = 'UrbexAtlas/2.23 (+https://urbex-phi.vercel.app; contact via GitHub milax1905/bento-budget)'
-const DEFAULT_MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash'
-
-// Modèles Gemini candidats, du plus souhaitable au moins : si celui configuré a
-// été retiré par Google (cause probable d'« IA indisponible » alors que la clé
-// est présente — tous les appels renvoient 404), on bascule automatiquement sur
-// le premier modèle « flash » réellement disponible pour ce compte.
-const MODEL_PREFERENCE = [
-  DEFAULT_MODEL,
-  'gemini-2.0-flash',
-  'gemini-2.5-flash',
-  'gemini-flash-latest',
-  'gemini-2.0-flash-001',
-  'gemini-1.5-flash',
-]
-
-// Résout (une fois par conteneur chaud) un modèle qui existe vraiment pour cette
-// clé, via l'API ListModels. Best-effort : en cas d'échec, on garde le défaut.
-let RESOLVED_MODEL = null
-async function resolveModel(key, signal) {
-  if (RESOLVED_MODEL) return RESOLVED_MODEL
-  try {
-    const r = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}`,
-      { headers: { 'User-Agent': UA }, signal },
-    )
-    if (!r.ok) return DEFAULT_MODEL // clé invalide / quota : l'appel principal remontera la vraie erreur
-    const data = await r.json()
-    const names = (data.models || [])
-      .filter((m) => (m.supportedGenerationMethods || []).includes('generateContent'))
-      .map((m) => (m.name || '').replace(/^models\//, ''))
-    if (!names.length) return DEFAULT_MODEL
-    const pick =
-      MODEL_PREFERENCE.find((m) => names.includes(m)) ||
-      names.find((n) => /flash/i.test(n) && !/(thinking|lite|8b|vision)/i.test(n)) ||
-      names.find((n) => /flash/i.test(n)) ||
-      names[0]
-    RESOLVED_MODEL = pick
-    return pick
-  } catch {
-    return DEFAULT_MODEL
-  }
-}
+const UA = 'UrbexAtlas/2.24 (+https://urbex-phi.vercel.app; contact via GitHub milax1905/bento-budget)'
+const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5'
+const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile'
 
 function parseWikipediaTag(tag) {
   if (typeof tag !== 'string' || !tag.trim()) return null
@@ -158,18 +120,17 @@ async function wikiFor(site, signal) {
 // Un seul appel pour tout le lot : l'IA lit les infos de chaque lieu (tags +
 // extrait Wikipédia) et renvoie, par identifiant, une analyse structurée.
 //
-// Deux fournisseurs GRATUITS, essayés dans l'ordre (le 1er qui répond gagne) :
-//   1) Groq (GROQ_API_KEY) — quota gratuit très généreux (Llama 3.3 70B),
-//      recommandé pour un usage illimité en pratique.
-//   2) Google Gemini (GEMINI_API_KEY) — gratuit mais plafonné chaque jour.
+// Fournisseurs essayés dans l'ordre (le 1er qui produit une analyse gagne) :
+//   1) Claude (ANTHROPIC_API_KEY) — payant mais très bon marché en Haiku.
+//   2) Groq (GROQ_API_KEY) — gratuit, en secours.
 export function hasAiKey() {
-  return Boolean((process.env.GROQ_API_KEY || '').trim()) || Boolean((process.env.GEMINI_API_KEY || '').trim())
+  return Boolean((process.env.ANTHROPIC_API_KEY || '').trim()) || Boolean((process.env.GROQ_API_KEY || '').trim())
 }
 
 async function aiAnalyze(sites, wikiMap, signal) {
-  const geminiKey = (process.env.GEMINI_API_KEY || '').trim()
+  const anthropicKey = (process.env.ANTHROPIC_API_KEY || '').trim()
   const groqKey = (process.env.GROQ_API_KEY || '').trim()
-  if (!geminiKey && !groqKey) return { map: {}, error: null }
+  if (!anthropicKey && !groqKey) return { map: {}, error: null }
 
   const brief = sites.map((s) => ({
     id: s.id,
@@ -257,7 +218,40 @@ ${JSON.stringify(brief)}`
     return new Error(`HTTP ${r.status}${detail ? ' ' + detail : ''}`)
   }
 
-  // ── Fournisseur 1 : Groq (OpenAI-compatible, mode JSON) ──────────────────
+  // ── Fournisseur 1 : Claude (Anthropic Messages API) ──────────────────────
+  // Le préremplissage de la réponse par « { » force le modèle à répondre
+  // directement en JSON (technique fiable côté Anthropic).
+  const claudeAnalyze = async () => {
+    const r = await capFetch(
+      'https://api.anthropic.com/v1/messages',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': anthropicKey,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: ANTHROPIC_MODEL,
+          max_tokens: 8000,
+          temperature: 0.3,
+          messages: [
+            { role: 'user', content: prompt },
+            { role: 'assistant', content: '{' },
+          ],
+        }),
+      },
+      25000,
+    )
+    if (!r.ok) throw await httpError(r)
+    const data = await r.json()
+    const text = '{' + (data?.content?.map((b) => b.text || '').join('') || '')
+    const map = extractJson(text)
+    if (!Object.keys(map).length) throw new Error('réponse vide/illisible')
+    return map
+  }
+
+  // ── Fournisseur 2 : Groq (OpenAI-compatible, mode JSON) — secours gratuit ─
   const groqAnalyze = async () => {
     const r = await capFetch(
       'https://api.groq.com/openai/v1/chat/completions',
@@ -265,7 +259,7 @@ ${JSON.stringify(brief)}`
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${groqKey}` },
         body: JSON.stringify({
-          model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+          model: GROQ_MODEL,
           messages: [{ role: 'user', content: prompt }],
           temperature: 0.3,
           max_tokens: 8000,
@@ -282,68 +276,11 @@ ${JSON.stringify(brief)}`
     return map
   }
 
-  // ── Fournisseur 2 : Google Gemini ────────────────────────────────────────
-  const geminiAnalyze = async () => {
-    const model = await resolveModel(geminiKey, signal).catch(() => DEFAULT_MODEL)
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(geminiKey)}`
-    // Recherche web (grounding) : COÛTEUSE en quota (quota gratuit bien plus
-    // petit, 2 appels). OFF par défaut ; réactivable via GEMINI_GROUNDING=1.
-    const callGemini = async (useSearch, capMs) => {
-      const body = {
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.3, maxOutputTokens: 8192, ...(useSearch ? {} : { responseMimeType: 'application/json' }) },
-        ...(useSearch ? { tools: [{ google_search: {} }] } : {}),
-      }
-      const r = await capFetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, capMs)
-      if (!r.ok) throw await httpError(r)
-      const data = await r.json()
-      const cand = data?.candidates?.[0]
-      const text = cand?.content?.parts?.map((p) => p.text || '').join('') || ''
-      const map = extractJson(text)
-      if (Object.keys(map).length === 0) {
-        const why =
-          cand?.finishReason && cand.finishReason !== 'STOP'
-            ? `finishReason ${cand.finishReason}`
-            : data?.promptFeedback?.blockReason
-              ? `bloqué (${data.promptFeedback.blockReason})`
-              : 'réponse vide/illisible'
-        throw new Error(why)
-      }
-      return map
-    }
-    const wantGrounding = process.env.GEMINI_GROUNDING === '1'
-    let grounded = {}
-    let gErr = null
-    if (wantGrounding) {
-      try {
-        grounded = await callGemini(true, 25000)
-      } catch (e) {
-        gErr = e
-      }
-    }
-    const missing = sites.some((s) => !usable(grounded[s.id]))
-    let plain = {}
-    if (missing) {
-      try {
-        plain = await callGemini(false, 25000)
-      } catch (e) {
-        gErr = e
-      }
-    }
-    const out = {}
-    for (const s of sites) {
-      if (usable(grounded[s.id])) out[s.id] = grounded[s.id]
-      else if (usable(plain[s.id])) out[s.id] = plain[s.id]
-    }
-    if (!Object.keys(out).length) throw gErr || new Error('réponse vide/illisible')
-    return out
-  }
-
   // Essaie les fournisseurs disponibles dans l'ordre ; le 1er qui produit une
   // analyse gagne. On mémorise la dernière erreur pour un message clair.
   const providers = []
+  if (anthropicKey) providers.push(['Claude', claudeAnalyze])
   if (groqKey) providers.push(['Groq', groqAnalyze])
-  if (geminiKey) providers.push(['Gemini', geminiAnalyze])
 
   let lastError = null
   for (const [name, run] of providers) {
@@ -356,9 +293,17 @@ ${JSON.stringify(brief)}`
     }
   }
 
-  const error = /\b429\b|quota|RESOURCE_EXHAUSTED|billing|rate limit/i.test(lastError || '')
-    ? 'Quota gratuit de l’IA atteint pour le moment (réessaie un peu plus tard).'
-    : lastError || 'aucune analyse renvoyée'
+  const low = lastError || ''
+  let error
+  if (/credit|balance|insufficient|payment|plan and billing/i.test(low)) {
+    error = 'Crédit Claude épuisé — recharge ton crédit Anthropic (ou vérifie ta limite de dépense).'
+  } else if (/\b429\b|quota|RESOURCE_EXHAUSTED|rate limit/i.test(low)) {
+    error = 'Limite de l’IA atteinte pour le moment (réessaie un peu plus tard).'
+  } else if (/\b401\b|invalid.*key|authentication/i.test(low)) {
+    error = 'Clé IA invalide — vérifie ANTHROPIC_API_KEY (ou GROQ_API_KEY) sur Vercel.'
+  } else {
+    error = lastError || 'aucune analyse renvoyée'
+  }
   return { map: {}, error }
 }
 
