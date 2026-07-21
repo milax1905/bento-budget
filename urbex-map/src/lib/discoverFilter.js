@@ -35,8 +35,11 @@ const HISTORICAL_ABANDON = /vestiges?|d[ée]truit|incendi[ée]|effondr/i
 
 // 2) Usage ACTUEL fort — on écarte. `\bhabit[ée]` matche habité/habitée sans
 //    matcher « inhabité(e) » (capté avant par CURRENT_ABANDON) ni « habitude ».
+//    Inclut aussi des édifices quasi toujours en service (basilique, cathédrale,
+//    collégiale, préfecture, mairie/hôtel de ville…) — les rares en ruine gardent
+//    un mot d'abandon qui l'emporte via CURRENT_ABANDON.
 const STRONG_ACTIVE =
-  /\bhabit[ée]|restaur[ée]|r[ée]nov[ée]|se visite|ouverte? (?:à la visite|au public)|\bmus[ée]e\b|\bmairie\b|\bh[ôo]tel\b|chambres? d'h[ôo]tes|propri[ée]t[ée] priv[ée]e|en activit[ée]|en service|\babrite\b/i
+  /\bhabit[ée]|restaur[ée]|r[ée]nov[ée]|se visite|ouverte? (?:à la visite|au public)|\bmus[ée]e\b|\bmairie\b|h[ôo]tel de ville|pr[ée]fecture|\bh[ôo]tel\b|chambres? d'h[ôo]tes|propri[ée]t[ée] priv[ée]e|en activit[ée]|en service|\babrite\b|basilique|cath[ée]drale|coll[ée]giale|\bs[ée]minaire\b/i
 
 // 3) Indices FAIBLES qu'un monument documenté est encore debout.
 const WEAK_ACTIVE = /se dresse|centre de la seigneurie/i
