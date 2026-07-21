@@ -287,7 +287,7 @@ function Shell() {
               return base + (Number(ai.interet) || 0)
             }
             results.sort((a, b) => rank(b) - rank(a) || b.score - a.score || a.distanceKm - b.distanceKm)
-            return { ...d, results, aiEnabled: Boolean(enr?.aiEnabled), enriching: false }
+            return { ...d, results, aiEnabled: Boolean(enr?.aiEnabled), aiError: enr?.aiError || null, enriching: false }
           })
         })
         .catch(() => setDiscover((d) => (d ? { ...d, enriching: false } : d)))

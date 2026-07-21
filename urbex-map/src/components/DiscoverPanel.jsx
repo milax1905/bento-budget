@@ -17,7 +17,7 @@ import {
 } from 'lucide-react'
 import { categoryById } from '../lib/constants'
 import { formatDistance } from '../lib/geo'
-import { MAX_DISCOVER_RADIUS_KM } from '../lib/discover'
+import { MAX_DISCOVER_RADIUS_KM, extractLooksActive } from '../lib/discover'
 import { webSearchUrl } from '../lib/wiki'
 
 const DANGER_COLORS = { 1: '#10b981', 2: '#f59e0b', 3: '#f97316', 4: '#ef4444' }
@@ -31,14 +31,18 @@ function effectiveDanger(r) {
   return r.danger || null
 }
 
-// Lieu à écarter : jugé non-urbex par l'IA, ou description Wikipédia de commune/
-// relief (filet de sécurité si l'IA n'a pas (encore) analysé ce lieu).
+// Lieu à écarter : jugé non-urbex par l'IA, ou — filet de sécurité quand l'IA
+// n'a pas (encore) tranché — description Wikipédia de commune/relief ou de lieu
+// encore debout (château habité/restauré, monument classé entretenu…).
 function isExcluded(r) {
   if (r.source === 'perso') return false // ma carte : lieux curés, jamais masqués
   const ai = r.enrichment?.ai
   if (ai && ai.urbex === false) return true
+  if (ai && ai.urbex === true) return false // l'IA valide explicitement → on garde
   const ex = r.enrichment?.wiki?.extract || ''
-  return /est une commune|commune française|ancienne commune|\bvillage\b|hameau|\brivière|\bfleuve|massif|sommet|montagne|\bcol de/i.test(ex)
+  if (/est une commune|commune française|ancienne commune|\bvillage\b|hameau|\brivière|\bfleuve|massif|sommet|montagne|\bcol de/i.test(ex))
+    return true
+  return extractLooksActive(ex) // encore debout / restauré / visitable → écarté
 }
 
 function DangerBadge({ danger, small }) {
@@ -223,11 +227,22 @@ export default function DiscoverPanel({
   onRecenter,
   locating,
 }) {
-  const { radiusKm, status, results, error, center, enriching, aiEnabled } = discover
+  const { radiusKm, status, results, error, center, enriching, aiEnabled, aiError } = discover
   const [docsOnly, setDocsOnly] = useState(false)
   const [showExcluded, setShowExcluded] = useState(false)
 
   const notableCount = results.filter((r) => r.notable).length
+  const anyAi = results.some((r) => r.enrichment?.ai)
+  // État de l'IA affiché sous le compteur : active / non configurée (clé serveur
+  // absente) / momentanément indisponible (Gemini n'a rien renvoyé).
+  const aiStatus =
+    enriching || aiEnabled == null
+      ? null
+      : aiEnabled === false
+        ? { tone: 'amber', text: 'IA non configurée', title: 'La clé GEMINI_API_KEY est absente en production (Vercel → Settings → Environment Variables, portée Production, puis redéploie).' }
+        : anyAi
+          ? { tone: 'emerald', text: "filtrés par l'IA", title: 'Analyse et tri par Gemini (gratuit).' }
+          : { tone: 'amber', text: 'IA indisponible', title: aiError || 'Gemini n’a rien renvoyé cette fois — réessaie dans un instant.' }
   const base = docsOnly ? results.filter((r) => r.notable) : results
   const kept = base.filter((r) => !isExcluded(r))
   const excluded = base.filter((r) => isExcluded(r))
@@ -326,9 +341,12 @@ export default function DiscoverPanel({
           <div className="flex items-center justify-between px-3 pb-1 pt-1">
             <span className="flex items-center gap-1.5 text-[11px] text-zinc-500">
               {kept.length} lieu{kept.length > 1 ? 'x' : ''}
-              {aiEnabled && (
-                <span className="flex items-center gap-0.5 text-emerald-300/80">
-                  <Sparkles size={10} /> filtrés par l'IA
+              {aiStatus && (
+                <span
+                  title={aiStatus.title}
+                  className={`flex items-center gap-0.5 ${aiStatus.tone === 'emerald' ? 'text-emerald-300/80' : 'text-amber-300/80'}`}
+                >
+                  <Sparkles size={10} /> {aiStatus.text}
                 </span>
               )}
               {enriching && <Loader2 size={11} className="animate-spin text-zinc-600" />}
@@ -357,7 +375,7 @@ export default function DiscoverPanel({
           >
             {showExcluded
               ? 'Masquer les lieux écartés'
-              : `Voir ${excluded.length} lieu${excluded.length > 1 ? 'x' : ''} écarté${excluded.length > 1 ? 's' : ''} (village / actif)`}
+              : `Voir ${excluded.length} lieu${excluded.length > 1 ? 'x' : ''} écarté${excluded.length > 1 ? 's' : ''} (village, actif ou restauré)`}
           </button>
         )}
       </div>

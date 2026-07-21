@@ -11,7 +11,7 @@
 export const config = { maxDuration: 60 }
 
 const BUDGET_MS = 55000
-const UA = 'UrbexAtlas/2.19 (+https://urbex-phi.vercel.app; contact via GitHub milax1905/bento-budget)'
+const UA = 'UrbexAtlas/2.20 (+https://urbex-phi.vercel.app; contact via GitHub milax1905/bento-budget)'
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash'
 
 function parseWikipediaTag(tag) {
@@ -117,8 +117,8 @@ async function wikiFor(site, signal) {
 // Un seul appel pour tout le lot : l'IA lit les infos de chaque lieu (tags +
 // extrait Wikipédia) et renvoie, par identifiant, une analyse structurée.
 async function aiAnalyze(sites, wikiMap, signal) {
-  const key = process.env.GEMINI_API_KEY
-  if (!key) return {}
+  const key = (process.env.GEMINI_API_KEY || '').trim()
+  if (!key) return { map: {}, error: null }
 
   const brief = sites.map((s) => ({
     id: s.id,
@@ -180,10 +180,11 @@ ${JSON.stringify(brief)}`
 
   // Appel Gemini. Avec recherche web (grounding Google), on ne force pas le mime
   // JSON (incompatible) → on extrait le JSON du texte. Sans, on force le JSON.
-  // Renvoie l'objet analysé (ou {} en cas d'échec HTTP ou de texte inexploitable).
-  // `capMs` borne la durée de CET appel (le grounding web est parfois lent) :
-  // s'il dépasse, on l'annule pour garder du budget au repli JSON, sans couper
-  // toute la requête.
+  // Renvoie l'objet analysé. Lève une erreur PARLANTE (code HTTP, finishReason,
+  // blocage…) si l'appel échoue ou ne produit rien d'exploitable, pour qu'on
+  // sache pourquoi l'IA n'a rien renvoyé. `capMs` borne la durée de CET appel
+  // (le grounding web est parfois lent) : s'il dépasse, on l'annule pour garder
+  // du budget au repli JSON, sans couper toute la requête.
   const callGemini = async (useSearch, capMs) => {
     const body = {
       contents: [{ parts: [{ text: prompt }] }],
@@ -196,25 +197,61 @@ ${JSON.stringify(brief)}`
     const cap = capMs ? setTimeout(() => ac.abort(), capMs) : null
     try {
       const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: ac.signal })
-      if (!r.ok) throw new Error('gemini HTTP ' + r.status)
+      if (!r.ok) {
+        let detail = ''
+        try {
+          detail = (await r.text()).replace(/\s+/g, ' ').slice(0, 160)
+        } catch {
+          /* corps illisible : on garde juste le code */
+        }
+        throw new Error(`HTTP ${r.status}${detail ? ' ' + detail : ''}`)
+      }
       const data = await r.json()
-      const text = data?.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('') || ''
-      return extractJson(text)
+      const cand = data?.candidates?.[0]
+      const text = cand?.content?.parts?.map((p) => p.text || '').join('') || ''
+      const map = extractJson(text)
+      if (Object.keys(map).length === 0) {
+        // Rien d'exploitable : on remonte la cause probable (tokens épuisés,
+        // sécurité, requête bloquée…) plutôt qu'un silencieux objet vide.
+        const why =
+          cand?.finishReason && cand.finishReason !== 'STOP'
+            ? `finishReason ${cand.finishReason}`
+            : data?.promptFeedback?.blockReason
+              ? `bloqué (${data.promptFeedback.blockReason})`
+              : 'réponse vide/illisible'
+        throw new Error(why)
+      }
+      return map
     } finally {
       if (cap) clearTimeout(cap)
       if (signal) signal.removeEventListener('abort', onAbort)
     }
   }
 
-  // 1) On tente AVEC recherche web (analyse la plus riche), bornée à ~32 s.
+  // 1) On tente AVEC recherche web (analyse la plus riche), bornée à ~25 s.
   // 2) Repli SANS recherche (mime JSON forcé, chemin le plus fiable) dès que le
-  // grounding échoue, est trop lent, OU renvoie un résultat vide/inexploitable —
-  // sinon aucune analyse IA ne s'afficherait. Le mode JSON pur est le filet.
-  let parsed = await callGemini(true, 32000).catch(() => ({}))
-  if (!parsed || Object.keys(parsed).length === 0) {
-    parsed = await callGemini(false).catch(() => ({}))
+  //    grounding échoue, est trop lent, ou ne couvre pas TOUS les lieux : le
+  //    mode JSON pur comble alors les manques (les résultats « grounded »
+  //    restent prioritaires là où ils existent). Sinon aucune analyse IA ne
+  //    s'afficherait — c'est le filet de sécurité.
+  let grounded = {}
+  let lastError = null
+  try {
+    grounded = await callGemini(true, 25000)
+  } catch (e) {
+    lastError = `web: ${e.message}`
   }
-  return parsed && typeof parsed === 'object' ? parsed : {}
+  const missing = sites.some((s) => !grounded[s.id])
+  let plain = {}
+  if (missing) {
+    try {
+      plain = await callGemini(false)
+    } catch (e) {
+      lastError = lastError ? `${lastError} | json: ${e.message}` : `json: ${e.message}`
+    }
+  }
+  const map = { ...plain, ...grounded }
+  return { map, error: Object.keys(map).length ? null : lastError || 'aucune analyse renvoyée' }
 }
 
 export default async function handler(req, res) {
@@ -245,18 +282,23 @@ export default async function handler(req, res) {
     // 2) Analyse IA (si clé Gemini configurée) — best-effort.
     let aiMap = {}
     let aiEnabled = false
-    if (process.env.GEMINI_API_KEY) {
+    let aiError = null
+    if ((process.env.GEMINI_API_KEY || '').trim()) {
       aiEnabled = true
-      aiMap = await aiAnalyze(sites, wikiMap, controller.signal).catch(() => ({}))
+      const ai = await aiAnalyze(sites, wikiMap, controller.signal).catch((e) => ({ map: {}, error: e?.message || 'erreur IA' }))
+      aiMap = ai.map || {}
+      aiError = ai.error || null
     }
 
     const out = {}
     for (const s of sites) out[s.id] = { wiki: wikiMap[s.id] || null, ai: aiMap[s.id] || null }
-    // Cache long au bord de Vercel (le contenu bouge peu).
-    res.setHeader('Cache-Control', 's-maxage=86400, stale-while-revalidate=604800')
-    res.status(200).json({ aiEnabled, results: out })
+    // Cache court quand l'IA a échoué (pour retenter vite au prochain essai) ;
+    // cache long sinon (le contenu bouge peu).
+    const aiOk = !aiEnabled || Object.keys(aiMap).length > 0
+    res.setHeader('Cache-Control', aiOk ? 's-maxage=86400, stale-while-revalidate=604800' : 'no-store')
+    res.status(200).json({ aiEnabled, aiError, results: out })
   } catch {
-    res.status(200).json({ aiEnabled: false, results: {} })
+    res.status(200).json({ aiEnabled: false, aiError: null, results: {} })
   } finally {
     clearTimeout(timer)
   }
