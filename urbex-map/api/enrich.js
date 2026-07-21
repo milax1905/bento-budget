@@ -11,7 +11,7 @@
 export const config = { maxDuration: 60 }
 
 const BUDGET_MS = 55000
-const UA = 'UrbexAtlas/2.22 (+https://urbex-phi.vercel.app; contact via GitHub milax1905/bento-budget)'
+const UA = 'UrbexAtlas/2.23 (+https://urbex-phi.vercel.app; contact via GitHub milax1905/bento-budget)'
 const DEFAULT_MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash'
 
 // Modèles Gemini candidats, du plus souhaitable au moins : si celui configuré a
@@ -154,12 +154,22 @@ async function wikiFor(site, signal) {
   return null
 }
 
-// ── Analyse IA (Google Gemini, offre gratuite) ────────────────────────────
+// ── Analyse IA (offre gratuite) ────────────────────────────────────────────
 // Un seul appel pour tout le lot : l'IA lit les infos de chaque lieu (tags +
 // extrait Wikipédia) et renvoie, par identifiant, une analyse structurée.
+//
+// Deux fournisseurs GRATUITS, essayés dans l'ordre (le 1er qui répond gagne) :
+//   1) Groq (GROQ_API_KEY) — quota gratuit très généreux (Llama 3.3 70B),
+//      recommandé pour un usage illimité en pratique.
+//   2) Google Gemini (GEMINI_API_KEY) — gratuit mais plafonné chaque jour.
+export function hasAiKey() {
+  return Boolean((process.env.GROQ_API_KEY || '').trim()) || Boolean((process.env.GEMINI_API_KEY || '').trim())
+}
+
 async function aiAnalyze(sites, wikiMap, signal) {
-  const key = (process.env.GEMINI_API_KEY || '').trim()
-  if (!key) return { map: {}, error: null }
+  const geminiKey = (process.env.GEMINI_API_KEY || '').trim()
+  const groqKey = (process.env.GROQ_API_KEY || '').trim()
+  if (!geminiKey && !groqKey) return { map: {}, error: null }
 
   const brief = sites.map((s) => ({
     id: s.id,
@@ -197,14 +207,8 @@ Réponds STRICTEMENT en JSON, un objet dont les clés sont les identifiants :
 Lieux :
 ${JSON.stringify(brief)}`
 
-  // Modèle réellement disponible pour cette clé (auto-bascule si celui par
-  // défaut a été retiré). Best-effort : à défaut on tente quand même le défaut.
-  const model = await resolveModel(key, signal).catch(() => DEFAULT_MODEL)
-  const url =
-    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`
-
-  // Extrait un objet JSON d'une réponse texte : soit c'est déjà du JSON pur,
-  // soit il est entouré de prose / ```json … ``` (cas du grounding web).
+  // Extrait un objet JSON d'une réponse texte : JSON pur, ou noyé dans de la
+  // prose / ```json … ```.
   const extractJson = (text) => {
     if (!text) return {}
     try {
@@ -222,45 +226,81 @@ ${JSON.stringify(brief)}`
     }
   }
 
-  // Appel Gemini. Avec recherche web (grounding Google), on ne force pas le mime
-  // JSON (incompatible) → on extrait le JSON du texte. Sans, on force le JSON.
-  // Renvoie l'objet analysé. Lève une erreur PARLANTE (code HTTP, finishReason,
-  // blocage…) si l'appel échoue ou ne produit rien d'exploitable, pour qu'on
-  // sache pourquoi l'IA n'a rien renvoyé. `capMs` borne la durée de CET appel
-  // (le grounding web est parfois lent) : s'il dépasse, on l'annule pour garder
-  // du budget au repli JSON, sans couper toute la requête.
-  const callGemini = async (useSearch, capMs) => {
-    const body = {
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.3, maxOutputTokens: 8192, ...(useSearch ? {} : { responseMimeType: 'application/json' }) },
-      ...(useSearch ? { tools: [{ google_search: {} }] } : {}),
-    }
+  // Une entrée n'est retenue que si elle contient réellement une analyse (objet
+  // non vide) : un `null` ou un stub `{}` ne doit ni écraser un bon résultat, ni
+  // faire croire qu'un lieu est couvert.
+  const usable = (v) => v && typeof v === 'object' && Object.keys(v).length > 0
+
+  // Fetch borné : coupe si le budget global est déjà/est avorté OU si le plafond
+  // `capMs` est atteint, sans faire traîner l'appel jusqu'au kill dur de Vercel.
+  const capFetch = async (url, opts, capMs) => {
     const ac = new AbortController()
     const onAbort = () => ac.abort()
     if (signal) signal.addEventListener('abort', onAbort, { once: true })
-    // Un `addEventListener('abort')` ne se déclenche PAS pour un signal déjà
-    // avorté : si le budget global est déjà épuisé, on coupe immédiatement au
-    // lieu de lancer un appel qui traînerait jusqu'au kill dur de Vercel (60 s).
     if (signal?.aborted) ac.abort()
     const cap = capMs ? setTimeout(() => ac.abort(), capMs) : null
     try {
-      const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: ac.signal })
-      if (!r.ok) {
-        let detail = ''
-        try {
-          detail = (await r.text()).replace(/\s+/g, ' ').slice(0, 160)
-        } catch {
-          /* corps illisible : on garde juste le code */
-        }
-        throw new Error(`HTTP ${r.status}${detail ? ' ' + detail : ''}`)
+      return await fetch(url, { ...opts, signal: ac.signal })
+    } finally {
+      if (cap) clearTimeout(cap)
+      if (signal) signal.removeEventListener('abort', onAbort)
+    }
+  }
+
+  const httpError = async (r) => {
+    let detail = ''
+    try {
+      detail = (await r.text()).replace(/\s+/g, ' ').slice(0, 160)
+    } catch {
+      /* corps illisible : on garde juste le code */
+    }
+    return new Error(`HTTP ${r.status}${detail ? ' ' + detail : ''}`)
+  }
+
+  // ── Fournisseur 1 : Groq (OpenAI-compatible, mode JSON) ──────────────────
+  const groqAnalyze = async () => {
+    const r = await capFetch(
+      'https://api.groq.com/openai/v1/chat/completions',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${groqKey}` },
+        body: JSON.stringify({
+          model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.3,
+          max_tokens: 8000,
+          response_format: { type: 'json_object' },
+        }),
+      },
+      25000,
+    )
+    if (!r.ok) throw await httpError(r)
+    const data = await r.json()
+    const text = data?.choices?.[0]?.message?.content || ''
+    const map = extractJson(text)
+    if (!Object.keys(map).length) throw new Error('réponse vide/illisible')
+    return map
+  }
+
+  // ── Fournisseur 2 : Google Gemini ────────────────────────────────────────
+  const geminiAnalyze = async () => {
+    const model = await resolveModel(geminiKey, signal).catch(() => DEFAULT_MODEL)
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(geminiKey)}`
+    // Recherche web (grounding) : COÛTEUSE en quota (quota gratuit bien plus
+    // petit, 2 appels). OFF par défaut ; réactivable via GEMINI_GROUNDING=1.
+    const callGemini = async (useSearch, capMs) => {
+      const body = {
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.3, maxOutputTokens: 8192, ...(useSearch ? {} : { responseMimeType: 'application/json' }) },
+        ...(useSearch ? { tools: [{ google_search: {} }] } : {}),
       }
+      const r = await capFetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, capMs)
+      if (!r.ok) throw await httpError(r)
       const data = await r.json()
       const cand = data?.candidates?.[0]
       const text = cand?.content?.parts?.map((p) => p.text || '').join('') || ''
       const map = extractJson(text)
       if (Object.keys(map).length === 0) {
-        // Rien d'exploitable : on remonte la cause probable (tokens épuisés,
-        // sécurité, requête bloquée…) plutôt qu'un silencieux objet vide.
         const why =
           cand?.finishReason && cand.finishReason !== 'STOP'
             ? `finishReason ${cand.finishReason}`
@@ -270,58 +310,56 @@ ${JSON.stringify(brief)}`
         throw new Error(why)
       }
       return map
-    } finally {
-      if (cap) clearTimeout(cap)
-      if (signal) signal.removeEventListener('abort', onAbort)
     }
+    const wantGrounding = process.env.GEMINI_GROUNDING === '1'
+    let grounded = {}
+    let gErr = null
+    if (wantGrounding) {
+      try {
+        grounded = await callGemini(true, 25000)
+      } catch (e) {
+        gErr = e
+      }
+    }
+    const missing = sites.some((s) => !usable(grounded[s.id]))
+    let plain = {}
+    if (missing) {
+      try {
+        plain = await callGemini(false, 25000)
+      } catch (e) {
+        gErr = e
+      }
+    }
+    const out = {}
+    for (const s of sites) {
+      if (usable(grounded[s.id])) out[s.id] = grounded[s.id]
+      else if (usable(plain[s.id])) out[s.id] = plain[s.id]
+    }
+    if (!Object.keys(out).length) throw gErr || new Error('réponse vide/illisible')
+    return out
   }
 
-  // Une entrée n'est retenue que si elle contient réellement une analyse (objet
-  // non vide) : un `null` ou un stub `{}` renvoyé par le modèle ne doit ni
-  // écraser un bon résultat, ni faire croire qu'un lieu est couvert.
-  const usable = (v) => v && typeof v === 'object' && Object.keys(v).length > 0
+  // Essaie les fournisseurs disponibles dans l'ordre ; le 1er qui produit une
+  // analyse gagne. On mémorise la dernière erreur pour un message clair.
+  const providers = []
+  if (groqKey) providers.push(['Groq', groqAnalyze])
+  if (geminiKey) providers.push(['Gemini', geminiAnalyze])
 
-  // Recherche web (grounding Google) : COÛTEUSE en quota (quota gratuit bien
-  // plus petit, et 2 appels au lieu d'1). Désactivée par défaut pour tenir dans
-  // l'offre GRATUITE ; réactivable via GEMINI_GROUNDING=1 si le compte a du
-  // quota. Le mode JSON pur (1 appel) reste l'analyse par défaut, fiable.
-  const wantGrounding = process.env.GEMINI_GROUNDING === '1'
-
-  let grounded = {}
   let lastError = null
-  if (wantGrounding) {
+  for (const [name, run] of providers) {
     try {
-      grounded = await callGemini(true, 25000)
+      const map = await run()
+      if (Object.keys(map).length) return { map, error: null }
+      lastError = `${name}: réponse vide`
     } catch (e) {
-      lastError = `web: ${e.message}`
+      lastError = `${name}: ${e?.message || 'erreur'}`
     }
   }
-  // JSON pur (mime forcé) pour tout lieu non déjà couvert par une analyse
-  // exploitable. Borné pour rester sous budget.
-  const missing = sites.some((s) => !usable(grounded[s.id]))
-  let plain = {}
-  if (missing) {
-    try {
-      plain = await callGemini(false, 25000)
-    } catch (e) {
-      lastError = lastError ? `${lastError} | json: ${e.message}` : `json: ${e.message}`
-    }
-  }
-  // Fusion par lieu : le « grounded » (recherche web) est prioritaire là où il
-  // est exploitable ; sinon on prend le JSON pur ; sinon rien pour ce lieu.
-  const map = {}
-  for (const s of sites) {
-    if (usable(grounded[s.id])) map[s.id] = grounded[s.id]
-    else if (usable(plain[s.id])) map[s.id] = plain[s.id]
-  }
-  // Message clair pour les causes fréquentes (quota gratuit épuisé…).
-  let error = null
-  if (!Object.keys(map).length) {
-    error = /\b429\b|quota|RESOURCE_EXHAUSTED|billing/i.test(lastError || '')
-      ? 'Quota gratuit Gemini épuisé pour le moment (l’offre gratuite est plafonnée et se réinitialise chaque jour).'
-      : lastError || 'aucune analyse renvoyée'
-  }
-  return { map, error }
+
+  const error = /\b429\b|quota|RESOURCE_EXHAUSTED|billing|rate limit/i.test(lastError || '')
+    ? 'Quota gratuit de l’IA atteint pour le moment (réessaie un peu plus tard).'
+    : lastError || 'aucune analyse renvoyée'
+  return { map: {}, error }
 }
 
 export default async function handler(req, res) {
@@ -349,11 +387,11 @@ export default async function handler(req, res) {
     const wikiMap = {}
     for (const [id, w] of wikiEntries) wikiMap[id] = w
 
-    // 2) Analyse IA (si clé Gemini configurée) — best-effort.
+    // 2) Analyse IA (si une clé IA — Groq ou Gemini — est configurée) — best-effort.
     let aiMap = {}
     let aiEnabled = false
     let aiError = null
-    if ((process.env.GEMINI_API_KEY || '').trim()) {
+    if (hasAiKey()) {
       aiEnabled = true
       const ai = await aiAnalyze(sites, wikiMap, controller.signal).catch((e) => ({ map: {}, error: e?.message || 'erreur IA' }))
       aiMap = ai.map || {}
@@ -372,7 +410,7 @@ export default async function handler(req, res) {
     // enverrait l'utilisateur corriger une clé pourtant présente). On reflète la
     // présence réelle de la clé + une raison → le client montrera « IA
     // indisponible » plutôt que « IA non configurée ».
-    const hasKey = Boolean((process.env.GEMINI_API_KEY || '').trim())
+    const hasKey = hasAiKey()
     res.status(200).json({ aiEnabled: hasKey, aiError: hasKey ? 'exception serveur' : null, results: {} })
   } finally {
     clearTimeout(timer)
