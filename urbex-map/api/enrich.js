@@ -13,7 +13,7 @@
 export const config = { maxDuration: 60 }
 
 const BUDGET_MS = 55000
-const UA = 'UrbexAtlas/2.24 (+https://urbex-phi.vercel.app; contact via GitHub milax1905/bento-budget)'
+const UA = 'UrbexAtlas/2.25 (+https://urbex-phi.vercel.app; contact via GitHub milax1905/bento-budget)'
 const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5'
 const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile'
 
@@ -127,9 +127,18 @@ export function hasAiKey() {
   return Boolean((process.env.ANTHROPIC_API_KEY || '').trim()) || Boolean((process.env.GROQ_API_KEY || '').trim())
 }
 
-async function aiAnalyze(sites, wikiMap, signal) {
-  const anthropicKey = (process.env.ANTHROPIC_API_KEY || '').trim()
-  const groqKey = (process.env.GROQ_API_KEY || '').trim()
+async function aiAnalyze(sites, wikiMap, signal, userKey) {
+  // Une clé fournie par l'utilisateur (Réglages → « apporte ta clé ») est utilisée
+  // EXCLUSIVEMENT, selon son fournisseur ; sinon on retombe sur les variables
+  // d'environnement du serveur.
+  let anthropicKey, groqKey
+  if (userKey) {
+    anthropicKey = userKey.startsWith('sk-ant-') ? userKey : ''
+    groqKey = userKey.startsWith('gsk_') ? userKey : ''
+  } else {
+    anthropicKey = (process.env.ANTHROPIC_API_KEY || '').trim()
+    groqKey = (process.env.GROQ_API_KEY || '').trim()
+  }
   if (!anthropicKey && !groqKey) return { map: {}, error: null }
 
   const brief = sites.map((s) => ({
@@ -299,8 +308,8 @@ ${JSON.stringify(brief)}`
     error = 'Crédit Claude épuisé — recharge ton crédit Anthropic (ou vérifie ta limite de dépense).'
   } else if (/\b429\b|quota|RESOURCE_EXHAUSTED|rate limit/i.test(low)) {
     error = 'Limite de l’IA atteinte pour le moment (réessaie un peu plus tard).'
-  } else if (/\b401\b|invalid.*key|authentication/i.test(low)) {
-    error = 'Clé IA invalide — vérifie ANTHROPIC_API_KEY (ou GROQ_API_KEY) sur Vercel.'
+  } else if (/\b401\b|invalid.*key|authentication|x-api-key/i.test(low)) {
+    error = 'Clé IA invalide — vérifie la clé collée dans Réglages (ou la variable sur Vercel).'
   } else {
     error = lastError || 'aucune analyse renvoyée'
   }
@@ -321,6 +330,10 @@ export default async function handler(req, res) {
     res.status(400).json({ error: 'aucun site' })
     return
   }
+  // Clé IA fournie par l'appareil (Réglages → « apporte ta clé »). Prioritaire sur
+  // les variables d'environnement. Jamais journalisée.
+  const userKey = typeof bodyIn?.aiKey === 'string' ? bodyIn.aiKey.trim() : ''
+  const userKeyValid = /^(gsk_|sk-ant-)/.test(userKey)
 
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), BUDGET_MS)
@@ -332,30 +345,30 @@ export default async function handler(req, res) {
     const wikiMap = {}
     for (const [id, w] of wikiEntries) wikiMap[id] = w
 
-    // 2) Analyse IA (si une clé IA — Groq ou Gemini — est configurée) — best-effort.
+    // 2) Analyse IA (clé de l'appareil OU variable d'environnement) — best-effort.
     let aiMap = {}
     let aiEnabled = false
     let aiError = null
-    if (hasAiKey()) {
+    if (hasAiKey() || userKeyValid) {
       aiEnabled = true
-      const ai = await aiAnalyze(sites, wikiMap, controller.signal).catch((e) => ({ map: {}, error: e?.message || 'erreur IA' }))
+      const ai = await aiAnalyze(sites, wikiMap, controller.signal, userKeyValid ? userKey : null).catch((e) => ({ map: {}, error: e?.message || 'erreur IA' }))
       aiMap = ai.map || {}
       aiError = ai.error || null
     }
 
     const out = {}
     for (const s of sites) out[s.id] = { wiki: wikiMap[s.id] || null, ai: aiMap[s.id] || null }
-    // Cache court quand l'IA a échoué (pour retenter vite au prochain essai) ;
-    // cache long sinon (le contenu bouge peu).
+    // Cache court quand l'IA a échoué ; cache long sinon (le contenu bouge peu).
+    // Jamais de cache quand une clé d'appareil est utilisée (réponse par-appareil).
     const aiOk = !aiEnabled || Object.keys(aiMap).length > 0
-    res.setHeader('Cache-Control', aiOk ? 's-maxage=86400, stale-while-revalidate=604800' : 'no-store')
+    res.setHeader('Cache-Control', aiOk && !userKeyValid ? 's-maxage=86400, stale-while-revalidate=604800' : 'no-store')
     res.status(200).json({ aiEnabled, aiError, results: out })
   } catch {
     // Exception serveur : ne PAS prétendre que l'IA est « non configurée » (ça
     // enverrait l'utilisateur corriger une clé pourtant présente). On reflète la
     // présence réelle de la clé + une raison → le client montrera « IA
     // indisponible » plutôt que « IA non configurée ».
-    const hasKey = hasAiKey()
+    const hasKey = hasAiKey() || userKeyValid
     res.status(200).json({ aiEnabled: hasKey, aiError: hasKey ? 'exception serveur' : null, results: {} })
   } finally {
     clearTimeout(timer)

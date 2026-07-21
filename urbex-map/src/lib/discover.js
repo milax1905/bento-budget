@@ -1,6 +1,7 @@
 import { distanceKm } from './geo'
 import { parseWikipediaTag } from './wiki'
 import { assessDanger } from './danger'
+import { getAiKey } from './aikey'
 
 export const MAX_DISCOVER_RADIUS_KM = 100
 
@@ -512,13 +513,16 @@ export async function enrichDiscoveries(sites, { signal } = {}) {
     danger: r.danger,
     source: r.source || null,
   }))
+  // Clé IA « apporte ta clé » saisie dans les Réglages (sur cet appareil) : on
+  // l'envoie au serveur pour activer l'IA sans variable d'environnement Vercel.
+  const aiKey = getAiKey()
   try {
     const data = await fetchJson(
       '/api/enrich',
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sites: payload }),
+        body: JSON.stringify({ sites: payload, aiKey: aiKey || undefined }),
       },
       signal,
     )

@@ -1,13 +1,26 @@
 import { useState } from 'react'
-import { X, Cloud, CloudOff, ExternalLink } from 'lucide-react'
+import { X, Cloud, CloudOff, ExternalLink, Sparkles } from 'lucide-react'
 import { useStore } from '../lib/store'
 import { getConfig, saveStoredConfig, clearStoredConfig, isValidSupabaseUrl, getSupabase } from '../lib/supabase'
+import { AI_KEY_LS, getAiKey, setAiKey as persistAiKey, aiKeyProvider } from '../lib/aikey'
 
 export default function SettingsModal({ onClose }) {
   const { mode, user, profileName, showToast } = useStore()
   const config = getConfig()
   const [url, setUrl] = useState('')
   const [anonKey, setAnonKey] = useState('')
+  const [aiKey, setAiKey] = useState(() => getAiKey())
+
+  const saveAiKey = () => {
+    const k = aiKey.trim()
+    if (k && !aiKeyProvider(k)) {
+      showToast('Clé non reconnue — Groq commence par « gsk_ », Claude par « sk-ant- »', 'error')
+      return
+    }
+    persistAiKey(k)
+    setAiKey(k)
+    showToast(k ? `Clé ${aiKeyProvider(k)} enregistrée sur cet appareil` : 'Clé IA retirée', k ? 'success' : 'info')
+  }
 
   const activate = () => {
     const u = url.trim().replace(/\/+$/, '')
@@ -143,6 +156,56 @@ export default function SettingsModal({ onClose }) {
               </p>
             </>
           )}
+
+          {/* Analyse IA (Découvrir) — clé « apporte ta clé », stockée sur l'appareil */}
+          <div className="space-y-2.5 border-t border-white/10 pt-4">
+            <h3 className="flex items-center gap-1.5 text-sm font-bold text-zinc-100">
+              <Sparkles size={14} className="text-violet-300" /> Analyse IA (Découvrir)
+            </h3>
+            <p className="text-xs leading-relaxed text-zinc-400">
+              Colle une clé pour activer l'analyse et le tri des lieux par l'IA. Pas besoin de toucher à Vercel — la clé
+              reste sur cet appareil. Gratuit avec{' '}
+              <a
+                href="https://console.groq.com"
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-0.5 text-violet-300 underline"
+              >
+                Groq (gsk_…) <ExternalLink size={10} />
+              </a>{' '}
+              ou payant avec{' '}
+              <a
+                href="https://platform.claude.com"
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-0.5 text-violet-300 underline"
+              >
+                Claude (sk-ant-…) <ExternalLink size={10} />
+              </a>
+              .
+            </p>
+            <input
+              type="password"
+              value={aiKey}
+              onChange={(e) => setAiKey(e.target.value)}
+              placeholder="gsk_… ou sk-ant-…"
+              autoComplete="off"
+              className="w-full rounded-xl bg-zinc-800/70 px-3 py-2.5 font-mono text-xs text-zinc-100 placeholder-zinc-600 outline-none ring-violet-400/50 focus:ring-2"
+            />
+            <button
+              onClick={saveAiKey}
+              className="w-full rounded-xl bg-violet-500 py-2.5 text-sm font-bold text-white transition hover:bg-violet-400"
+            >
+              {aiKey.trim() ? 'Enregistrer la clé IA' : 'Retirer la clé IA'}
+            </button>
+            {aiKeyProvider(aiKey) && (
+              <p className="text-[10px] text-emerald-300/80">✅ Clé {aiKeyProvider(aiKey)} — enregistrée sur cet appareil.</p>
+            )}
+            <p className="text-[10px] leading-relaxed text-zinc-600">
+              La clé n'est envoyée qu'à ta propre fonction serveur (pour appeler l'IA) et n'est jamais partagée. Ton
+              cousin met sa propre clé sur son appareil.
+            </p>
+          </div>
         </div>
       </div>
     </div>
