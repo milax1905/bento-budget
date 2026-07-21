@@ -287,7 +287,15 @@ function Shell() {
               return base + (Number(ai.interet) || 0)
             }
             results.sort((a, b) => rank(b) - rank(a) || b.score - a.score || a.distanceKm - b.distanceKm)
-            return { ...d, results, aiEnabled: Boolean(enr?.aiEnabled), aiError: enr?.aiError || null, enriching: false }
+            // enr null = échec total → état IA INCONNU (aiEnabled null) : le
+            // panneau n'affiche alors NI « configurée » NI « non configurée ».
+            return {
+              ...d,
+              results,
+              aiEnabled: enr ? Boolean(enr.aiEnabled) : null,
+              aiError: enr?.aiError || null,
+              enriching: false,
+            }
           })
         })
         .catch(() => setDiscover((d) => (d ? { ...d, enriching: false } : d)))

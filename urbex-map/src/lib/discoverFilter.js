@@ -1,19 +1,51 @@
 // Filet de sécurité (indépendant de l'IA) pour écarter les lieux « encore
-// debout » : châteaux habités/restaurés, monuments classés entretenus, sites
-// visitables… La géo-recherche Wikipédia remonte TOUT monument notable à
-// proximité, abandonné ou non. On lit l'extrait : s'il décrit clairement un
-// lieu ACTIF/entretenu SANS aucun signe d'abandon, on l'écarte (récupérable via
-// « Voir les lieux écartés »). Un vrai spot en ruine garde toujours un mot
-// d'abandon (ruine, vestiges, désaffecté…) qui l'emporte.
+// debout » : châteaux habités/restaurés, monuments entretenus, sites visitables…
+// La géo-recherche Wikipédia remonte TOUT monument notable à proximité,
+// abandonné ou non. On lit l'extrait pour décider — sans jamais masquer un vrai
+// spot en ruine. Les lieux écartés restent récupérables via « Voir les écartés ».
 //
 // Module SANS dépendance (imports) pour rester testable en Node pur.
-const EXTRACT_ACTIVE =
-  /monument historique|class[ée]|inscrit|se dresse|se visite|ouverte? (?:à la visite|au public)|\bmus[ée]e\b|propri[ée]t[ée] priv[ée]e|est habit|habit[ée]e?\b|restaur[ée]|r[ée]nov[ée]|centre de la seigneurie|maison forte|chambres? d'h[ôo]tes|\bh[ôo]tel\b|\bmairie\b|en activit[ée]|en service|aujourd'hui|actuel/i
-const EXTRACT_ABANDON =
-  /en ruines?|\bruines?\b|abandonn|d[ée]saffect|à l'abandon|vestiges?|d[ée]truit|incendi[ée]|effondr|en friche|\bfriche\b|ne subsiste|d[ée]labr/i
+//
+// Modèle de décision (dans cet ordre) :
+//   1) un signe d'ABANDON ACTUEL (ruine, ruiné, désaffecté, friche, inhabité,
+//      fermé…) est DÉCISIF → on GARDE toujours le lieu (c'est un vrai spot).
+//   2) un USAGE ACTUEL FORT (habité, restauré, musée, mairie, hôtel, se visite,
+//      propriété privée…) → on ÉCARTE (ce n'est pas de l'urbex).
+//   3) un indice FAIBLE « encore debout » (se dresse, centre de la seigneurie —
+//      typique des châteaux notables) → on écarte SEULEMENT s'il n'y a aucune
+//      trace de destruction (une destruction HISTORIQUE seule laisse le doute →
+//      on garde).
+// Les mots de destruction HISTORIQUE (vestiges, détruit, incendié…) ne « sauvent »
+// jamais un lieu par ailleurs clairement réhabilité (règle 2 l'emporte), mais ils
+// empêchent l'écartement sur un simple indice faible (règle 3).
+
+// Apostrophe typographique → ASCII : fr.wikipedia utilise souvent U+2019, sinon
+// les littéraux à apostrophe (aujourd'hui, d'hôtes…) ne correspondraient pas.
+function normalize(s) {
+  return (s || '').replace(/[’‘＇]/g, "'")
+}
+
+// 1) Abandon ACTUEL — décisif (on garde). Couvre nom + participe + formes
+//    courantes. Pas de \b après un accent (le \b JS est ASCII et échoue après « é »).
+const CURRENT_ABANDON =
+  /\bruin[ée]e?s?|en ruines?|\babandon|d[ée]saffect|en friche|\bfriche\b|ne subsiste|d[ée]labr|inhabit|inoccup|d[ée]sert|sans usage|ferm[ée]/i
+
+// Destruction HISTORIQUE (guerre, révolution, incendie…) — NON décisive.
+const HISTORICAL_ABANDON = /vestiges?|d[ée]truit|incendi[ée]|effondr/i
+
+// 2) Usage ACTUEL fort — on écarte. `\bhabit[ée]` matche habité/habitée sans
+//    matcher « inhabité(e) » (capté avant par CURRENT_ABANDON) ni « habitude ».
+const STRONG_ACTIVE =
+  /\bhabit[ée]|restaur[ée]|r[ée]nov[ée]|se visite|ouverte? (?:à la visite|au public)|\bmus[ée]e\b|\bmairie\b|\bh[ôo]tel\b|chambres? d'h[ôo]tes|propri[ée]t[ée] priv[ée]e|en activit[ée]|en service|\babrite\b/i
+
+// 3) Indices FAIBLES qu'un monument documenté est encore debout.
+const WEAK_ACTIVE = /se dresse|centre de la seigneurie/i
 
 export function extractLooksActive(extract) {
-  const s = extract || ''
+  const s = normalize(extract)
   if (!s) return false
-  return EXTRACT_ACTIVE.test(s) && !EXTRACT_ABANDON.test(s)
+  if (CURRENT_ABANDON.test(s)) return false // abandon actuel → vrai spot, on garde
+  if (STRONG_ACTIVE.test(s)) return true // clairement en usage → on écarte
+  if (WEAK_ACTIVE.test(s) && !HISTORICAL_ABANDON.test(s)) return true
+  return false
 }

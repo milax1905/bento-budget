@@ -194,6 +194,10 @@ ${JSON.stringify(brief)}`
     const ac = new AbortController()
     const onAbort = () => ac.abort()
     if (signal) signal.addEventListener('abort', onAbort, { once: true })
+    // Un `addEventListener('abort')` ne se déclenche PAS pour un signal déjà
+    // avorté : si le budget global est déjà épuisé, on coupe immédiatement au
+    // lieu de lancer un appel qui traînerait jusqu'au kill dur de Vercel (60 s).
+    if (signal?.aborted) ac.abort()
     const cap = capMs ? setTimeout(() => ac.abort(), capMs) : null
     try {
       const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: ac.signal })
@@ -234,6 +238,11 @@ ${JSON.stringify(brief)}`
   //    mode JSON pur comble alors les manques (les résultats « grounded »
   //    restent prioritaires là où ils existent). Sinon aucune analyse IA ne
   //    s'afficherait — c'est le filet de sécurité.
+  // Une entrée n'est retenue que si elle contient réellement une analyse (objet
+  // non vide) : un `null` ou un stub `{}` renvoyé par le modèle ne doit ni
+  // écraser un bon résultat, ni faire croire qu'un lieu est couvert.
+  const usable = (v) => v && typeof v === 'object' && Object.keys(v).length > 0
+
   let grounded = {}
   let lastError = null
   try {
@@ -241,16 +250,24 @@ ${JSON.stringify(brief)}`
   } catch (e) {
     lastError = `web: ${e.message}`
   }
-  const missing = sites.some((s) => !grounded[s.id])
+  // Repli JSON pur si le grounding n'a pas couvert TOUS les lieux (par une
+  // analyse exploitable). Le repli est lui aussi borné pour rester sous budget.
+  const missing = sites.some((s) => !usable(grounded[s.id]))
   let plain = {}
   if (missing) {
     try {
-      plain = await callGemini(false)
+      plain = await callGemini(false, 25000)
     } catch (e) {
       lastError = lastError ? `${lastError} | json: ${e.message}` : `json: ${e.message}`
     }
   }
-  const map = { ...plain, ...grounded }
+  // Fusion par lieu : le « grounded » (recherche web) est prioritaire là où il
+  // est exploitable ; sinon on prend le JSON pur ; sinon rien pour ce lieu.
+  const map = {}
+  for (const s of sites) {
+    if (usable(grounded[s.id])) map[s.id] = grounded[s.id]
+    else if (usable(plain[s.id])) map[s.id] = plain[s.id]
+  }
   return { map, error: Object.keys(map).length ? null : lastError || 'aucune analyse renvoyée' }
 }
 
@@ -298,7 +315,12 @@ export default async function handler(req, res) {
     res.setHeader('Cache-Control', aiOk ? 's-maxage=86400, stale-while-revalidate=604800' : 'no-store')
     res.status(200).json({ aiEnabled, aiError, results: out })
   } catch {
-    res.status(200).json({ aiEnabled: false, aiError: null, results: {} })
+    // Exception serveur : ne PAS prétendre que l'IA est « non configurée » (ça
+    // enverrait l'utilisateur corriger une clé pourtant présente). On reflète la
+    // présence réelle de la clé + une raison → le client montrera « IA
+    // indisponible » plutôt que « IA non configurée ».
+    const hasKey = Boolean((process.env.GEMINI_API_KEY || '').trim())
+    res.status(200).json({ aiEnabled: hasKey, aiError: hasKey ? 'exception serveur' : null, results: {} })
   } finally {
     clearTimeout(timer)
   }

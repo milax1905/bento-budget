@@ -522,8 +522,13 @@ export async function enrichDiscoveries(sites, { signal } = {}) {
       },
       signal,
     )
-    return data && typeof data === 'object' ? data : {}
+    // Réponse bien formée uniquement si elle porte `results`. Sinon (corps
+    // inattendu), on la traite comme un échec → l'appelant saura que l'état de
+    // l'IA est INCONNU (à ne pas confondre avec « clé absente »).
+    return data && typeof data === 'object' && data.results ? data : null
   } catch {
-    return {}
+    // Échec total (réseau, HTTP, timeout) : on renvoie null (état IA inconnu),
+    // pas un objet vide qui ferait croire à « IA non configurée ».
+    return null
   }
 }
