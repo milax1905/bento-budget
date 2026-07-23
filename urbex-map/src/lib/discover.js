@@ -38,6 +38,12 @@ const KEYS = [
   'abandoned:aeroway',
   'abandoned:leisure',
   'abandoned:landuse',
+  'abandoned:tourism',
+  'abandoned:healthcare',
+  'abandoned:shop',
+  'abandoned:office',
+  'abandoned:historic',
+  'abandoned:craft',
   'disused',
   'disused:building',
   'disused:railway',
@@ -47,6 +53,11 @@ const KEYS = [
   'disused:military',
   'disused:aeroway',
   'disused:leisure',
+  'disused:landuse',
+  'disused:tourism',
+  'disused:healthcare',
+  'disused:shop',
+  'disused:historic',
   'ruins',
 ]
 
@@ -72,15 +83,20 @@ function buildQuery(bbox) {
 (
 ${lines}
   nwr["building"="ruins"]${b};
+  nwr["ruins"="yes"]${b};
   nwr["historic"="ruins"]${b};
   nwr["historic"="archaeological_site"]${b};
   nwr["historic"="castle"]["ruins"="yes"]${b};
+  nwr["historic"="manor"]${b};
+  nwr["historic"="fort"]${b};
+  nwr["historic"="citadel"]${b};
   nwr["landuse"="brownfield"]${b};
   nwr["man_made"="mineshaft"]${b};
   nwr["man_made"="adit"]${b};
+  nwr["man_made"="tailings_pond"]${b};
   nwr["military"="bunker"]${b};
 );
-out center 600;`
+out center 700;`
 }
 
 const DEFAULT_NAME = {
@@ -373,6 +389,43 @@ function parseWikipedia(items, center, radiusKm) {
   return out
 }
 
+// BASIAS/CASIAS (Géorisques, 4ᵉ source) : anciens sites industriels & friches →
+// même forme. Ce sont des friches POTENTIELLES (l'IA tranche ensuite). On les
+// marque « BASIAS » pour l'affichage.
+function parseCasias(items, center, radiusKm) {
+  const out = []
+  const seen = new Set()
+  for (const it of items || []) {
+    if (it?.lat == null || it?.lng == null) continue
+    const dist = distanceKm(center, { lat: it.lat, lng: it.lng })
+    if (radiusKm && dist > radiusKm * 1.05) continue
+    const id = it.id || `basias/${it.lat},${it.lng}`
+    if (seen.has(id)) continue
+    seen.add(id)
+    out.push({
+      id,
+      lat: it.lat,
+      lng: it.lng,
+      name: it.name || 'Ancien site industriel',
+      category: 'usine',
+      typeLabel: 'Ancien site industriel (BASIAS)',
+      facts: it.etat ? [{ label: 'État', value: it.etat }] : [],
+      osmDescription: it.adresse || null,
+      danger: assessDanger('usine', {}),
+      tagline: 'BASIAS',
+      osmUrl: null,
+      distanceKm: dist,
+      score: 4,
+      notable: true,
+      wiki: null,
+      wikipedia: null,
+      wikidata: null,
+      wikidataUrl: null,
+    })
+  }
+  return out
+}
+
 // Candidats issus de la base de découverte perso (carte importée sur l'appareil)
 // situés dans le rayon. Les lieux marqués « perdu » (réhabilités) sont écartés.
 export function refCandidates(refs, center, radiusKm) {
@@ -477,7 +530,8 @@ export async function discoverAbandoned(center, radiusKm, { signal } = {}) {
     const osm = parseElements(data.elements || [], center, radius)
     const wd = parseWikidata(data.wikidata || [], center, radius)
     const wp = parseWikipedia(data.wikipedia || [], center, radius)
-    return mergeSources([osm, wd, wp], center)
+    const cs = parseCasias(data.casias || [], center, radius)
+    return mergeSources([osm, wd, wp, cs], center)
   } catch (proxyErr) {
     if (signal?.aborted) throw proxyErr
     // En production, le proxy EST le chemin fiable : on remonte sa vraie erreur
