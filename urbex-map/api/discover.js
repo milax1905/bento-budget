@@ -18,7 +18,7 @@ const ENDPOINTS = [
   'https://overpass.openstreetmap.fr/api/interpreter',
 ]
 
-const UA = 'UrbexAtlas/2.19 (+https://urbex-phi.vercel.app; contact via GitHub milax1905/bento-budget)'
+const UA = 'UrbexAtlas/2.27 (+https://urbex-phi.vercel.app; contact via GitHub milax1905/bento-budget)'
 const HEADERS = {
   'Content-Type': 'application/x-www-form-urlencoded',
   'User-Agent': UA,
@@ -130,6 +130,42 @@ async function wikidataAround(lat, lng, radiusKm, signal) {
   return out
 }
 
+// BASIAS/CASIAS (Géorisques) : anciens sites industriels & friches autour du
+// point. Source officielle FR, gratuite, sans clé. Best-effort (défensif sur la
+// forme de la réponse : si un champ manque, on ignore le site). Sur les grands
+// rayons on borne à ~15 km (l'API limite, et les friches proches priment).
+async function casiasAround(lat, lng, radiusKm, signal) {
+  const rayon = Math.round(Math.min(Math.max(Number(radiusKm) || 5, 1), 15) * 1000)
+  // Ordre latlon Géorisques = lon,lat.
+  const url =
+    `https://www.georisques.gouv.fr/api/v1/casias?latlon=${lng},${lat}&rayon=${rayon}&page=1&page_size=100`
+  const r = await fetch(url, { headers: { 'User-Agent': UA, Accept: 'application/json' }, signal })
+  if (!r.ok) throw new Error('casias ' + r.status)
+  const d = await r.json()
+  const rows = Array.isArray(d?.data) ? d.data : Array.isArray(d?.results) ? d.results : []
+  const out = []
+  for (const it of rows) {
+    let la = null
+    let lo = null
+    const g = it.geometrie || it.geom || it.geometry
+    if (g && Array.isArray(g.coordinates) && g.coordinates.length >= 2) {
+      lo = Number(g.coordinates[0])
+      la = Number(g.coordinates[1])
+    } else {
+      la = Number(it.latitude ?? it.lat ?? it.y_wgs84 ?? it.y)
+      lo = Number(it.longitude ?? it.lon ?? it.lng ?? it.x_wgs84 ?? it.x)
+    }
+    if (!Number.isFinite(la) || !Number.isFinite(lo) || Math.abs(la) > 90 || Math.abs(lo) > 180) continue
+    const etat = it.etat_occupation || it.etat || it.statut || null
+    // On écarte les sites explicitement « en activité » (pas de l'urbex).
+    if (etat && /en activit/i.test(etat)) continue
+    const name = it.nom_usuel || it.raison_sociale || it.nom || it.enseigne || null
+    const id = it.identifiant || it.numero_basias || it.code || `${la},${lo}`
+    out.push({ id: 'basias/' + id, name, lat: la, lng: lo, etat, adresse: it.adresse || null })
+  }
+  return out
+}
+
 export default async function handler(req, res) {
   const { data, geo } = getBody(req)
   if (!data || data.length > 20000) {
@@ -161,9 +197,12 @@ export default async function handler(req, res) {
   const wikipediaP = hasGeo
     ? wikipediaAround(geo.lat, geo.lng, geo.radiusKm, controller.signal).catch(() => [])
     : Promise.resolve([])
+  const casiasP = hasGeo
+    ? casiasAround(geo.lat, geo.lng, geo.radiusKm, controller.signal).catch(() => [])
+    : Promise.resolve([])
 
   try {
-    const [op, wd, wp] = await Promise.all([overpassP, wikidataP, wikipediaP])
+    const [op, wd, wp, cs] = await Promise.all([overpassP, wikidataP, wikipediaP, casiasP])
     controller.abort() // coupe les fetch encore en vol
 
     let elements = []
@@ -176,7 +215,7 @@ export default async function handler(req, res) {
     }
 
     // Échec total (toutes les sources vides ET Overpass KO) → vrai code HTTP.
-    if (!op.ok && elements.length === 0 && wd.length === 0 && wp.length === 0) {
+    if (!op.ok && elements.length === 0 && wd.length === 0 && wp.length === 0 && cs.length === 0) {
       const errs = Array.isArray(op.agg?.errors) ? op.agg.errors : []
       const detail = ENDPOINTS.map((ep, i) => `${label(ep)}:${errs[i]?.message || '?'}`).join(', ')
       res.status(502).json({ error: 'Overpass injoignable', detail })
@@ -185,7 +224,7 @@ export default async function handler(req, res) {
 
     res.setHeader('Content-Type', 'application/json; charset=utf-8')
     res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=600')
-    res.status(200).json({ elements, wikidata: wd, wikipedia: wp })
+    res.status(200).json({ elements, wikidata: wd, wikipedia: wp, casias: cs })
   } catch {
     res.status(502).json({ error: 'Découverte indisponible' })
   } finally {
