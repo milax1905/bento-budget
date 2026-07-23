@@ -13,7 +13,7 @@
 export const config = { maxDuration: 60 }
 
 const BUDGET_MS = 55000
-const UA = 'UrbexAtlas/2.25 (+https://urbex-phi.vercel.app; contact via GitHub milax1905/bento-budget)'
+const UA = 'UrbexAtlas/2.26 (+https://urbex-phi.vercel.app; contact via GitHub milax1905/bento-budget)'
 const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5'
 const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile'
 
@@ -143,31 +143,46 @@ async function aiAnalyze(sites, wikiMap, signal, userKey) {
 
   const brief = sites.map((s) => ({
     id: s.id,
+    nom: s.name || null,
     type: s.typeLabel || s.category,
     tags: s.tagline,
     wikipedia: wikiMap[s.id]?.extract || null,
+    // "macarte": lieu curé par l'utilisateur (carte urbex perso) → vrai spot a priori.
+    macarte: s.source === 'perso',
   }))
 
-  const prompt = `Tu es un expert en urbex (exploration de lieux abandonnés) francophone. Pour CHAQUE lieu ci-dessous, rédige une analyse en t'appuyant sur : le type OpenStreetMap fourni, l'extrait Wikipédia s'il existe, TES PROPRES CONNAISSANCES du lieu, et une recherche web quand l'outil est disponible. Si tu identifies le lieu de façon fiable, donne son histoire et ce qu'on peut y voir. Si tu n'as pas d'info fiable, reste général et honnête ("peu d'informations publiques sur ce lieu précis") — ne FABRIQUE JAMAIS de faux détails (fausses dates, faux noms, faux événements).
+  const prompt = `Tu es un expert en urbex (exploration de lieux abandonnés) francophone. Pour CHAQUE lieu ci-dessous, rédige une analyse en t'appuyant sur : le NOM du lieu, le type OpenStreetMap, l'extrait Wikipédia s'il existe, TES PROPRES CONNAISSANCES du lieu, et une recherche web quand l'outil est disponible. Si tu identifies le lieu de façon fiable (par son nom notamment), donne son histoire et ce qu'on peut y voir. Si tu n'as pas d'info fiable, reste général et honnête — ne FABRIQUE JAMAIS de faux détails (fausses dates, faux noms, faux événements).
 
-FILTRAGE STRICT (le plus important) : ne retiens que les lieux réellement
-ABANDONNÉS et explorables (urbex). Mets "urbex": false pour TOUT ce qui n'est pas
-un vrai spot abandonné, notamment :
-- une commune, un village, un hameau, un quartier (ex. "X est une commune française") ;
+TON RÔLE = FAIRE LE TRI. On veut une liste PROPRE ne proposant QUE des spots
+d'urbex COOLS (vraiment abandonnés et explorables). Tu juges TOUS les lieux,
+SANS EXCEPTION.
+
+Mets "urbex": false (à écarter) pour TOUT ce qui n'est pas un vrai spot abandonné :
+- une commune, un village, un hameau, un quartier ;
 - un élément géographique (rivière, lac, montagne, col, forêt…) ;
-- un site encore ACTIF, restauré, entretenu, habité, ouvert au public ou
-  touristique (château visitable, musée, monument classé entretenu, mairie, gare
-  en service, église paroissiale active) ;
-- un lieu réhabilité / reconverti (n'est plus explorable).
+- un site encore ACTIF / restauré / entretenu / habité / ouvert au public ou
+  touristique (château visitable ou habité, musée, monument classé entretenu,
+  mairie, basilique/cathédrale/église active, gare en service…) ;
+- un lieu RÉHABILITÉ / reconverti (n'est plus explorable).
 Mets "urbex": true UNIQUEMENT si le lieu est clairement à l'abandon / en ruine /
 désaffecté et donc explorable (friche, usine/mine/sanatorium/fort/château
-désaffecté, bâtiment abandonné…). En cas de doute réel, mets false.
+désaffecté, bâtiment abandonné…).
+
+LIEUX « macarte: true » : ce sont des spots curés par l'utilisateur (issus de sa
+carte urbex perso) — considère-les comme de VRAIS spots par défaut (urbex:true,
+verdict "top" ou "moyen"). Ne mets "urbex": false QUE si le nom montre clairement
+que c'est réhabilité / actif (ex. devenu mairie, musée, hôtel, château restauré
+et habité). Ne les note JAMAIS "quelconque" juste par manque d'info.
+
+LIEUX en ligne (macarte absent/false) : sois STRICT. En cas de doute réel qu'un
+lieu ne soit pas vraiment abandonné, mets "urbex": false. Réserve "verdict":
+"quelconque" aux lieux sans intérêt pour l'urbex.
 
 Pour chaque lieu renvoie :
 - "urbex" : true (vrai spot abandonné explorable) | false (à écarter).
 - "resume" : 2 à 3 phrases utiles à un explorateur (ce que c'est, son histoire si connue, ce qu'on peut y voir, s'il est abandonné ou encore actif).
 - "interet" : entier de 1 (quelconque/actif) à 5 (incontournable pour l'urbex).
-- "verdict" : "top" | "moyen" | "quelconque".
+- "verdict" : "top" (incontournable) | "moyen" (sympa) | "quelconque" (sans intérêt).
 - "danger" : { "niveau": entier 1 (faible) à 4 (extrême), "label": "Faible|Modéré|Élevé|Extrême", "risques": [2 à 4 risques concrets] }.
 - "conseils" : 1 phrase de conseil de prudence/accès.
 

@@ -31,14 +31,19 @@ function effectiveDanger(r) {
   return r.danger || null
 }
 
-// Lieu à écarter : jugé non-urbex par l'IA, ou — filet de sécurité quand l'IA
-// n'a pas (encore) tranché — description Wikipédia de commune/relief ou de lieu
-// encore debout (château habité/restauré, monument classé entretenu…).
+// Lieu à écarter du tri « propre ». Quand l'IA a jugé le lieu (perso INCLUS),
+// on suit son verdict : réhabilité/actif (urbex:false) ou sans intérêt
+// (quelconque) → écarté ; sinon gardé. Sans IA, filet de sécurité par la
+// description Wikipédia (commune/relief/monument encore debout), les lieux
+// « Ma carte » restant protégés tant que l'IA ne les a pas tranchés.
 function isExcluded(r) {
-  if (r.source === 'perso') return false // ma carte : lieux curés, jamais masqués
   const ai = r.enrichment?.ai
-  if (ai && ai.urbex === false) return true
-  if (ai && ai.urbex === true) return false // l'IA valide explicitement → on garde
+  if (ai) {
+    if (ai.urbex === false) return true // commune, actif, réhabilité → écarté
+    if (ai.verdict === 'quelconque') return true // sans intérêt pour l'urbex → écarté
+    return false // l'IA valide (top/moyen) → on garde, même « Ma carte »
+  }
+  if (r.source === 'perso') return false // perso curé, jamais masqué tant que l'IA n'a pas tranché
   const ex = r.enrichment?.wiki?.extract || ''
   if (/est une commune|commune française|ancienne commune|\bvillage\b|hameau|\brivière|\bfleuve|massif|sommet|montagne|\bcol de/i.test(ex))
     return true
@@ -386,7 +391,7 @@ export default function DiscoverPanel({
           >
             {showExcluded
               ? 'Masquer les lieux écartés'
-              : `Voir ${excluded.length} lieu${excluded.length > 1 ? 'x' : ''} écarté${excluded.length > 1 ? 's' : ''} (village, actif ou restauré)`}
+              : `Voir ${excluded.length} lieu${excluded.length > 1 ? 'x' : ''} écarté${excluded.length > 1 ? 's' : ''} par l'IA (réhabilité, actif ou sans intérêt)`}
           </button>
         )}
       </div>
