@@ -13,7 +13,7 @@
 export const config = { maxDuration: 60 }
 
 const BUDGET_MS = 55000
-const UA = 'UrbexAtlas/2.26 (+https://urbex-phi.vercel.app; contact via GitHub milax1905/bento-budget)'
+const UA = 'UrbexAtlas/2.29 (+https://urbex-phi.vercel.app; contact via GitHub milax1905/bento-budget)'
 const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5'
 const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile'
 
@@ -141,12 +141,15 @@ async function aiAnalyze(sites, wikiMap, signal, userKey) {
   }
   if (!anthropicKey && !groqKey) return { map: {}, error: null }
 
+  // On tronque l'extrait Wikipédia envoyé à l'IA (~280 caractères) : le début
+  // suffit à juger (type, époque, état), et ça DIVISE la consommation de tokens
+  // → on tient bien mieux dans les quotas gratuits (Groq/Claude).
   const brief = sites.map((s) => ({
     id: s.id,
     nom: s.name || null,
     type: s.typeLabel || s.category,
     tags: s.tagline,
-    wikipedia: wikiMap[s.id]?.extract || null,
+    wikipedia: (wikiMap[s.id]?.extract || '').slice(0, 280).trim() || null,
     // "macarte": lieu curé par l'utilisateur (carte urbex perso) → vrai spot a priori.
     macarte: s.source === 'perso',
   }))
@@ -257,7 +260,7 @@ ${JSON.stringify(brief)}`
         },
         body: JSON.stringify({
           model: ANTHROPIC_MODEL,
-          max_tokens: 8000,
+          max_tokens: 6000,
           temperature: 0.3,
           messages: [
             { role: 'user', content: prompt },
@@ -286,7 +289,7 @@ ${JSON.stringify(brief)}`
           model: GROQ_MODEL,
           messages: [{ role: 'user', content: prompt }],
           temperature: 0.3,
-          max_tokens: 8000,
+          max_tokens: 6000,
           response_format: { type: 'json_object' },
         }),
       },
