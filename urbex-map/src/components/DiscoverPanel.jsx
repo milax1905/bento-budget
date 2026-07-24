@@ -251,8 +251,8 @@ export default function DiscoverPanel({
               tone: 'amber',
               text: 'IA indisponible',
               title: aiError
-                ? `Gemini n’a rien renvoyé — ${aiError}`
-                : 'Gemini n’a rien renvoyé cette fois — réessaie dans un instant.',
+                ? `L’IA n’a rien renvoyé — ${aiError}`
+                : 'L’IA n’a rien renvoyé cette fois — réessaie dans un instant.',
             }
   const base = docsOnly ? results.filter((r) => r.notable) : results
   const kept = base.filter((r) => !isExcluded(r))
