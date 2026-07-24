@@ -51,7 +51,8 @@ function Shell() {
   const approachSeq = useRef(0)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [teamOpen, setTeamOpen] = useState(false)
-  const [discover, setDiscover] = useState(null) // { center, radiusKm, status, results, error }
+  const [discover, setDiscover] = useState(null) // { center, radiusKm, status, results, error } — PERSISTE (survit à la fermeture du panneau)
+  const [discoverOpen, setDiscoverOpen] = useState(false) // visibilité du panneau (les résultats restent en mémoire quand il est fermé)
   const discoverSeq = useRef(0)
   const discoverRef = useRef(null)
   const [flyTarget, setFlyTarget] = useState(null)
@@ -242,11 +243,17 @@ function Shell() {
   const openDiscover = () => {
     cancelAll()
     setSelectedId(null)
-    const center = userPos ||
-      (mapRef.current
-        ? { lat: mapRef.current.getCenter().lat, lng: mapRef.current.getCenter().lng }
-        : { lat: 46.8, lng: 2.4 })
-    setDiscover({ center, radiusKm: 5, status: 'idle', results: [], error: '' })
+    // On RÉOUVRE la recherche précédente si elle existe (résultats conservés) ;
+    // sinon on initialise une nouvelle recherche centrée sur la position/carte.
+    setDiscover((d) => {
+      if (d?.center) return d
+      const center = userPos ||
+        (mapRef.current
+          ? { lat: mapRef.current.getCenter().lat, lng: mapRef.current.getCenter().lng }
+          : { lat: 46.8, lng: 2.4 })
+      return { center, radiusKm: 5, status: 'idle', results: [], error: '' }
+    })
+    setDiscoverOpen(true)
     if (window.innerWidth < 640) setSidebarOpen(false)
   }
 
@@ -376,13 +383,13 @@ function Shell() {
         else if (adjusting) setAdjusting(false)
         else if (settingsOpen) setSettingsOpen(false)
         else if (teamOpen) setTeamOpen(false)
-        else if (discover) setDiscover(null)
+        else if (discoverOpen) setDiscoverOpen(false)
         else if (!formState) setSelectedId(null)
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [addMode, approachEdit, adjusting, settingsOpen, teamOpen, discover, formState])
+  }, [addMode, approachEdit, adjusting, settingsOpen, teamOpen, discoverOpen, formState])
 
   if (mode === 'cloud' && !authReady) {
     return (
@@ -573,13 +580,13 @@ function Shell() {
         </div>
       )}
 
-      {/* Panneau « Découvrir » */}
-      {discover && (
+      {/* Panneau « Découvrir » (les résultats persistent même quand il est fermé) */}
+      {discoverOpen && discover && (
         <div className="pointer-events-none absolute bottom-0 right-0 top-0 z-[1100] w-full sm:w-[400px] sm:p-3">
           <DiscoverPanel
             discover={discover}
             locating={locating}
-            onClose={() => setDiscover(null)}
+            onClose={() => setDiscoverOpen(false)}
             onRadius={(km) => setDiscover((d) => (d ? { ...d, radiusKm: km } : d))}
             onSearch={runDiscover}
             onAdd={addDiscovered}
@@ -590,7 +597,7 @@ function Shell() {
       )}
 
       {/* Contrôles carte (cachés sur mobile quand un panneau plein écran est ouvert) */}
-      <div className={sidebarOpen || discover ? 'hidden sm:contents' : 'contents'}>
+      <div className={sidebarOpen || discoverOpen ? 'hidden sm:contents' : 'contents'}>
         <MapControls
           layerId={layerId}
           onLayerChange={setLayerId}
@@ -601,8 +608,8 @@ function Shell() {
           onZoom={(dir) => (dir > 0 ? mapRef.current?.zoomIn() : mapRef.current?.zoomOut())}
           onGoto={(t) => setFlyTarget({ ...t, ts: Date.now() })}
           onOpenDiscover={openDiscover}
-          discoverActive={Boolean(discover)}
-          shifted={(Boolean(panelOpen) || Boolean(discover)) && !adjusting && !approachEdit}
+          discoverActive={discoverOpen}
+          shifted={(Boolean(panelOpen) || discoverOpen) && !adjusting && !approachEdit}
         />
       </div>
 
@@ -618,7 +625,7 @@ function Shell() {
       )}
 
       {/* Bouton ajouter */}
-      {!addMode && !formState && !approachEdit && !discover && (
+      {!addMode && !formState && !approachEdit && !discoverOpen && (
         <button
           onClick={startAdd}
           className={`absolute bottom-[calc(1.5rem+env(safe-area-inset-bottom))] left-1/2 z-[1000] -translate-x-1/2 items-center gap-2 rounded-full bg-amber-400 px-5 py-3 text-sm font-bold text-zinc-950 shadow-2xl shadow-amber-400/20 transition hover:bg-amber-300 active:scale-95 ${

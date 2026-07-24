@@ -13,7 +13,7 @@
 export const config = { maxDuration: 60 }
 
 const BUDGET_MS = 55000
-const UA = 'UrbexAtlas/2.29 (+https://urbex-phi.vercel.app; contact via GitHub milax1905/bento-budget)'
+const UA = 'UrbexAtlas/2.30 (+https://urbex-phi.vercel.app; contact via GitHub milax1905/bento-budget)'
 const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5'
 const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile'
 
@@ -152,6 +152,9 @@ async function aiAnalyze(sites, wikiMap, signal, userKey) {
     wikipedia: (wikiMap[s.id]?.extract || '').slice(0, 280).trim() || null,
     // "macarte": lieu curé par l'utilisateur (carte urbex perso) → vrai spot a priori.
     macarte: s.source === 'perso',
+    // "basias": ancien site industriel officiel (inventaire Géorisques) → friche
+    // probable, à garder par défaut.
+    basias: s.source === 'basias',
   }))
 
   const prompt = `Tu es un expert en urbex (exploration de lieux abandonnés) francophone. Pour CHAQUE lieu ci-dessous, rédige une analyse en t'appuyant sur : le NOM du lieu, le type OpenStreetMap, l'extrait Wikipédia s'il existe, TES PROPRES CONNAISSANCES du lieu, et une recherche web quand l'outil est disponible. Si tu identifies le lieu de façon fiable (par son nom notamment), donne son histoire et ce qu'on peut y voir. Si tu n'as pas d'info fiable, reste général et honnête — ne FABRIQUE JAMAIS de faux détails (fausses dates, faux noms, faux événements).
@@ -177,9 +180,15 @@ verdict "top" ou "moyen"). Ne mets "urbex": false QUE si le nom montre clairemen
 que c'est réhabilité / actif (ex. devenu mairie, musée, hôtel, château restauré
 et habité). Ne les note JAMAIS "quelconque" juste par manque d'info.
 
-LIEUX en ligne (macarte absent/false) : sois STRICT. En cas de doute réel qu'un
-lieu ne soit pas vraiment abandonné, mets "urbex": false. Réserve "verdict":
-"quelconque" aux lieux sans intérêt pour l'urbex.
+LIEUX « basias: true » : anciens sites industriels de l'inventaire officiel
+Géorisques (BASIAS) — ce sont des FRICHES probables (usine/atelier/dépôt/station
+désaffecté). Garde-les par défaut (urbex:true, verdict "moyen" en général). Ne mets
+"urbex": false QUE si tu sais que le site est aujourd'hui reconstruit / réhabilité /
+en activité. Ne les note JAMAIS "quelconque" juste par manque d'info.
+
+LIEUX en ligne (macarte ET basias absents/false) : sois STRICT. En cas de doute
+réel qu'un lieu ne soit pas vraiment abandonné, mets "urbex": false. Réserve
+"verdict": "quelconque" aux lieux sans intérêt pour l'urbex.
 
 Pour chaque lieu renvoie :
 - "urbex" : true (vrai spot abandonné explorable) | false (à écarter).
@@ -343,7 +352,7 @@ export default async function handler(req, res) {
       bodyIn = {}
     }
   }
-  const sites = Array.isArray(bodyIn?.sites) ? bodyIn.sites.slice(0, 20) : []
+  const sites = Array.isArray(bodyIn?.sites) ? bodyIn.sites.slice(0, 30) : []
   if (!sites.length) {
     res.status(400).json({ error: 'aucun site' })
     return
