@@ -18,7 +18,7 @@ const ENDPOINTS = [
   'https://overpass.openstreetmap.fr/api/interpreter',
 ]
 
-const UA = 'UrbexAtlas/2.27 (+https://urbex-phi.vercel.app; contact via GitHub milax1905/bento-budget)'
+const UA = 'UrbexAtlas/2.30 (+https://urbex-phi.vercel.app; contact via GitHub milax1905/bento-budget)'
 const HEADERS = {
   'Content-Type': 'application/x-www-form-urlencoded',
   'User-Agent': UA,
@@ -133,9 +133,10 @@ async function wikidataAround(lat, lng, radiusKm, signal) {
 // BASIAS/CASIAS (Géorisques) : anciens sites industriels & friches autour du
 // point. Source officielle FR, gratuite, sans clé. Best-effort (défensif sur la
 // forme de la réponse : si un champ manque, on ignore le site). Sur les grands
-// rayons on borne à ~15 km (l'API limite, et les friches proches priment).
+// rayons on borne à 10 km : l'API Géorisques rejette (400) un `rayon` > 10000 m,
+// ce qui ferait disparaître TOUS les sites BASIAS silencieusement.
 async function casiasAround(lat, lng, radiusKm, signal) {
-  const rayon = Math.round(Math.min(Math.max(Number(radiusKm) || 5, 1), 15) * 1000)
+  const rayon = Math.round(Math.min(Math.max(Number(radiusKm) || 5, 1), 10) * 1000)
   // Ordre latlon Géorisques = lon,lat.
   const url =
     `https://www.georisques.gouv.fr/api/v1/casias?latlon=${lng},${lat}&rayon=${rayon}&page=1&page_size=100`

@@ -269,6 +269,8 @@ export default function DiscoverPanel({
         </div>
         <button
           onClick={onClose}
+          title="Fermer"
+          aria-label="Fermer"
           className="rounded-lg p-2 text-zinc-400 transition hover:bg-zinc-700/60 hover:text-zinc-200"
         >
           <X size={16} />

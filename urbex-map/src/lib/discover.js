@@ -408,6 +408,7 @@ function parseCasias(items, center, radiusKm) {
       lng: it.lng,
       name: it.name || 'Ancien site industriel',
       category: 'usine',
+      source: 'basias',
       typeLabel: 'Ancien site industriel (BASIAS)',
       facts: it.etat ? [{ label: 'État', value: it.etat }] : [],
       osmDescription: it.adresse || null,
@@ -554,7 +555,7 @@ export async function discoverAbandoned(center, radiusKm, { signal } = {}) {
 // et ne casse jamais la découverte si ça échoue.
 export async function enrichDiscoveries(sites, { signal } = {}) {
   if (!sites?.length) return {}
-  const payload = sites.slice(0, 20).map((r) => ({
+  const payload = sites.slice(0, 30).map((r) => ({
     id: r.id,
     lat: r.lat,
     lng: r.lng,
