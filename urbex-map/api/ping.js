@@ -18,7 +18,7 @@ export default async function handler(req, res) {
   const base = {
     ok: true,
     service: 'urbex-discover',
-    version: '2.30',
+    version: '2.31',
     anthropic: Boolean(anthropicKey),
     groq: Boolean(groqKey),
     anthropicModel,
@@ -31,7 +31,7 @@ export default async function handler(req, res) {
   if (/[?&]basias=1(?:&|$)/.test(req.url || '') || req.query?.basias === '1') {
     const lat = Number(req.query?.lat) || 45.6072
     const lng = Number(req.query?.lng) || 5.8903
-    const testUrl = `https://www.georisques.gouv.fr/api/v1/casias?latlon=${lng},${lat}&rayon=3000&page=1&page_size=3`
+    const testUrl = `https://www.georisques.gouv.fr/api/v1/ssp/casias?latlon=${lng},${lat}&rayon=3000&page=1&page_size=3`
     const ctrl = new AbortController()
     const t = setTimeout(() => ctrl.abort(), 12000)
     try {
