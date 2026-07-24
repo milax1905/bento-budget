@@ -18,10 +18,43 @@ export default async function handler(req, res) {
   const base = {
     ok: true,
     service: 'urbex-discover',
-    version: '2.24',
+    version: '2.28',
     anthropic: Boolean(anthropicKey),
     groq: Boolean(groqKey),
     anthropicModel,
+  }
+
+  // Diagnostic BASIAS EN DIRECT : /api/ping?basias=1[&lat=..&lng=..]
+  // Interroge la vraie API Géorisques (que je ne peux pas joindre depuis mon
+  // sandbox) et renvoie le statut + la forme exacte de la réponse, pour corriger
+  // le parsing au cas où les champs diffèrent.
+  if (/[?&]basias=1(?:&|$)/.test(req.url || '') || req.query?.basias === '1') {
+    const lat = Number(req.query?.lat) || 45.6072
+    const lng = Number(req.query?.lng) || 5.8903
+    const testUrl = `https://www.georisques.gouv.fr/api/v1/casias?latlon=${lng},${lat}&rayon=3000&page=1&page_size=3`
+    const ctrl = new AbortController()
+    const t = setTimeout(() => ctrl.abort(), 12000)
+    try {
+      const r = await fetch(testUrl, { headers: { Accept: 'application/json', 'User-Agent': 'UrbexAtlas/ping' }, signal: ctrl.signal })
+      const raw = await r.text()
+      const out = { status: r.status }
+      try {
+        const d = JSON.parse(raw)
+        const rows = Array.isArray(d?.data) ? d.data : Array.isArray(d?.results) ? d.results : []
+        out.topKeys = Object.keys(d || {}).slice(0, 15)
+        out.count = rows.length
+        out.itemKeys = rows[0] ? Object.keys(rows[0]) : []
+        out.sample = rows[0] || null
+      } catch {
+        out.bodyStart = raw.slice(0, 400)
+      }
+      res.status(200).json({ ...base, basiasTest: out })
+    } catch (e) {
+      res.status(200).json({ ...base, basiasTest: { error: e?.message || 'exception', url: testUrl } })
+    } finally {
+      clearTimeout(t)
+    }
+    return
   }
 
   const wantAi = /[?&]ai=1(?:&|$)/.test(req.url || '') || req.query?.ai === '1'
