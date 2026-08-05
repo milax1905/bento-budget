@@ -136,7 +136,7 @@ export default function SpotForm({
         </div>
         <button
           onClick={onEndAdjust}
-          className="flex items-center gap-1.5 rounded-xl bg-amber-400 px-4 py-2.5 text-sm font-bold text-zinc-950 transition hover:bg-amber-300"
+          className="flex items-center gap-1.5 rounded-xl bg-gradient-to-b from-indigo-400 to-indigo-600 px-4 py-2.5 text-sm font-bold text-white ring-1 ring-white/20 transition hover:brightness-110"
         >
           <Check size={15} /> OK
         </button>
@@ -189,7 +189,7 @@ export default function SpotForm({
             onChange={(e) => setName(e.target.value)}
             placeholder="Ex : Usine des Rails, Manoir aux Statues…"
             autoFocus
-            className="w-full rounded-xl bg-zinc-800/70 px-3 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 outline-none ring-amber-400/50 focus:ring-2"
+            className="w-full rounded-xl bg-zinc-800/70 px-3 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 outline-none ring-indigo-400/50 focus:ring-2"
           />
         </div>
 
@@ -227,7 +227,7 @@ export default function SpotForm({
                 onClick={() => setCategory(c.id)}
                 className={`flex items-center gap-2 rounded-xl px-2.5 py-2 text-left text-xs transition ${
                   category === c.id
-                    ? 'bg-amber-400/15 text-amber-200 ring-1 ring-amber-400/40'
+                    ? 'bg-indigo-400/15 text-indigo-200 ring-1 ring-indigo-400/40'
                     : 'bg-zinc-800/50 text-zinc-400 hover:bg-zinc-700/50'
                 }`}
               >
@@ -283,7 +283,7 @@ export default function SpotForm({
             onChange={(e) => setDescription(e.target.value)}
             rows={3}
             placeholder="Histoire du lieu, état, ce qu'il y a à voir…"
-            className="w-full resize-none rounded-xl bg-zinc-800/70 px-3 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 outline-none ring-amber-400/50 focus:ring-2"
+            className="w-full resize-none rounded-xl bg-zinc-800/70 px-3 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 outline-none ring-indigo-400/50 focus:ring-2"
           />
         </div>
 
@@ -297,7 +297,7 @@ export default function SpotForm({
             onChange={(e) => setAccessNotes(e.target.value)}
             rows={2}
             placeholder="Où se garer, par où entrer, présence de sécu…"
-            className="w-full resize-none rounded-xl bg-zinc-800/70 px-3 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 outline-none ring-amber-400/50 focus:ring-2"
+            className="w-full resize-none rounded-xl bg-zinc-800/70 px-3 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 outline-none ring-indigo-400/50 focus:ring-2"
           />
         </div>
 
@@ -332,7 +332,7 @@ export default function SpotForm({
                 }
               }}
               placeholder="Lampe, gants, corde, batterie…"
-              className="w-full rounded-xl bg-zinc-800/70 px-3 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 outline-none ring-amber-400/50 focus:ring-2"
+              className="w-full rounded-xl bg-zinc-800/70 px-3 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 outline-none ring-indigo-400/50 focus:ring-2"
             />
             <button
               onClick={addCheckItem}
@@ -399,7 +399,7 @@ export default function SpotForm({
         <button
           onClick={save}
           disabled={saving}
-          className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-amber-400 px-3 py-2.5 text-sm font-bold text-zinc-950 transition hover:bg-amber-300 disabled:opacity-50"
+          className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-indigo-400 to-indigo-600 px-3 py-2.5 text-sm font-bold text-white ring-1 ring-white/20 transition hover:brightness-110 disabled:opacity-50"
         >
           <Save size={15} /> {saving ? 'Enregistrement…' : editing ? 'Enregistrer' : 'Ajouter le spot'}
         </button>

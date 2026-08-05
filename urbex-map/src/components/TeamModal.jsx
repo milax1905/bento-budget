@@ -31,7 +31,7 @@ export default function TeamModal({ onClose }) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-3 border-b border-white/10 px-5 py-4">
-          <Users size={18} className="text-amber-300" />
+          <Users size={18} className="text-indigo-300" />
           <h2 className="flex-1 text-base font-bold text-zinc-100">Équipe</h2>
           <button
             onClick={onClose}
@@ -53,12 +53,12 @@ export default function TeamModal({ onClose }) {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="email@exemple.fr"
-              className="w-full rounded-xl bg-zinc-800/70 px-3 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 outline-none ring-amber-400/50 focus:ring-2"
+              className="w-full rounded-xl bg-zinc-800/70 px-3 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 outline-none ring-indigo-400/50 focus:ring-2"
             />
             <button
               type="submit"
               disabled={busy}
-              className="flex shrink-0 items-center gap-1.5 rounded-xl bg-amber-400 px-3 py-2.5 text-sm font-bold text-zinc-950 transition hover:bg-amber-300 disabled:opacity-50"
+              className="flex shrink-0 items-center gap-1.5 rounded-xl bg-gradient-to-b from-indigo-400 to-indigo-600 px-3 py-2.5 text-sm font-bold text-white ring-1 ring-white/20 transition hover:brightness-110 disabled:opacity-50"
             >
               <UserPlus size={15} /> Inviter
             </button>
@@ -75,7 +75,7 @@ export default function TeamModal({ onClose }) {
                   key={m.email}
                   className="flex items-center gap-2 rounded-xl bg-zinc-800/50 px-3 py-2.5"
                 >
-                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-400/15 text-xs font-bold uppercase text-amber-300">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-indigo-400/15 text-xs font-bold uppercase text-indigo-300">
                     {m.email[0]}
                   </span>
                   <span className="min-w-0 flex-1">

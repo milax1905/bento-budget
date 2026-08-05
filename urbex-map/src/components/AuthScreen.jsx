@@ -85,10 +85,10 @@ export default function AuthScreen() {
   }
 
   return (
-    <div className="flex h-dvh w-screen items-center justify-center bg-zinc-950 p-4">
+    <div className="app-bg flex h-dvh w-screen items-center justify-center p-4">
       <div className="w-full max-w-sm">
         <div className="mb-6 text-center">
-          <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-400/15 text-3xl">
+          <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-400/15 text-3xl">
             🏚️
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-zinc-100">Urbex Atlas</h1>
@@ -121,7 +121,7 @@ export default function AuthScreen() {
                 value={pseudo}
                 onChange={(e) => setPseudo(e.target.value)}
                 placeholder="Pseudo (visible par l'équipe)"
-                className="w-full rounded-xl bg-zinc-800/70 px-3 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 outline-none ring-amber-400/50 focus:ring-2"
+                className="w-full rounded-xl bg-zinc-800/70 px-3 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 outline-none ring-indigo-400/50 focus:ring-2"
               />
             )}
             <input
@@ -130,7 +130,7 @@ export default function AuthScreen() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="Email"
-              className="w-full rounded-xl bg-zinc-800/70 px-3 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 outline-none ring-amber-400/50 focus:ring-2"
+              className="w-full rounded-xl bg-zinc-800/70 px-3 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 outline-none ring-indigo-400/50 focus:ring-2"
             />
             <input
               type="password"
@@ -139,7 +139,7 @@ export default function AuthScreen() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Mot de passe (6 caractères min.)"
-              className="w-full rounded-xl bg-zinc-800/70 px-3 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 outline-none ring-amber-400/50 focus:ring-2"
+              className="w-full rounded-xl bg-zinc-800/70 px-3 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 outline-none ring-indigo-400/50 focus:ring-2"
             />
 
             {error && <p className="rounded-lg bg-rose-500/10 px-3 py-2 text-xs text-rose-300">{error}</p>}
@@ -148,7 +148,7 @@ export default function AuthScreen() {
             <button
               type="submit"
               disabled={busy}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-amber-400 py-2.5 text-sm font-bold text-zinc-950 transition hover:bg-amber-300 disabled:opacity-50"
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-indigo-400 to-indigo-600 py-2.5 text-sm font-bold text-white ring-1 ring-white/20 transition hover:brightness-110 disabled:opacity-50"
             >
               {busy ? (
                 <Loader2 size={15} className="animate-spin" />

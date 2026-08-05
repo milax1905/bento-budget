@@ -100,16 +100,16 @@ export default function PlacesScreen({ selectedId, onSelect, userPos }) {
       <div className="mx-auto flex h-full w-full max-w-xl flex-col">
         {/* En-tête */}
         <header className="flex items-center gap-2 px-4 pb-2 pt-3">
-          <MapPinned size={20} className="text-amber-300" />
-          <h1 className="text-lg font-extrabold tracking-tight text-zinc-100">Lieux</h1>
-          <span className="rounded-full bg-white/8 px-2 py-0.5 text-[11px] font-semibold text-zinc-400">
+          <MapPinned size={20} className="text-indigo-300" />
+          <h1 className="text-[15px] font-bold uppercase tracking-[0.24em] text-zinc-100">Lieux</h1>
+          <span className="rounded-full bg-white/8 px-2 py-0.5 text-[11px] font-semibold text-zinc-400 ring-1 ring-white/10">
             {spots.length}
           </span>
         </header>
 
         {/* Recherche + filtres */}
         <div className="space-y-2 px-3 pb-2">
-          <div className="flex items-center gap-2 rounded-xl border border-white/8 bg-zinc-900/60 px-3 py-2.5">
+          <div className="glass-card flex items-center gap-2 rounded-full px-4 py-2.5">
             <Search size={15} className="shrink-0 text-zinc-500" />
             <input
               value={query}
@@ -130,8 +130,8 @@ export default function PlacesScreen({ selectedId, onSelect, userPos }) {
                 <button
                   key={st.id}
                   onClick={() => setStatusFilter(active ? null : st.id)}
-                  className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium transition ${
-                    active ? 'text-zinc-950' : 'bg-zinc-800/70 text-zinc-300 hover:bg-zinc-700/60'
+                  className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium ring-1 transition ${
+                    active ? 'text-zinc-950 ring-white/20' : 'bg-white/5 text-zinc-300 ring-white/10 hover:bg-white/10'
                   }`}
                   style={active ? { background: st.color } : {}}
                 >
@@ -144,8 +144,8 @@ export default function PlacesScreen({ selectedId, onSelect, userPos }) {
             <button
               onClick={() => setFavOnly((v) => !v)}
               title="Spots de la prochaine sortie"
-              className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium transition ${
-                favOnly ? 'bg-amber-400 text-zinc-950' : 'bg-zinc-800/70 text-zinc-300 hover:bg-zinc-700/60'
+              className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium ring-1 transition ${
+                favOnly ? 'bg-amber-400 text-zinc-950 ring-white/20' : 'bg-white/5 text-zinc-300 ring-white/10 hover:bg-white/10'
               }`}
             >
               <Star size={11} className={favOnly ? 'fill-zinc-950' : 'fill-amber-400 text-amber-400'} />
@@ -157,7 +157,7 @@ export default function PlacesScreen({ selectedId, onSelect, userPos }) {
             <select
               value={categoryFilter}
               onChange={(e) => setCategoryFilter(e.target.value)}
-              className="min-w-0 flex-1 rounded-xl border border-white/8 bg-zinc-900/60 px-3 py-2 text-sm text-zinc-300 outline-none"
+              className="glass-card min-w-0 flex-1 rounded-full px-4 py-2 text-sm text-zinc-300 outline-none"
             >
               <option value="">Toutes catégories</option>
               {CATEGORIES.map((c) => (
@@ -166,15 +166,15 @@ export default function PlacesScreen({ selectedId, onSelect, userPos }) {
                 </option>
               ))}
             </select>
-            <div className="flex shrink-0 items-center gap-1 rounded-xl border border-white/8 bg-zinc-900/60 px-1 py-1">
+            <div className="glass-card flex shrink-0 items-center gap-1 rounded-full px-1.5 py-1">
               <ArrowDownUp size={13} className="ml-1 text-zinc-500" />
               {SORTS.map((s) => (
                 <button
                   key={s.id}
                   onClick={() => setSort(s.id)}
                   disabled={s.id === 'distance' && !userPos}
-                  className={`rounded-lg px-2 py-1 text-[11px] font-medium transition disabled:opacity-30 ${
-                    sort === s.id ? 'bg-amber-400/20 text-amber-200' : 'text-zinc-400 hover:text-zinc-200'
+                  className={`rounded-full px-2 py-1 text-[11px] font-medium transition disabled:opacity-30 ${
+                    sort === s.id ? 'bg-indigo-400/25 text-indigo-200' : 'text-zinc-400 hover:text-zinc-200'
                   }`}
                 >
                   {s.label}
@@ -185,7 +185,7 @@ export default function PlacesScreen({ selectedId, onSelect, userPos }) {
         </div>
 
         {/* Liste */}
-        <div className="flex-1 overflow-y-auto px-2 pb-28">
+        <div className="flex-1 overflow-y-auto px-2 pb-32">
           {loading && <div className="px-3 py-6 text-center text-sm text-zinc-500">Chargement des lieux…</div>}
           {!loading && filtered.length === 0 && (
             <div className="flex flex-col items-center gap-2 px-4 py-14 text-center text-sm text-zinc-500">
@@ -205,11 +205,11 @@ export default function PlacesScreen({ selectedId, onSelect, userPos }) {
               <button
                 key={s.id}
                 onClick={() => onSelect(s.id)}
-                className={`mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${
-                  selected ? 'bg-amber-400/15 ring-1 ring-amber-400/40' : 'hover:bg-white/5'
+                className={`mb-1 flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left transition ${
+                  selected ? 'bg-indigo-400/15 ring-1 ring-indigo-400/40' : 'hover:bg-white/5'
                 }`}
               >
-                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-zinc-800/70 text-xl">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/5 text-xl ring-1 ring-white/10">
                   {cat.emoji}
                 </span>
                 <span className="min-w-0 flex-1">
@@ -238,25 +238,25 @@ export default function PlacesScreen({ selectedId, onSelect, userPos }) {
               <span className="mr-auto text-[11px] text-zinc-600">Sauvegarde & partage</span>
               <button
                 onClick={() => fileRef.current?.click()}
-                className="flex items-center gap-1.5 rounded-lg bg-zinc-800/70 px-2.5 py-1.5 text-[11px] text-zinc-300 transition hover:bg-zinc-700/70"
+                className="flex items-center gap-1.5 rounded-full bg-white/5 px-3 py-1.5 text-[11px] text-zinc-300 ring-1 ring-white/10 transition hover:bg-white/10"
               >
                 <Upload size={12} /> Import
               </button>
               <button
                 onClick={() => exportJson(spots)}
-                className="flex items-center gap-1.5 rounded-lg bg-zinc-800/70 px-2.5 py-1.5 text-[11px] text-zinc-300 transition hover:bg-zinc-700/70"
+                className="flex items-center gap-1.5 rounded-full bg-white/5 px-3 py-1.5 text-[11px] text-zinc-300 ring-1 ring-white/10 transition hover:bg-white/10"
               >
                 <FileJson size={12} /> JSON
               </button>
               <button
                 onClick={() => exportGpx(spots)}
-                className="flex items-center gap-1.5 rounded-lg bg-zinc-800/70 px-2.5 py-1.5 text-[11px] text-zinc-300 transition hover:bg-zinc-700/70"
+                className="flex items-center gap-1.5 rounded-full bg-white/5 px-3 py-1.5 text-[11px] text-zinc-300 ring-1 ring-white/10 transition hover:bg-white/10"
               >
                 <Download size={12} /> GPX
               </button>
               <button
                 onClick={() => exportKml(spots)}
-                className="flex items-center gap-1.5 rounded-lg bg-zinc-800/70 px-2.5 py-1.5 text-[11px] text-zinc-300 transition hover:bg-zinc-700/70"
+                className="flex items-center gap-1.5 rounded-full bg-white/5 px-3 py-1.5 text-[11px] text-zinc-300 ring-1 ring-white/10 transition hover:bg-white/10"
               >
                 <Globe size={12} /> KML
               </button>
