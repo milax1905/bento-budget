@@ -10,7 +10,7 @@ function ControlButton({ title, active, onClick, children }) {
       title={title}
       onClick={onClick}
       className={`glass flex h-11 w-11 items-center justify-center rounded-xl text-zinc-200 shadow-lg transition hover:bg-zinc-700/70 active:scale-95 ${
-        active ? 'ring-2 ring-amber-400/70' : ''
+        active ? 'ring-2 ring-indigo-400/70' : ''
       }`}
     >
       {children}
@@ -157,7 +157,7 @@ export default function MapControls({
                   setLayersOpen(false)
                 }}
                 className={`block w-full rounded-lg px-3 py-2 text-left text-sm transition ${
-                  l.id === layerId ? 'bg-amber-400/15 text-amber-300' : 'text-zinc-300 hover:bg-zinc-700/60'
+                  l.id === layerId ? 'bg-indigo-400/15 text-indigo-300' : 'text-zinc-300 hover:bg-zinc-700/60'
                 }`}
               >
                 {l.label}
@@ -167,7 +167,7 @@ export default function MapControls({
               <button
                 onClick={onLabelsToggle}
                 className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition ${
-                  labelsOn ? 'bg-amber-400/15 text-amber-300' : 'text-zinc-300 hover:bg-zinc-700/60'
+                  labelsOn ? 'bg-indigo-400/15 text-indigo-300' : 'text-zinc-300 hover:bg-zinc-700/60'
                 }`}
               >
                 <Type size={14} /> Noms de lieux

@@ -195,7 +195,7 @@ export default function SpotDetail({ spot, onClose, onEdit, onEditApproach }) {
             {spot.approach && (
               <button
                 onClick={() => onEditApproach(spot)}
-                className="text-[10px] text-amber-300/90 hover:text-amber-300"
+                className="text-[10px] text-indigo-300/90 hover:text-indigo-300"
               >
                 modifier
               </button>
@@ -287,7 +287,7 @@ export default function SpotDetail({ spot, onClose, onEdit, onEditApproach }) {
       <div className="flex gap-2 border-t border-white/10 px-4 py-3">
         <button
           onClick={() => onEdit(spot)}
-          className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-amber-400/15 px-3 py-2.5 text-sm font-medium text-amber-300 transition hover:bg-amber-400/25"
+          className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-indigo-400/15 px-3 py-2.5 text-sm font-medium text-indigo-300 transition hover:bg-indigo-400/25"
         >
           <Pencil size={15} /> Modifier
         </button>

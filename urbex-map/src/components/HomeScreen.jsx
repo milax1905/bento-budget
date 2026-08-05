@@ -18,12 +18,11 @@ import { useStore } from '../lib/store'
 
 function StatTile({ color, label, value }) {
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-white/8 bg-zinc-900/50 px-3.5 py-3">
-      <span className="absolute right-0 top-0 h-full w-1 rounded-full opacity-80" style={{ background: color }} />
+    <div className="glass-card rounded-2xl px-3.5 py-3">
       <div className="text-2xl font-bold tabular-nums text-zinc-50">{value}</div>
-      <div className="mt-0.5 flex items-center gap-1.5 text-[11px] font-medium text-zinc-400">
-        <span className="h-1.5 w-1.5 rounded-full" style={{ background: color }} />
-        {label}
+      <div className="mt-1 flex items-center gap-1.5">
+        <span className="h-1.5 w-1.5 rounded-full" style={{ background: color, boxShadow: `0 0 6px ${color}` }} />
+        <span className="label-tech">{label}</span>
       </div>
     </div>
   )
@@ -35,9 +34,9 @@ function SpotRow({ spot, userPos, onClick }) {
   return (
     <button
       onClick={onClick}
-      className="flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left transition hover:bg-white/5 active:bg-white/10"
+      className="flex w-full items-center gap-3 rounded-2xl px-2.5 py-2 text-left transition hover:bg-white/5 active:bg-white/10"
     >
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-zinc-800/70 text-xl">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/5 text-xl ring-1 ring-white/10">
         {cat.emoji}
       </span>
       <span className="min-w-0 flex-1">
@@ -78,14 +77,12 @@ export default function HomeScreen({ onSelectSpot, onAdd, onOpenDiscover, onOpen
 
   return (
     <div className="app-bg screen-in pt-safe absolute inset-0 z-[1500] overflow-y-auto">
-      <div className="mx-auto w-full max-w-xl px-4 pb-28 pt-3">
+      <div className="mx-auto w-full max-w-xl px-4 pb-32 pt-3">
         {/* Barre d'application */}
         <header className="flex items-center gap-3 py-1">
-          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-400/15 text-xl">
-            🏚️
-          </div>
+          <div className="glass-card flex h-10 w-10 items-center justify-center rounded-2xl text-xl">🏚️</div>
           <div className="min-w-0 flex-1">
-            <h1 className="text-lg font-extrabold tracking-tight text-zinc-100">Urbex Atlas</h1>
+            <h1 className="text-[15px] font-bold uppercase tracking-[0.24em] text-zinc-100">Urbex Atlas</h1>
             <div className="flex items-center gap-1.5 text-[11px] text-zinc-500">
               {mode === 'cloud' ? (
                 <>
@@ -104,7 +101,7 @@ export default function HomeScreen({ onSelectSpot, onAdd, onOpenDiscover, onOpen
             <button
               onClick={onOpenTeam}
               title="Équipe & invitations"
-              className="rounded-xl border border-white/8 bg-zinc-900/60 p-2.5 text-zinc-400 transition hover:text-zinc-100"
+              className="glass-card rounded-full p-2.5 text-zinc-400 transition hover:text-zinc-100"
             >
               <Users size={17} />
             </button>
@@ -112,15 +109,16 @@ export default function HomeScreen({ onSelectSpot, onAdd, onOpenDiscover, onOpen
           <button
             onClick={onOpenSettings}
             title="Réglages"
-            className="rounded-xl border border-white/8 bg-zinc-900/60 p-2.5 text-zinc-400 transition hover:text-zinc-100"
+            className="glass-card rounded-full p-2.5 text-zinc-400 transition hover:text-zinc-100"
           >
             <Settings size={17} />
           </button>
         </header>
 
         {/* Bloc « progression d'exploration » */}
-        <section className="mt-4 overflow-hidden rounded-3xl border border-white/8 bg-zinc-900/50 p-5">
-          <div className="flex items-end justify-between">
+        <section className="glass-card mt-4 overflow-hidden rounded-3xl p-5">
+          <div className="label-tech">Exploration</div>
+          <div className="mt-2 flex items-end justify-between">
             <div>
               <div className="flex items-baseline gap-2">
                 <span className="text-4xl font-black tabular-nums text-zinc-50">{spots.length}</span>
@@ -128,16 +126,16 @@ export default function HomeScreen({ onSelectSpot, onAdd, onOpenDiscover, onOpen
                   lieu{spots.length > 1 ? 'x' : ''} au total
                 </span>
               </div>
-              <div className="mt-1 flex items-center gap-1.5 text-[12px] text-emerald-400/90">
+              <div className="mt-1 flex items-center gap-1.5 text-[12px] text-indigo-300">
                 <TrendingUp size={13} />
                 {doneCount} exploré{doneCount > 1 ? 's' : ''} · {progress}%
               </div>
             </div>
-            <Compass size={40} className="text-zinc-700" />
+            <Compass size={40} className="text-indigo-300/25" />
           </div>
-          <div className="mt-4 h-2 overflow-hidden rounded-full bg-black/40">
+          <div className="mt-4 h-2 overflow-hidden rounded-full bg-black/40 ring-1 ring-white/5">
             <div
-              className="h-full rounded-full bg-amber-400 transition-all duration-500"
+              className="h-full rounded-full bg-gradient-to-r from-indigo-500 via-indigo-400 to-violet-400 transition-all duration-500"
               style={{ width: `${Math.max(progress, spots.length ? 4 : 0)}%` }}
             />
           </div>
@@ -151,30 +149,30 @@ export default function HomeScreen({ onSelectSpot, onAdd, onOpenDiscover, onOpen
         </section>
 
         {/* Actions rapides */}
-        <section className="mt-3 grid grid-cols-2 gap-2.5">
+        <section className="mt-4 grid grid-cols-2 gap-2.5">
           <button
             onClick={onAdd}
-            className="flex items-center justify-center gap-2 rounded-2xl bg-amber-400 px-4 py-3.5 text-sm font-bold text-zinc-950 shadow-lg shadow-black/30 transition hover:bg-amber-300 active:scale-95"
+            className="glow-soft flex items-center justify-center gap-2 rounded-full bg-gradient-to-b from-indigo-400 to-indigo-600 px-4 py-3.5 text-sm font-bold text-white ring-1 ring-white/25 transition hover:brightness-110 active:scale-95"
           >
             <Plus size={18} strokeWidth={2.6} /> Nouveau spot
           </button>
           <button
             onClick={onOpenDiscover}
-            className="flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-zinc-800/70 px-4 py-3.5 text-sm font-bold text-zinc-100 transition hover:bg-zinc-700/70 active:scale-95"
+            className="glass-card flex items-center justify-center gap-2 rounded-full px-4 py-3.5 text-sm font-bold text-zinc-100 transition hover:bg-white/10 active:scale-95"
           >
-            <Radar size={18} className="text-violet-300" /> Découvrir
+            <Radar size={18} className="text-indigo-300" /> Découvrir
           </button>
         </section>
 
         {/* Prochaine sortie (favoris) */}
         {favorites.length > 0 && (
-          <section className="mt-6">
-            <div className="mb-1.5 flex items-center gap-2 px-1">
-              <Star size={14} className="fill-amber-400 text-amber-400" />
-              <h2 className="text-sm font-bold text-zinc-200">Prochaine sortie</h2>
-              <span className="text-[11px] text-zinc-500">{favorites.length}</span>
+          <section className="mt-7">
+            <div className="mb-2 flex items-center gap-2 px-1">
+              <Star size={13} className="fill-amber-400 text-amber-400" />
+              <h2 className="label-tech">Prochaine sortie</h2>
+              <span className="text-[11px] text-zinc-600">{favorites.length}</span>
             </div>
-            <div className="rounded-2xl border border-white/8 bg-zinc-900/40 p-1.5">
+            <div className="glass-card rounded-3xl p-1.5">
               {favorites.slice(0, 6).map((s) => (
                 <SpotRow key={s.id} spot={s} userPos={userPos} onClick={() => onSelectSpot(s.id)} />
               ))}
@@ -183,19 +181,19 @@ export default function HomeScreen({ onSelectSpot, onAdd, onOpenDiscover, onOpen
         )}
 
         {/* Derniers ajouts */}
-        <section className="mt-6">
-          <div className="mb-1.5 flex items-center gap-2 px-1">
-            <h2 className="text-sm font-bold text-zinc-200">Derniers lieux</h2>
+        <section className="mt-7">
+          <div className="mb-2 px-1">
+            <h2 className="label-tech">Derniers lieux</h2>
           </div>
           {recent.length > 0 ? (
-            <div className="rounded-2xl border border-white/8 bg-zinc-900/40 p-1.5">
+            <div className="glass-card rounded-3xl p-1.5">
               {recent.map((s) => (
                 <SpotRow key={s.id} spot={s} userPos={userPos} onClick={() => onSelectSpot(s.id)} />
               ))}
             </div>
           ) : (
-            <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-white/10 px-4 py-10 text-center">
-              <Compass size={30} className="text-zinc-600" />
+            <div className="glass-card flex flex-col items-center gap-3 rounded-3xl px-4 py-10 text-center">
+              <Compass size={30} className="text-indigo-300/40" />
               <p className="text-sm text-zinc-400">
                 Aucun lieu pour l'instant.
                 <br />
@@ -204,22 +202,22 @@ export default function HomeScreen({ onSelectSpot, onAdd, onOpenDiscover, onOpen
               <div className="flex gap-2">
                 <button
                   onClick={onAdd}
-                  className="flex items-center gap-1.5 rounded-xl bg-amber-400 px-3.5 py-2 text-xs font-bold text-zinc-950 transition hover:bg-amber-300 active:scale-95"
+                  className="flex items-center gap-1.5 rounded-full bg-gradient-to-b from-indigo-400 to-indigo-600 px-4 py-2 text-xs font-bold text-white ring-1 ring-white/25 transition hover:brightness-110 active:scale-95"
                 >
                   <Plus size={14} strokeWidth={2.6} /> Spot
                 </button>
                 <button
                   onClick={onOpenDiscover}
-                  className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-zinc-800/70 px-3.5 py-2 text-xs font-bold text-zinc-100 transition hover:bg-zinc-700/70 active:scale-95"
+                  className="glass-card flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-bold text-zinc-100 transition hover:bg-white/10 active:scale-95"
                 >
-                  <Radar size={14} className="text-violet-300" /> Découvrir
+                  <Radar size={14} className="text-indigo-300" /> Découvrir
                 </button>
               </div>
             </div>
           )}
         </section>
 
-        <p className="mt-6 text-center text-[11px] text-zinc-600">Urbex Atlas · v{APP_VERSION}</p>
+        <p className="mt-7 text-center text-[10px] tracking-[0.2em] text-zinc-700">URBEX ATLAS · V{APP_VERSION}</p>
       </div>
     </div>
   )

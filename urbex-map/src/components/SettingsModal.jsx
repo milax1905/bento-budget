@@ -106,7 +106,7 @@ export default function SettingsModal({ onClose }) {
           ) : (
             <>
               <p className="text-xs leading-relaxed text-zinc-400">
-                L'app fonctionne actuellement en <span className="font-semibold text-amber-300">mode local</span> :
+                L'app fonctionne actuellement en <span className="font-semibold text-indigo-300">mode local</span> :
                 les spots sont enregistrés uniquement dans ce navigateur. Pour collaborer avec ton cousin en temps
                 réel, active la synchro (gratuit, ~10 min) :
               </p>
@@ -117,7 +117,7 @@ export default function SettingsModal({ onClose }) {
                     href="https://supabase.com"
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center gap-0.5 text-amber-300 underline"
+                    className="inline-flex items-center gap-0.5 text-indigo-300 underline"
                   >
                     supabase.com <ExternalLink size={10} />
                   </a>
@@ -136,17 +136,17 @@ export default function SettingsModal({ onClose }) {
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
                 placeholder="https://xxxx.supabase.co"
-                className="w-full rounded-xl bg-zinc-800/70 px-3 py-2.5 font-mono text-xs text-zinc-100 placeholder-zinc-600 outline-none ring-amber-400/50 focus:ring-2"
+                className="w-full rounded-xl bg-zinc-800/70 px-3 py-2.5 font-mono text-xs text-zinc-100 placeholder-zinc-600 outline-none ring-indigo-400/50 focus:ring-2"
               />
               <input
                 value={anonKey}
                 onChange={(e) => setAnonKey(e.target.value)}
                 placeholder="Clé anon (eyJhbGciOi…)"
-                className="w-full rounded-xl bg-zinc-800/70 px-3 py-2.5 font-mono text-xs text-zinc-100 placeholder-zinc-600 outline-none ring-amber-400/50 focus:ring-2"
+                className="w-full rounded-xl bg-zinc-800/70 px-3 py-2.5 font-mono text-xs text-zinc-100 placeholder-zinc-600 outline-none ring-indigo-400/50 focus:ring-2"
               />
               <button
                 onClick={activate}
-                className="w-full rounded-xl bg-amber-400 py-2.5 text-sm font-bold text-zinc-950 transition hover:bg-amber-300"
+                className="w-full rounded-xl bg-gradient-to-b from-indigo-400 to-indigo-600 py-2.5 text-sm font-bold text-white ring-1 ring-white/20 transition hover:brightness-110"
               >
                 Activer la synchro
               </button>

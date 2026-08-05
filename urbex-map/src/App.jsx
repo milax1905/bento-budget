@@ -408,8 +408,8 @@ function Shell() {
 
   if (mode === 'cloud' && !authReady) {
     return (
-      <div className="flex h-dvh w-screen items-center justify-center bg-zinc-950">
-        <Loader2 size={28} className="animate-spin text-amber-400" />
+      <div className="app-bg flex h-dvh w-screen items-center justify-center">
+        <Loader2 size={28} className="animate-spin text-indigo-400" />
       </div>
     )
   }
@@ -426,8 +426,8 @@ function Shell() {
   // Connecté mais on vérifie encore l'invitation.
   if (mode === 'cloud' && membership === 'unknown') {
     return (
-      <div className="flex h-dvh w-screen items-center justify-center bg-zinc-950">
-        <Loader2 size={28} className="animate-spin text-amber-400" />
+      <div className="app-bg flex h-dvh w-screen items-center justify-center">
+        <Loader2 size={28} className="animate-spin text-indigo-400" />
       </div>
     )
   }
@@ -556,7 +556,7 @@ function Shell() {
               <button
                 onClick={saveApproach}
                 disabled={approachEdit.loading}
-                className="flex items-center gap-1.5 rounded-lg bg-amber-400 px-3 py-2 text-xs font-bold text-zinc-950 transition hover:bg-amber-300 disabled:opacity-50"
+                className="flex items-center gap-1.5 rounded-lg bg-gradient-to-b from-indigo-400 to-indigo-600 px-3 py-2 text-xs font-bold text-white ring-1 ring-white/20 transition hover:brightness-110 disabled:opacity-50"
               >
                 <Check size={14} /> Enregistrer
               </button>
