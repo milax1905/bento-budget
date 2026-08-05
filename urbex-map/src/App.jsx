@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Plus, PanelLeftOpen, Loader2, X, Undo2, Check } from 'lucide-react'
+import { Loader2, X, Undo2, Check } from 'lucide-react'
 import { StoreProvider, useStore } from './lib/store'
 import { trailRoute, directRoute, walkMinutes } from './lib/routing'
 import { discoverAbandoned, enrichDiscoveries, refCandidates } from './lib/discover'
 import { formatDistance, distanceKm } from './lib/geo'
 import MapView from './components/MapView'
 import MapControls from './components/MapControls'
-import Sidebar from './components/Sidebar'
+import BottomNav from './components/BottomNav'
+import HomeScreen from './components/HomeScreen'
+import PlacesScreen from './components/PlacesScreen'
 import SpotDetail from './components/SpotDetail'
 import SpotForm from './components/SpotForm'
 import AuthScreen from './components/AuthScreen'
@@ -39,7 +41,9 @@ function Shell() {
   const store = useStore()
   const { mode, user, authReady, membership, spots, refSpots, showToast, updateSpot, addSpot } = store
 
-  const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 640)
+  // Navigation « vraie app » : on démarre sur l'accueil (pas directement sur la
+  // carte). 'home' | 'map' | 'places' | 'discover'.
+  const [activeView, setActiveView] = useState('home')
   const [layerId, setLayerId] = useState(() => localStorage.getItem(LS_LAYER) || 'esri')
   const [labelsOn, setLabelsOn] = useState(() => localStorage.getItem(LS_LABELS) !== '0')
   const [selectedId, setSelectedId] = useState(null)
@@ -51,8 +55,7 @@ function Shell() {
   const approachSeq = useRef(0)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [teamOpen, setTeamOpen] = useState(false)
-  const [discover, setDiscover] = useState(null) // { center, radiusKm, status, results, error } — PERSISTE (survit à la fermeture du panneau)
-  const [discoverOpen, setDiscoverOpen] = useState(false) // visibilité du panneau (les résultats restent en mémoire quand il est fermé)
+  const [discover, setDiscover] = useState(null) // { center, radiusKm, status, results, error } — PERSISTE (l'onglet Découvrir garde ses résultats)
   const discoverSeq = useRef(0)
   const discoverRef = useRef(null)
   const [flyTarget, setFlyTarget] = useState(null)
@@ -94,12 +97,14 @@ function Shell() {
       if (!select(id)) return
       const spot = spots.find((s) => s.id === id)
       if (spot) setFlyTarget({ lat: spot.lat, lng: spot.lng, ts: Date.now() })
-      if (window.innerWidth < 640) setSidebarOpen(false)
+      // Sélectionner un lieu (depuis l'accueil ou la liste) bascule sur la carte.
+      setActiveView('map')
     },
     [spots, select]
   )
 
   const startAdd = () => {
+    setActiveView('map')
     setAddMode(true)
     setFormState(null)
     setSelectedId(null)
@@ -243,7 +248,7 @@ function Shell() {
   const openDiscover = () => {
     cancelAll()
     setSelectedId(null)
-    // On RÉOUVRE la recherche précédente si elle existe (résultats conservés) ;
+    // On garde la recherche précédente si elle existe (résultats conservés) ;
     // sinon on initialise une nouvelle recherche centrée sur la position/carte.
     setDiscover((d) => {
       if (d?.center) return d
@@ -253,8 +258,18 @@ function Shell() {
           : { lat: 46.8, lng: 2.4 })
       return { center, radiusKm: 5, status: 'idle', results: [], error: '' }
     })
-    setDiscoverOpen(true)
-    if (window.innerWidth < 640) setSidebarOpen(false)
+    setActiveView('discover')
+  }
+
+  // Navigation entre les onglets. On quitte proprement le mode « ajout » quand on
+  // s'éloigne de la carte ; l'onglet Découvrir initialise sa recherche au besoin.
+  const navigate = (view) => {
+    if (view === 'discover') {
+      openDiscover()
+      return
+    }
+    if (view !== 'map') setAddMode(false)
+    setActiveView(view)
   }
 
   const runDiscover = useCallback(async () => {
@@ -383,13 +398,13 @@ function Shell() {
         else if (adjusting) setAdjusting(false)
         else if (settingsOpen) setSettingsOpen(false)
         else if (teamOpen) setTeamOpen(false)
-        else if (discoverOpen) setDiscoverOpen(false)
-        else if (!formState) setSelectedId(null)
+        else if (selectedId && !formState) setSelectedId(null)
+        else if (activeView !== 'home') setActiveView('home')
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [addMode, approachEdit, adjusting, settingsOpen, teamOpen, discoverOpen, formState])
+  }, [addMode, approachEdit, adjusting, settingsOpen, teamOpen, activeView, selectedId, formState])
 
   if (mode === 'cloud' && !authReady) {
     return (
@@ -428,9 +443,13 @@ function Shell() {
   }
 
   const panelOpen = formState || selectedSpot
+  const onMap = activeView === 'map'
+  // Un « panneau focalisé » (fiche, formulaire, tracé, placement) occupe l'écran
+  // sur la carte → on masque la barre de navigation le temps de cette tâche.
+  const focusedPanel = onMap && (Boolean(panelOpen) || Boolean(approachEdit) || addMode)
 
   return (
-    <div className="relative h-dvh w-screen overflow-hidden bg-zinc-950 text-zinc-100">
+    <div className="app-bg relative h-dvh w-screen overflow-hidden text-zinc-100">
       <MapView
         spots={spots}
         selectedId={selectedId}
@@ -455,31 +474,26 @@ function Shell() {
         onDiscoverSelect={(r) => setFlyTarget({ lat: r.lat, lng: r.lng, zoom: 16, ts: Date.now() })}
       />
 
-      {/* Sidebar */}
-      {sidebarOpen ? (
-        <div className="pointer-events-none absolute bottom-0 left-0 top-0 z-[1000] w-full p-0 sm:w-[380px] sm:p-3">
-          <Sidebar
-            onClose={() => setSidebarOpen(false)}
-            selectedId={selectedId}
-            onSelect={selectAndFly}
-            userPos={userPos}
-            onOpenSettings={() => setSettingsOpen(true)}
-            onOpenTeam={() => setTeamOpen(true)}
-          />
-        </div>
-      ) : (
-        <button
-          title="Ouvrir la liste"
-          onClick={() => setSidebarOpen(true)}
-          className="glass absolute left-3 top-[calc(0.75rem+env(safe-area-inset-top))] z-[1000] flex h-11 w-11 items-center justify-center rounded-xl text-zinc-200 shadow-lg transition hover:bg-zinc-700/70"
-        >
-          <PanelLeftOpen size={18} />
-        </button>
+      {/* Accueil */}
+      {activeView === 'home' && (
+        <HomeScreen
+          onSelectSpot={selectAndFly}
+          onAdd={startAdd}
+          onOpenDiscover={openDiscover}
+          onOpenSettings={() => setSettingsOpen(true)}
+          onOpenTeam={() => setTeamOpen(true)}
+          userPos={userPos}
+        />
       )}
 
-      {/* Panneau droit : détail ou formulaire */}
+      {/* Lieux (bibliothèque) */}
+      {activeView === 'places' && (
+        <PlacesScreen selectedId={selectedId} onSelect={selectAndFly} userPos={userPos} />
+      )}
+
+      {/* Panneau droit : détail ou formulaire (uniquement sur la carte) */}
       {/* Barre d'édition de l'itinéraire d'approche */}
-      {approachEdit && (
+      {onMap && approachEdit && (
         <div className="pointer-events-none absolute bottom-0 right-0 z-[1100] w-full sm:w-[400px] sm:p-3">
           <div className="glass pointer-events-auto pb-safe w-full rounded-none px-4 py-3 sm:rounded-2xl">
             <p className="text-[11px] leading-relaxed text-zinc-400">
@@ -551,7 +565,7 @@ function Shell() {
         </div>
       )}
 
-      {!approachEdit && panelOpen && (
+      {onMap && !approachEdit && panelOpen && (
         <div
           className={`pointer-events-none absolute bottom-0 right-0 z-[1100] w-full sm:w-[400px] sm:p-3 ${
             formState && adjusting ? '' : 'top-0'
@@ -580,24 +594,30 @@ function Shell() {
         </div>
       )}
 
-      {/* Panneau « Découvrir » (les résultats persistent même quand il est fermé) */}
-      {discoverOpen && discover && (
-        <div className="pointer-events-none absolute bottom-0 right-0 top-0 z-[1100] w-full sm:w-[400px] sm:p-3">
-          <DiscoverPanel
-            discover={discover}
-            locating={locating}
-            onClose={() => setDiscoverOpen(false)}
-            onRadius={(km) => setDiscover((d) => (d ? { ...d, radiusKm: km } : d))}
-            onSearch={runDiscover}
-            onAdd={addDiscovered}
-            onSelect={(r) => setFlyTarget({ lat: r.lat, lng: r.lng, zoom: 16, ts: Date.now() })}
-            onRecenter={recenterDiscover}
-          />
+      {/* Onglet « Découvrir » — plein écran (résultats conservés d'une visite à l'autre) */}
+      {activeView === 'discover' && discover && (
+        <div className="app-bg screen-in absolute inset-0 z-[1500]">
+
+          <div className="mx-auto h-full w-full max-w-xl">
+            <DiscoverPanel
+              discover={discover}
+              locating={locating}
+              onClose={() => setActiveView('home')}
+              onRadius={(km) => setDiscover((d) => (d ? { ...d, radiusKm: km } : d))}
+              onSearch={runDiscover}
+              onAdd={addDiscovered}
+              onSelect={(r) => {
+                setFlyTarget({ lat: r.lat, lng: r.lng, zoom: 16, ts: Date.now() })
+                setActiveView('map')
+              }}
+              onRecenter={recenterDiscover}
+            />
+          </div>
         </div>
       )}
 
-      {/* Contrôles carte (cachés sur mobile quand un panneau plein écran est ouvert) */}
-      <div className={sidebarOpen || discoverOpen ? 'hidden sm:contents' : 'contents'}>
+      {/* Contrôles carte (uniquement sur l'onglet Carte) */}
+      {onMap && (
         <MapControls
           layerId={layerId}
           onLayerChange={setLayerId}
@@ -608,13 +628,13 @@ function Shell() {
           onZoom={(dir) => (dir > 0 ? mapRef.current?.zoomIn() : mapRef.current?.zoomOut())}
           onGoto={(t) => setFlyTarget({ ...t, ts: Date.now() })}
           onOpenDiscover={openDiscover}
-          discoverActive={discoverOpen}
-          shifted={(Boolean(panelOpen) || discoverOpen) && !adjusting && !approachEdit}
+          discoverActive={false}
+          shifted={Boolean(panelOpen) && !adjusting && !approachEdit}
         />
-      </div>
+      )}
 
       {/* Bannière mode ajout */}
-      {addMode && (
+      {onMap && addMode && (
         <div className="glass no-select pointer-events-auto absolute left-1/2 top-[calc(0.75rem+env(safe-area-inset-top))] z-[1200] flex -translate-x-1/2 items-center gap-3 rounded-xl px-4 py-2.5 text-sm text-zinc-100 shadow-2xl">
           <span className="hidden sm:inline">🎯 Clique sur la carte pour placer le spot</span>
           <span className="sm:hidden">🎯 Touche la carte pour placer le spot</span>
@@ -624,17 +644,8 @@ function Shell() {
         </div>
       )}
 
-      {/* Bouton ajouter */}
-      {!addMode && !formState && !approachEdit && !discoverOpen && (
-        <button
-          onClick={startAdd}
-          className={`absolute bottom-[calc(1.5rem+env(safe-area-inset-bottom))] left-1/2 z-[1000] -translate-x-1/2 items-center gap-2 rounded-full bg-amber-400 px-5 py-3 text-sm font-bold text-zinc-950 shadow-2xl shadow-amber-400/20 transition hover:bg-amber-300 active:scale-95 ${
-            sidebarOpen ? 'hidden sm:flex' : 'flex'
-          }`}
-        >
-          <Plus size={18} strokeWidth={2.5} /> Spot
-        </button>
-      )}
+      {/* Barre de navigation (masquée pendant une tâche focalisée sur la carte) */}
+      {!focusedPanel && <BottomNav active={activeView} onNavigate={navigate} onAdd={startAdd} />}
 
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
       {teamOpen && <TeamModal onClose={() => setTeamOpen(false)} />}

@@ -1,7 +1,34 @@
 @import 'tailwindcss';
 
+/* ============================================================
+   URBEX ATLAS — Design system « néon urbex »
+   Fond quasi-noir, accent violet néon + vert acide, glows doux.
+   ============================================================ */
 :root {
   font-family: 'Inter Variable', system-ui, -apple-system, sans-serif;
+
+  /* Fonds */
+  --bg: #08080c;
+  --bg-elev: #0e0e15;
+  --surface: rgba(18, 18, 26, 0.72);
+  --surface-solid: #12121a;
+
+  /* Accents néon */
+  --violet: #a855f7;
+  --violet-bright: #c084fc;
+  --violet-soft: rgba(168, 92, 247, 0.16);
+  --lime: #bef264;
+  --lime-bright: #d9f99d;
+  --cyan: #22d3ee;
+
+  /* Texte */
+  --tx: #ecebf2;
+  --tx-muted: #9b9baa;
+  --tx-faint: #6a6a7a;
+
+  /* Traits */
+  --line: rgba(255, 255, 255, 0.07);
+  --line-violet: rgba(168, 92, 247, 0.22);
 }
 
 html,
@@ -9,7 +36,12 @@ body,
 #root {
   height: 100%;
   margin: 0;
-  background: #09090b;
+  color: var(--tx);
+  background:
+    radial-gradient(1100px 620px at 78% -12%, rgba(168, 92, 247, 0.14), transparent 60%),
+    radial-gradient(900px 560px at 8% 108%, rgba(190, 242, 100, 0.06), transparent 55%),
+    var(--bg);
+  background-attachment: fixed;
   overscroll-behavior: none;
 }
 
@@ -22,7 +54,7 @@ body,
   position: relative;
   width: 100%;
   height: 100%;
-  filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.5));
+  filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.55));
   transition: transform 0.15s ease;
   transform-origin: bottom center;
 }
@@ -45,7 +77,7 @@ body,
   z-index: 1;
 }
 .pin-selected {
-  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.7)) drop-shadow(0 3px 5px rgba(0, 0, 0, 0.6));
+  filter: drop-shadow(0 0 7px rgba(192, 132, 252, 0.95)) drop-shadow(0 3px 5px rgba(0, 0, 0, 0.6));
 }
 .pin-draft {
   animation: pin-bounce 1.2s ease-in-out infinite;
@@ -62,11 +94,11 @@ body,
 
 /* ---------- Leaflet, ambiance sombre ---------- */
 .leaflet-container {
-  background: #18181b;
+  background: #0b0b12;
   font-family: inherit;
 }
 .leaflet-control-attribution {
-  background: rgba(9, 9, 11, 0.6) !important;
+  background: rgba(8, 8, 12, 0.6) !important;
   color: #71717a !important;
   backdrop-filter: blur(4px);
   font-size: 10px !important;
@@ -78,14 +110,14 @@ body,
 /* ---------- Scrollbars discrètes ---------- */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #3f3f46 transparent;
+  scrollbar-color: #33333f transparent;
 }
 *::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 *::-webkit-scrollbar-thumb {
-  background: #3f3f46;
+  background: #33333f;
   border-radius: 3px;
 }
 *::-webkit-scrollbar-track {
@@ -129,7 +161,7 @@ body,
   width: 100%;
   height: 100%;
   border-radius: 9999px;
-  background: rgba(139, 92, 246, 0.9);
+  background: rgba(168, 92, 247, 0.92);
   border: 2px dashed #ede9fe;
   font-size: 14px;
   line-height: 1;
@@ -139,10 +171,10 @@ body,
 @keyframes discover-pulse {
   0%,
   100% {
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5), 0 0 0 0 rgba(167, 139, 250, 0.5);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5), 0 0 0 0 rgba(192, 132, 252, 0.55);
   }
   50% {
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5), 0 0 0 6px rgba(167, 139, 250, 0);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5), 0 0 0 7px rgba(192, 132, 252, 0);
   }
 }
 
@@ -159,14 +191,74 @@ input[type='range'] {
 .pb-safe {
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
-
-/* ---------- Utilitaires ---------- */
-.glass {
-  background: rgba(24, 24, 27, 0.85);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+.mb-safe {
+  margin-bottom: env(safe-area-inset-bottom, 0px);
 }
+
+/* ---------- Surfaces & néon ---------- */
+.glass {
+  background: var(--surface);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid var(--line);
+}
+/* Panneau élevé avec un halo violet discret dans le coin haut. */
+.neon-panel {
+  position: relative;
+  background:
+    radial-gradient(600px 240px at 100% 0%, rgba(168, 92, 247, 0.1), transparent 60%),
+    var(--surface);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid var(--line-violet);
+}
+.glow-violet {
+  box-shadow: 0 10px 40px -12px rgba(168, 92, 247, 0.55);
+}
+.glow-lime {
+  box-shadow: 0 10px 40px -12px rgba(190, 242, 100, 0.4);
+}
+/* Titre néon (dégradé + lueur). */
+.neon-title {
+  background: linear-gradient(90deg, var(--violet-bright), var(--lime-bright));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: 0 0 22px rgba(168, 92, 247, 0.35);
+}
+/* Filet néon animé (bas de la nav active, séparateurs). */
+.neon-rule {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--violet), transparent);
+  opacity: 0.6;
+}
+/* Anneau d'accent (élément sélectionné). */
+.neon-ring {
+  box-shadow: 0 0 0 1px var(--line-violet), 0 0 18px -6px rgba(168, 92, 247, 0.6);
+}
+/* Apparition douce des écrans. */
+.screen-in {
+  animation: screen-in 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes screen-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Fond opaque des écrans plein page (recouvre la carte). */
+.app-bg {
+  background:
+    radial-gradient(1100px 620px at 78% -12%, rgba(168, 92, 247, 0.16), transparent 60%),
+    radial-gradient(900px 560px at 8% 108%, rgba(190, 242, 100, 0.07), transparent 55%),
+    var(--bg);
+}
+
 .no-select {
   user-select: none;
   -webkit-user-select: none;
