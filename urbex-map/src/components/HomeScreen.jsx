@@ -81,11 +81,11 @@ export default function HomeScreen({ onSelectSpot, onAdd, onOpenDiscover, onOpen
       <div className="mx-auto w-full max-w-xl px-4 pb-28 pt-3">
         {/* Barre d'application */}
         <header className="flex items-center gap-3 py-1">
-          <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-violet-400/25 bg-violet-500/15 text-xl shadow-[0_0_18px_-4px_rgba(168,92,247,0.6)]">
+          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-400/15 text-xl">
             🏚️
           </div>
           <div className="min-w-0 flex-1">
-            <h1 className="neon-title text-lg font-extrabold tracking-tight">URBEX ATLAS</h1>
+            <h1 className="text-lg font-extrabold tracking-tight text-zinc-100">Urbex Atlas</h1>
             <div className="flex items-center gap-1.5 text-[11px] text-zinc-500">
               {mode === 'cloud' ? (
                 <>
@@ -119,25 +119,25 @@ export default function HomeScreen({ onSelectSpot, onAdd, onOpenDiscover, onOpen
         </header>
 
         {/* Bloc « progression d'exploration » */}
-        <section className="neon-panel glow-violet mt-4 overflow-hidden rounded-3xl p-5">
+        <section className="mt-4 overflow-hidden rounded-3xl border border-white/8 bg-zinc-900/50 p-5">
           <div className="flex items-end justify-between">
             <div>
               <div className="flex items-baseline gap-2">
-                <span className="text-4xl font-black tabular-nums text-white">{spots.length}</span>
+                <span className="text-4xl font-black tabular-nums text-zinc-50">{spots.length}</span>
                 <span className="text-sm font-medium text-zinc-400">
                   lieu{spots.length > 1 ? 'x' : ''} au total
                 </span>
               </div>
-              <div className="mt-1 flex items-center gap-1.5 text-[12px] text-lime-300/90">
+              <div className="mt-1 flex items-center gap-1.5 text-[12px] text-emerald-400/90">
                 <TrendingUp size={13} />
                 {doneCount} exploré{doneCount > 1 ? 's' : ''} · {progress}%
               </div>
             </div>
-            <Compass size={40} className="text-violet-300/40" />
+            <Compass size={40} className="text-zinc-700" />
           </div>
           <div className="mt-4 h-2 overflow-hidden rounded-full bg-black/40">
             <div
-              className="h-full rounded-full bg-gradient-to-r from-violet-500 to-lime-400 transition-all duration-500"
+              className="h-full rounded-full bg-amber-400 transition-all duration-500"
               style={{ width: `${Math.max(progress, spots.length ? 4 : 0)}%` }}
             />
           </div>
@@ -154,15 +154,15 @@ export default function HomeScreen({ onSelectSpot, onAdd, onOpenDiscover, onOpen
         <section className="mt-3 grid grid-cols-2 gap-2.5">
           <button
             onClick={onAdd}
-            className="flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-br from-violet-500 to-fuchsia-600 px-4 py-3.5 text-sm font-bold text-white shadow-[0_10px_30px_-8px_rgba(168,92,247,0.7)] transition active:scale-95"
+            className="flex items-center justify-center gap-2 rounded-2xl bg-amber-400 px-4 py-3.5 text-sm font-bold text-zinc-950 shadow-lg shadow-black/30 transition hover:bg-amber-300 active:scale-95"
           >
             <Plus size={18} strokeWidth={2.6} /> Nouveau spot
           </button>
           <button
             onClick={onOpenDiscover}
-            className="flex items-center justify-center gap-2 rounded-2xl border border-lime-400/30 bg-lime-400/10 px-4 py-3.5 text-sm font-bold text-lime-200 transition hover:bg-lime-400/15 active:scale-95"
+            className="flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-zinc-800/70 px-4 py-3.5 text-sm font-bold text-zinc-100 transition hover:bg-zinc-700/70 active:scale-95"
           >
-            <Radar size={18} /> Découvrir
+            <Radar size={18} className="text-violet-300" /> Découvrir
           </button>
         </section>
 
@@ -195,7 +195,7 @@ export default function HomeScreen({ onSelectSpot, onAdd, onOpenDiscover, onOpen
             </div>
           ) : (
             <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-white/10 px-4 py-10 text-center">
-              <Compass size={30} className="text-violet-300/50" />
+              <Compass size={30} className="text-zinc-600" />
               <p className="text-sm text-zinc-400">
                 Aucun lieu pour l'instant.
                 <br />
@@ -204,15 +204,15 @@ export default function HomeScreen({ onSelectSpot, onAdd, onOpenDiscover, onOpen
               <div className="flex gap-2">
                 <button
                   onClick={onAdd}
-                  className="flex items-center gap-1.5 rounded-xl bg-violet-500 px-3.5 py-2 text-xs font-bold text-white transition active:scale-95"
+                  className="flex items-center gap-1.5 rounded-xl bg-amber-400 px-3.5 py-2 text-xs font-bold text-zinc-950 transition hover:bg-amber-300 active:scale-95"
                 >
                   <Plus size={14} strokeWidth={2.6} /> Spot
                 </button>
                 <button
                   onClick={onOpenDiscover}
-                  className="flex items-center gap-1.5 rounded-xl border border-lime-400/30 bg-lime-400/10 px-3.5 py-2 text-xs font-bold text-lime-200 transition active:scale-95"
+                  className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-zinc-800/70 px-3.5 py-2 text-xs font-bold text-zinc-100 transition hover:bg-zinc-700/70 active:scale-95"
                 >
-                  <Radar size={14} /> Découvrir
+                  <Radar size={14} className="text-violet-300" /> Découvrir
                 </button>
               </div>
             </div>
