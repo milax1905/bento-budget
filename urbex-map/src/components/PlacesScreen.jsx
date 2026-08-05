@@ -100,7 +100,7 @@ export default function PlacesScreen({ selectedId, onSelect, userPos }) {
       <div className="mx-auto flex h-full w-full max-w-xl flex-col">
         {/* En-tête */}
         <header className="flex items-center gap-2 px-4 pb-2 pt-3">
-          <MapPinned size={20} className="text-violet-300" />
+          <MapPinned size={20} className="text-amber-300" />
           <h1 className="text-lg font-extrabold tracking-tight text-zinc-100">Lieux</h1>
           <span className="rounded-full bg-white/8 px-2 py-0.5 text-[11px] font-semibold text-zinc-400">
             {spots.length}
@@ -174,7 +174,7 @@ export default function PlacesScreen({ selectedId, onSelect, userPos }) {
                   onClick={() => setSort(s.id)}
                   disabled={s.id === 'distance' && !userPos}
                   className={`rounded-lg px-2 py-1 text-[11px] font-medium transition disabled:opacity-30 ${
-                    sort === s.id ? 'bg-violet-500/25 text-violet-200' : 'text-zinc-400 hover:text-zinc-200'
+                    sort === s.id ? 'bg-amber-400/20 text-amber-200' : 'text-zinc-400 hover:text-zinc-200'
                   }`}
                 >
                   {s.label}
@@ -206,7 +206,7 @@ export default function PlacesScreen({ selectedId, onSelect, userPos }) {
                 key={s.id}
                 onClick={() => onSelect(s.id)}
                 className={`mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${
-                  selected ? 'neon-ring bg-violet-500/10' : 'hover:bg-white/5'
+                  selected ? 'bg-amber-400/15 ring-1 ring-amber-400/40' : 'hover:bg-white/5'
                 }`}
               >
                 <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-zinc-800/70 text-xl">

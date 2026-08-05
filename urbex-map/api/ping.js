@@ -18,7 +18,7 @@ export default async function handler(req, res) {
   const base = {
     ok: true,
     service: 'urbex-discover',
-    version: '3.0',
+    version: '3.1',
     anthropic: Boolean(anthropicKey),
     groq: Boolean(groqKey),
     anthropicModel,
