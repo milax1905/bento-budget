@@ -272,14 +272,60 @@ function Shell() {
     setActiveView(view)
   }
 
+  // Fusionne un lot d'enrichissement (wiki + IA + photos) dans les résultats,
+  // puis re-trie : « top » et intérêt IA d'abord, « quelconque » en bas.
+  // `primary` = enrichissement initial (met à jour l'état IA global) ; les lots
+  // « Analyser plus » ne dégradent pas cet état si l'appel échoue.
+  const applyEnrichment = useCallback((enr, seq, primary) => {
+    if (discoverSeq.current !== seq) return
+    const map = enr?.results || {}
+    setDiscover((d) => {
+      if (!d) return d
+      const results = d.results.map((r) => (map[r.id] ? { ...r, enrichment: map[r.id] } : r))
+      const rank = (r) => {
+        const ai = r.enrichment?.ai
+        if (!ai) return 0
+        const base = ai.verdict === 'top' ? 100 : ai.verdict === 'quelconque' ? -100 : 0
+        return base + (Number(ai.interet) || 0)
+      }
+      results.sort((a, b) => rank(b) - rank(a) || b.score - a.score || a.distanceKm - b.distanceKm)
+      // enr null = échec total → état IA INCONNU (aiEnabled null) : le panneau
+      // n'affiche alors NI « configurée » NI « non configurée ».
+      return {
+        ...d,
+        results,
+        aiEnabled: primary ? (enr ? Boolean(enr.aiEnabled) : null) : enr ? Boolean(enr.aiEnabled) : d.aiEnabled,
+        aiError: primary ? enr?.aiError || null : (enr?.aiError ?? d.aiError),
+        enriching: false,
+      }
+    })
+  }, [])
+
+  // « Analyser plus » : enrichit à la demande un lot de lieux pas encore
+  // analysés (en priorité ceux du filtre actif dans le panneau).
+  const enrichMore = useCallback(
+    async (subset) => {
+      if (!subset?.length) return
+      const seq = discoverSeq.current
+      setDiscover((d) => (d ? { ...d, enriching: true } : d))
+      try {
+        const enr = await enrichDiscoveries(subset)
+        applyEnrichment(enr, seq, false)
+      } catch {
+        setDiscover((d) => (d ? { ...d, enriching: false } : d))
+      }
+    },
+    [applyEnrichment],
+  )
+
   const runDiscover = useCallback(async () => {
     const current = discoverRef.current
     if (!current?.center) return
-    const { center, radiusKm } = current
+    const { center, radiusKm, intensive } = current
     setDiscover((d) => (d ? { ...d, status: 'loading', error: '' } : d))
     const seq = ++discoverSeq.current
     try {
-      const online = await discoverAbandoned(center, radiusKm)
+      const online = await discoverAbandoned(center, radiusKm, { intensive })
       if (discoverSeq.current !== seq) return
       // Base de découverte perso (carte importée) d'abord — curée, en tête —
       // puis les sources en ligne en écartant les doublons proches (< 80 m).
@@ -293,33 +339,7 @@ function Shell() {
       // Enrichissement (histoire Wikipédia + analyse IA gratuite si configurée),
       // en tâche de fond : la liste s'affiche tout de suite, les infos arrivent.
       enrichDiscoveries(fresh)
-        .then((enr) => {
-          if (discoverSeq.current !== seq) return
-          const map = enr?.results || {}
-          setDiscover((d) => {
-            if (!d) return d
-            const results = d.results.map((r) => (map[r.id] ? { ...r, enrichment: map[r.id] } : r))
-            // L'IA trie : les lieux « top » et les plus intéressants remontent,
-            // les « quelconque » descendent. À défaut d'IA, on garde l'ordre
-            // (score documenté puis distance).
-            const rank = (r) => {
-              const ai = r.enrichment?.ai
-              if (!ai) return 0
-              const base = ai.verdict === 'top' ? 100 : ai.verdict === 'quelconque' ? -100 : 0
-              return base + (Number(ai.interet) || 0)
-            }
-            results.sort((a, b) => rank(b) - rank(a) || b.score - a.score || a.distanceKm - b.distanceKm)
-            // enr null = échec total → état IA INCONNU (aiEnabled null) : le
-            // panneau n'affiche alors NI « configurée » NI « non configurée ».
-            return {
-              ...d,
-              results,
-              aiEnabled: enr ? Boolean(enr.aiEnabled) : null,
-              aiError: enr?.aiError || null,
-              enriching: false,
-            }
-          })
-        })
+        .then((enr) => applyEnrichment(enr, seq, true))
         .catch(() => setDiscover((d) => (d ? { ...d, enriching: false } : d)))
     } catch (err) {
       if (discoverSeq.current !== seq) return
@@ -340,7 +360,7 @@ function Shell() {
       }
       setDiscover((d) => (d ? { ...d, status: 'error', error: msg } : d))
     }
-  }, [spots, refSpots])
+  }, [spots, refSpots, applyEnrichment])
 
   const recenterDiscover = () => {
     if (!navigator.geolocation) {
@@ -611,6 +631,12 @@ function Shell() {
                 setActiveView('map')
               }}
               onRecenter={recenterDiscover}
+              onIntensive={(v) => setDiscover((d) => (d ? { ...d, intensive: v } : d))}
+              onCenterChange={(c) => {
+                setDiscover((d) => (d ? { ...d, center: c } : d))
+                setFlyTarget({ ...c, zoom: 12, ts: Date.now() })
+              }}
+              onEnrichMore={enrichMore}
             />
           </div>
         </div>
