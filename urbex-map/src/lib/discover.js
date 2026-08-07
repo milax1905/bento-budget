@@ -328,6 +328,9 @@ function parseElements(elements, center, radiusKm) {
       wikipedia: tags.wikipedia || null, // brut, pour l'enrichissement serveur
       wikidata: wikidata, // brut (Q…)
       wikidataUrl: wikidata ? `https://www.wikidata.org/wiki/${wikidata}` : null,
+      // Références photo taguées dans OSM → exploitées par /api/enrich.
+      image: tags.image || null,
+      commons: tags.wikimedia_commons || null,
     })
   }
   // Les lieux documentés/notables d'abord, puis les plus proches.
@@ -673,6 +676,8 @@ export async function enrichDiscoveries(sites, { signal } = {}) {
     wikidata: r.wikidata,
     danger: r.danger,
     source: r.source || null,
+    image: r.image || null,
+    commons: r.commons || null,
   }))
   // Clé IA « apporte ta clé » saisie dans les Réglages (sur cet appareil) : on
   // l'envoie au serveur pour activer l'IA sans variable d'environnement Vercel.

@@ -67,6 +67,7 @@ function DiscoverResult({ r, onAdd, onSelect }) {
   const [open, setOpen] = useState(false)
   const ai = r.enrichment?.ai || null
   const wiki = r.enrichment?.wiki || null
+  const photos = r.enrichment?.photos || []
   const danger = effectiveDanger(r)
   const summary = ai?.resume || wiki?.extract || null
   const quelconque = ai?.verdict === 'quelconque'
@@ -128,11 +129,30 @@ function DiscoverResult({ r, onAdd, onSelect }) {
 
       {open && (
         <div className="space-y-2.5 px-3 pb-3">
+          {/* Photos du lieu (OSM / Wikipédia / Commons géolocalisées, libres) */}
+          {photos.length > 0 && (
+            <div className="-mx-0.5 flex gap-1.5 overflow-x-auto pb-1">
+              {photos.map((p, i) => (
+                <a key={i} href={p.page} target="_blank" rel="noreferrer" className="shrink-0">
+                  <img
+                    src={p.thumb}
+                    alt=""
+                    loading="lazy"
+                    className="h-24 w-32 rounded-xl object-cover ring-1 ring-white/10"
+                    onError={(e) => {
+                      e.currentTarget.parentElement.style.display = 'none'
+                    }}
+                  />
+                </a>
+              ))}
+            </div>
+          )}
+
           {/* Résumé (IA ou Wikipédia) */}
           {summary && (
             <div className="rounded-lg bg-zinc-900/50 p-2.5">
               <div className="flex gap-2.5">
-                {wiki?.thumbnail && (
+                {wiki?.thumbnail && photos.length === 0 && (
                   <img src={wiki.thumbnail} alt="" className="h-16 w-16 shrink-0 rounded-lg object-cover" />
                 )}
                 <p className="text-[11px] leading-relaxed text-zinc-300">{summary}</p>

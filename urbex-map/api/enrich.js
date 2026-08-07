@@ -13,7 +13,7 @@
 export const config = { maxDuration: 60 }
 
 const BUDGET_MS = 55000
-const UA = 'UrbexAtlas/3.4 (+https://urbex-phi.vercel.app; contact via GitHub milax1905/bento-budget)'
+const UA = 'UrbexAtlas/3.5 (+https://urbex-phi.vercel.app; contact via GitHub milax1905/bento-budget)'
 const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5'
 const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile'
 
@@ -114,6 +114,51 @@ async function wikiFor(site, signal) {
     }
   }
   return null
+}
+
+// ── Photos du lieu (libres de droits) ──────────────────────────────────────
+// Sources, par ordre de fiabilité : photo taguée dans OSM (image=*), fichier
+// Commons tagué (wikimedia_commons=File:…), vignette Wikipédia, puis photos
+// GÉOLOCALISÉES sur Wikimedia Commons à ≤ 250 m du point (espace de noms
+// Fichier). Toutes librement réutilisables — contrairement aux photos de
+// sites tiers (ex. wikimaginot.eu, tous droits réservés → jamais reprises).
+const commonsFileThumb = (file, w = 480) =>
+  `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(file.replace(/^File:/i, '').replace(/ /g, '_'))}?width=${w}`
+
+async function commonsNearby(lat, lng, signal) {
+  const url =
+    `https://commons.wikimedia.org/w/api.php?action=query&generator=geosearch` +
+    `&ggscoord=${lat}%7C${lng}&ggsradius=250&ggslimit=8&ggsnamespace=6` +
+    `&prop=imageinfo&iiprop=url%7Cmime&iiurlwidth=480&format=json&origin=*`
+  const d = await getJson(url, signal)
+  const pages = Object.values(d.query?.pages || {})
+  return pages
+    .map((p) => p.imageinfo?.[0])
+    .filter((ii) => ii && /^image\/(jpe?g|png|webp)/i.test(ii.mime || ''))
+    .map((ii) => ({ thumb: ii.thumburl || ii.url, page: ii.descriptionurl || ii.url }))
+}
+
+async function photosFor(site, wiki, signal) {
+  const out = []
+  const seen = new Set()
+  const push = (thumb, page) => {
+    if (!thumb || seen.has(thumb)) return
+    seen.add(thumb)
+    out.push({ thumb, page: page || thumb })
+  }
+  if (/^https?:\/\//i.test(site.image || '')) push(site.image, site.image)
+  const cm = (site.commons || '').trim()
+  if (/^File:/i.test(cm))
+    push(commonsFileThumb(cm), `https://commons.wikimedia.org/wiki/${encodeURIComponent(cm.replace(/ /g, '_'))}`)
+  if (wiki?.thumbnail) push(wiki.thumbnail, wiki.url || wiki.thumbnail)
+  if (out.length < 6) {
+    const near = await commonsNearby(site.lat, site.lng, signal).catch(() => [])
+    for (const p of near) {
+      if (out.length >= 6) break
+      push(p.thumb, p.page)
+    }
+  }
+  return out.slice(0, 6)
 }
 
 // ── Analyse IA (offre gratuite) ────────────────────────────────────────────
@@ -372,12 +417,21 @@ export default async function handler(req, res) {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), BUDGET_MS)
   try {
-    // 1) Histoire Wikipédia/Wikidata (gratuit, toujours tenté).
+    // 1) Histoire Wikipédia/Wikidata + photos libres (gratuit, toujours tenté).
+    //    Les photos dépendent du résultat wiki (vignette) → même chaîne par lieu.
     const wikiEntries = await Promise.all(
-      sites.map(async (s) => [s.id, await wikiFor(s, controller.signal).catch(() => null)]),
+      sites.map(async (s) => {
+        const wiki = await wikiFor(s, controller.signal).catch(() => null)
+        const photos = await photosFor(s, wiki, controller.signal).catch(() => [])
+        return [s.id, wiki, photos]
+      }),
     )
     const wikiMap = {}
-    for (const [id, w] of wikiEntries) wikiMap[id] = w
+    const photoMap = {}
+    for (const [id, w, ph] of wikiEntries) {
+      wikiMap[id] = w
+      photoMap[id] = ph
+    }
 
     // 2) Analyse IA (clé de l'appareil OU variable d'environnement) — best-effort.
     let aiMap = {}
@@ -391,7 +445,8 @@ export default async function handler(req, res) {
     }
 
     const out = {}
-    for (const s of sites) out[s.id] = { wiki: wikiMap[s.id] || null, ai: aiMap[s.id] || null }
+    for (const s of sites)
+      out[s.id] = { wiki: wikiMap[s.id] || null, ai: aiMap[s.id] || null, photos: photoMap[s.id] || [] }
     // Cache court quand l'IA a échoué ; cache long sinon (le contenu bouge peu).
     // Jamais de cache quand une clé d'appareil est utilisée (réponse par-appareil).
     const aiOk = !aiEnabled || Object.keys(aiMap).length > 0
