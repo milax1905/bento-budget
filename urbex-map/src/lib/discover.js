@@ -2,6 +2,7 @@ import { distanceKm } from './geo'
 import { parseWikipediaTag } from './wiki'
 import { assessDanger } from './danger'
 import { getAiKey } from './aikey'
+import { idbGet, idbSet } from './localdb'
 
 export const MAX_DISCOVER_RADIUS_KM = 100
 
@@ -545,9 +546,77 @@ async function fetchJson(url, opts, extSignal) {
 const isLocalhost =
   typeof location !== 'undefined' && /^(localhost|127\.|0\.0\.0\.0|\[?::1)/.test(location.hostname)
 
+// ---- Base wikimaginot.eu (fortifications de la Ligne Maginot) ----
+// Téléchargée UNE fois via /api/maginot (agrégée + cache CDN une semaine côté
+// serveur), gardée 7 jours en IndexedDB sur l'appareil, filtrée localement à
+// chaque recherche. Best-effort : jamais bloquant pour la découverte.
+const MAGINOT_DB_KEY = 'maginot-points'
+const MAGINOT_TTL_MS = 7 * 86400e3
+
+async function maginotPoints(signal) {
+  let cached = null
+  try {
+    cached = await idbGet(MAGINOT_DB_KEY)
+  } catch {
+    cached = null
+  }
+  if (cached?.ts && Array.isArray(cached.points) && Date.now() - cached.ts < MAGINOT_TTL_MS) {
+    return cached.points
+  }
+  try {
+    const data = await fetchJson('/api/maginot', {}, signal)
+    if (Array.isArray(data?.points) && data.points.length) {
+      idbSet(MAGINOT_DB_KEY, { ts: Date.now(), points: data.points }).catch(() => {})
+      return data.points
+    }
+  } catch {
+    /* réseau/serveur KO : on retombe sur un éventuel cache périmé */
+  }
+  return Array.isArray(cached?.points) ? cached.points : []
+}
+
+// Points wikimaginot dans le rayon → candidats (150 max, les plus proches ; le
+// corridor Maginot est très dense). Dédupliqués ensuite contre OSM/Wikidata
+// (< 80 m) par mergeSources, qui garde la version la plus documentée.
+function parseMaginot(points, center, radiusKm) {
+  const out = []
+  for (const p of points || []) {
+    if (p?.lat == null || p?.lng == null) continue
+    const dist = distanceKm(center, { lat: p.lat, lng: p.lng })
+    if (radiusKm && dist > radiusKm * 1.05) continue
+    out.push({
+      id: p.id || `wm/${p.lat},${p.lng}`,
+      lat: p.lat,
+      lng: p.lng,
+      name: p.name || 'Fortification Maginot',
+      category: 'militaire',
+      source: 'maginot',
+      typeLabel: 'Fortification Maginot',
+      facts: [],
+      osmDescription: null,
+      danger: assessDanger('militaire', {}),
+      tagline: 'wikimaginot.eu',
+      osmUrl: null,
+      wmUrl: p.wm ? `https://wikimaginot.eu/V70_construction_detail.php?id=${p.wm}` : null,
+      distanceKm: dist,
+      score: 6,
+      notable: true,
+      wiki: null,
+      wikipedia: null,
+      wikidata: null,
+      wikidataUrl: null,
+    })
+  }
+  out.sort((a, b) => a.distanceKm - b.distanceKm)
+  return out.slice(0, 150)
+}
+
 export async function discoverAbandoned(center, radiusKm, { signal } = {}) {
   const radius = Math.min(Math.max(radiusKm, 0.5), MAX_DISCOVER_RADIUS_KM)
   const query = buildQuery(bboxOf(center.lat, center.lng, radius))
+
+  // Base Maginot en parallèle du proxy (souvent servie depuis IndexedDB).
+  const maginotP = maginotPoints(signal).catch(() => [])
 
   // 1) Proxy même origine (POST) : chemin fiable en production. La requête
   // Overpass voyage dans le corps (+ la géo pour la recherche Wikidata) → pas
@@ -566,7 +635,10 @@ export async function discoverAbandoned(center, radiusKm, { signal } = {}) {
     const wd = parseWikidata(data.wikidata || [], center, radius)
     const wp = parseWikipedia(data.wikipedia || [], center, radius)
     const cs = parseCasias(data.casias || [], center, radius)
-    return mergeSources([osm, wd, wp, cs], center)
+    // OSM et Wikidata AVANT wikimaginot : en cas de doublon (< 80 m), la
+    // version la plus riche en tags/documentation gagne la déduplication.
+    const wm = parseMaginot(await maginotP, center, radius)
+    return mergeSources([osm, wd, wm, wp, cs], center)
   } catch (proxyErr) {
     if (signal?.aborted) throw proxyErr
     // En production, le proxy EST le chemin fiable : on remonte sa vraie erreur

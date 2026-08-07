@@ -215,6 +215,16 @@ function DiscoverResult({ r, onAdd, onSelect }) {
                 <ExternalLink size={11} /> Wikidata
               </a>
             )}
+            {r.wmUrl && (
+              <a
+                href={r.wmUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-1 rounded-lg bg-zinc-700/60 px-2 py-1.5 text-[11px] text-zinc-200 transition hover:bg-zinc-600/60"
+              >
+                <ExternalLink size={11} /> Fiche wikimaginot
+              </a>
+            )}
           </div>
         </div>
       )}
@@ -403,6 +413,14 @@ export default function DiscoverPanel({
           <Check size={10} /> Les lieux ajoutés arrivent en statut « Repéré » — vérifie l'accès et la légalité avant
           d'y aller.
         </p>
+        {results.some((r) => r.source === 'maginot') && (
+          <p className="mt-1 text-[10px] leading-snug text-zinc-600">
+            Fortifications : source{' '}
+            <a href="https://wikimaginot.eu" target="_blank" rel="noreferrer" className="underline">
+              wikimaginot.eu
+            </a>
+          </p>
+        )}
       </div>
     </div>
   )
