@@ -1,6 +1,8 @@
 import { useState } from 'react'
-import { X, Cloud, CloudOff, ExternalLink, Sparkles } from 'lucide-react'
+import { X, Cloud, CloudOff, ExternalLink, Sparkles, RefreshCw } from 'lucide-react'
 import { useStore } from '../lib/store'
+import { APP_VERSION } from '../lib/constants'
+import { forceAppUpdate } from '../lib/update'
 import { getConfig, saveStoredConfig, clearStoredConfig, isValidSupabaseUrl, getSupabase } from '../lib/supabase'
 import { AI_KEY_LS, getAiKey, setAiKey as persistAiKey, aiKeyProvider } from '../lib/aikey'
 
@@ -205,6 +207,24 @@ export default function SettingsModal({ onClose }) {
               La clé n'est envoyée qu'à ta propre fonction serveur (pour appeler l'IA) et n'est jamais partagée. Ton
               cousin met sa propre clé sur son appareil.
             </p>
+          </div>
+
+          {/* Application : version + mise à jour forcée (PWA iOS têtue) */}
+          <div className="space-y-2.5 border-t border-white/10 pt-4">
+            <h3 className="flex items-center gap-1.5 text-sm font-bold text-zinc-100">
+              <RefreshCw size={14} className="text-indigo-300" /> Application
+            </h3>
+            <p className="text-xs leading-relaxed text-zinc-400">
+              Version installée : <span className="font-mono font-semibold text-zinc-200">v{APP_VERSION}</span>. Si
+              l'app reste bloquée sur une ancienne version malgré un redémarrage, force la mise à jour — tes spots et
+              réglages ne sont pas touchés.
+            </p>
+            <button
+              onClick={forceAppUpdate}
+              className="w-full rounded-xl bg-zinc-800/70 py-2.5 text-sm font-medium text-indigo-200 transition hover:bg-zinc-700/70"
+            >
+              Forcer la mise à jour de l'app
+            </button>
           </div>
         </div>
       </div>
