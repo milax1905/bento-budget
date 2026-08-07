@@ -19,9 +19,35 @@ import {
 } from 'lucide-react'
 import { CATEGORIES, categoryById } from '../lib/constants'
 import { formatDistance } from '../lib/geo'
-import { MAX_DISCOVER_RADIUS_KM, extractLooksActive } from '../lib/discover'
+import { MAX_DISCOVER_RADIUS_KM, extractLooksActive, NOISE_NAME_RE } from '../lib/discover'
 import { searchPlaces } from '../lib/geocode'
 import { webSearchUrl } from '../lib/wiki'
+
+// Score urbex 0-99 : synthèse de TOUS les signaux (IA, documentation, type de
+// lieu, photos, bruit) pour trier les « vrais lieux » d'un coup d'œil.
+const GOOD_CATS = new Set(['chateau', 'hopital', 'militaire', 'usine', 'tunnel', 'gare', 'eglise', 'parc'])
+function scoreUrbex(r) {
+  const ai = r.enrichment?.ai
+  let s = 40
+  if (ai) {
+    if (ai.verdict === 'top') s += 30
+    else if (ai.verdict === 'moyen') s += 10
+    else if (ai.verdict === 'quelconque') s -= 35
+    if (ai.urbex === false) s -= 35
+    s += (Number(ai.interet) || 0) * 4
+  }
+  if (r.notable) s += 10
+  if (r.source === 'perso') s += 15
+  if (GOOD_CATS.has(r.category)) s += 5
+  if ((r.enrichment?.photos || []).length > 0) s += 4
+  if (NOISE_NAME_RE.test(r.name || '')) s -= 30
+  return Math.max(1, Math.min(99, Math.round(s)))
+}
+function scoreTone(s) {
+  if (s >= 70) return { bg: 'rgba(16,185,129,.18)', tx: '#6ee7b7' }
+  if (s >= 45) return { bg: 'rgba(251,191,36,.15)', tx: '#fcd34d' }
+  return { bg: 'rgba(255,255,255,.07)', tx: '#8e90a2' }
+}
 
 const DANGER_COLORS = { 1: '#10b981', 2: '#f59e0b', 3: '#f97316', 4: '#ef4444' }
 
@@ -88,12 +114,23 @@ function DiscoverResult({ r, onAdd, onSelect, center }) {
   const danger = effectiveDanger(r)
   const summary = ai?.resume || wiki?.extract || null
   const quelconque = ai?.verdict === 'quelconque'
+  const score = scoreUrbex(r)
+  const tone = scoreTone(score)
 
   return (
-    <div className={`mb-1 rounded-xl transition hover:bg-zinc-800/50 ${quelconque ? 'opacity-60' : ''}`}>
+    <div className={`glass-card mb-1.5 rounded-2xl transition hover:bg-white/5 ${quelconque ? 'opacity-60' : ''}`}>
       <div className="flex items-center gap-3 px-3 py-2.5">
         <button onClick={() => onSelect(r)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
-          <span className="text-xl">{cat.emoji}</span>
+          <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/5 text-xl ring-1 ring-white/10">
+            {cat.emoji}
+            <span
+              title={`Score urbex ${score}/99`}
+              className="absolute -bottom-1.5 -right-1.5 flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[9px] font-bold ring-1 ring-black/40"
+              style={{ background: tone.bg, color: tone.tx, backdropFilter: 'blur(8px)' }}
+            >
+              {score}
+            </span>
+          </span>
           <span className="min-w-0 flex-1">
             <span className="flex items-center gap-1.5 text-sm font-medium text-zinc-100">
               {r.source === 'perso' && (
@@ -107,7 +144,7 @@ function DiscoverResult({ r, onAdd, onSelect, center }) {
                 </span>
               )}
               {r.notable && (
-                <span className="flex shrink-0 items-center gap-0.5 rounded bg-violet-500/25 px-1 py-px text-[9px] font-semibold text-violet-200">
+                <span className="flex shrink-0 items-center gap-0.5 rounded bg-indigo-400/20 px-1 py-px text-[9px] font-semibold text-indigo-200">
                   <BookOpen size={9} /> Doc.
                 </span>
               )}
@@ -141,7 +178,7 @@ function DiscoverResult({ r, onAdd, onSelect, center }) {
         <button
           onClick={() => onAdd(r)}
           title="Ajouter à ma carte"
-          className="flex shrink-0 items-center gap-1 rounded-lg bg-violet-500/20 px-2.5 py-1.5 text-[11px] font-medium text-violet-200 transition hover:bg-violet-500/30"
+          className="flex shrink-0 items-center gap-1 rounded-lg bg-indigo-400/20 px-2.5 py-1.5 text-[11px] font-semibold text-indigo-200 ring-1 ring-indigo-400/30 transition hover:bg-indigo-400/30"
         >
           <Plus size={13} /> Ajouter
         </button>
@@ -170,7 +207,7 @@ function DiscoverResult({ r, onAdd, onSelect, center }) {
 
           {/* Résumé (IA ou Wikipédia) */}
           {summary && (
-            <div className="rounded-lg bg-zinc-900/50 p-2.5">
+            <div className="rounded-xl bg-black/25 p-2.5 ring-1 ring-white/5">
               <div className="flex gap-2.5">
                 {wiki?.thumbnail && photos.length === 0 && (
                   <img src={wiki.thumbnail} alt="" className="h-16 w-16 shrink-0 rounded-lg object-cover" />
@@ -184,7 +221,7 @@ function DiscoverResult({ r, onAdd, onSelect, center }) {
                   </span>
                 )}
                 {wiki?.url && (
-                  <a href={wiki.url} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-violet-300 hover:text-violet-200">
+                  <a href={wiki.url} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-indigo-300 hover:text-indigo-200">
                     <BookOpen size={10} /> Wikipédia{wiki.source === 'geo' && wiki.dist != null ? ` (à ~${wiki.dist} m)` : ''}
                   </a>
                 )}
@@ -194,7 +231,7 @@ function DiscoverResult({ r, onAdd, onSelect, center }) {
 
           {/* Danger + risques */}
           {danger && (
-            <div className="rounded-lg bg-zinc-900/50 p-2.5">
+            <div className="rounded-xl bg-black/25 p-2.5 ring-1 ring-white/5">
               <div className="flex items-center gap-2">
                 <DangerBadge danger={danger} />
                 <span className="text-[11px] font-medium text-zinc-300">Niveau de danger</span>
@@ -214,7 +251,7 @@ function DiscoverResult({ r, onAdd, onSelect, center }) {
 
           {/* Faits (tags OSM) */}
           {(r.facts?.length > 0 || r.osmDescription) && (
-            <div className="rounded-lg bg-zinc-900/50 p-2.5 text-[11px] text-zinc-300">
+            <div className="rounded-xl bg-black/25 p-2.5 ring-1 ring-white/5 text-[11px] text-zinc-300">
               {r.facts?.map((f, i) => (
                 <div key={i} className="flex gap-1.5">
                   <span className="text-zinc-500">{f.label} :</span>
@@ -237,15 +274,24 @@ function DiscoverResult({ r, onAdd, onSelect, center }) {
               href={`https://www.google.com/maps/dir/?api=1&destination=${r.lat},${r.lng}`}
               target="_blank"
               rel="noreferrer"
-              className="flex items-center gap-1 rounded-lg bg-violet-500/20 px-2 py-1.5 text-[11px] font-medium text-violet-200 transition hover:bg-violet-500/30"
+              className="flex items-center gap-1 rounded-lg bg-indigo-400/20 px-2 py-1.5 text-[11px] font-medium text-indigo-200 ring-1 ring-indigo-400/30 transition hover:bg-indigo-400/30"
             >
               <Navigation size={11} /> Itinéraire
+            </a>
+            <a
+              href={`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${r.lat},${r.lng}`}
+              target="_blank"
+              rel="noreferrer"
+              title="Vérifier le lieu depuis la rue (si couvert)"
+              className="flex items-center gap-1 rounded-lg bg-white/5 px-2 py-1.5 text-[11px] text-zinc-200 ring-1 ring-white/10 transition hover:bg-white/10"
+            >
+              👁️ Street View
             </a>
             <a
               href={webSearchUrl(r.name, r.lat, r.lng)}
               target="_blank"
               rel="noreferrer"
-              className="flex items-center gap-1 rounded-lg bg-zinc-700/60 px-2 py-1.5 text-[11px] text-zinc-200 transition hover:bg-zinc-600/60"
+              className="flex items-center gap-1 rounded-lg bg-white/5 px-2 py-1.5 text-[11px] text-zinc-200 ring-1 ring-white/10 transition hover:bg-white/10"
             >
               <Search size={11} /> Web
             </a>
@@ -254,7 +300,7 @@ function DiscoverResult({ r, onAdd, onSelect, center }) {
                 href={r.osmUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="flex items-center gap-1 rounded-lg bg-zinc-700/60 px-2 py-1.5 text-[11px] text-zinc-200 transition hover:bg-zinc-600/60"
+                className="flex items-center gap-1 rounded-lg bg-white/5 px-2 py-1.5 text-[11px] text-zinc-200 ring-1 ring-white/10 transition hover:bg-white/10"
               >
                 <ExternalLink size={11} /> OpenStreetMap
               </a>
@@ -264,7 +310,7 @@ function DiscoverResult({ r, onAdd, onSelect, center }) {
                 href={r.wikidataUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="flex items-center gap-1 rounded-lg bg-zinc-700/60 px-2 py-1.5 text-[11px] text-zinc-200 transition hover:bg-zinc-600/60"
+                className="flex items-center gap-1 rounded-lg bg-white/5 px-2 py-1.5 text-[11px] text-zinc-200 ring-1 ring-white/10 transition hover:bg-white/10"
               >
                 <ExternalLink size={11} /> Wikidata
               </a>
@@ -274,7 +320,7 @@ function DiscoverResult({ r, onAdd, onSelect, center }) {
                 href={r.wmUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="flex items-center gap-1 rounded-lg bg-zinc-700/60 px-2 py-1.5 text-[11px] text-zinc-200 transition hover:bg-zinc-600/60"
+                className="flex items-center gap-1 rounded-lg bg-white/5 px-2 py-1.5 text-[11px] text-zinc-200 ring-1 ring-white/10 transition hover:bg-white/10"
               >
                 <ExternalLink size={11} /> Fiche wikimaginot
               </a>
@@ -309,6 +355,16 @@ export default function DiscoverPanel({
   // Tri de la liste + pagination (fluidité avec des centaines de résultats).
   const [sortBy, setSortBy] = useState('pertinence') // pertinence | proche | top
   const [limit, setLimit] = useState(80)
+  // « Pépites » : ne garder que les lieux à fort potentiel (score urbex élevé).
+  const [gemsOnly, setGemsOnly] = useState(false)
+  // Réglages repliés une fois la recherche faite (l'écran respire) ; bouton
+  // « Modifier » pour les rouvrir.
+  const [configOpen, setConfigOpen] = useState(() => discover.status !== 'done' || !results.length)
+
+  useEffect(() => {
+    if (status === 'done' && results.length > 0) setConfigOpen(false)
+    if (status === 'idle') setConfigOpen(true)
+  }, [status, results.length])
   // Recherche de ville/adresse pour recentrer sans toucher la carte.
   const [placeQ, setPlaceQ] = useState('')
   const [placeHits, setPlaceHits] = useState([])
@@ -348,7 +404,7 @@ export default function DiscoverPanel({
   // Nouvelle recherche ou changement de filtre → on repart en haut de liste.
   useEffect(() => {
     setLimit(80)
-  }, [results, catFilter, textFilter, sortBy, docsOnly, showExcluded])
+  }, [results, catFilter, textFilter, sortBy, docsOnly, showExcluded, gemsOnly])
 
   const notableCount = results.filter((r) => r.notable).length
   const anyAi = results.some((r) => r.enrichment?.ai)
@@ -380,6 +436,7 @@ export default function DiscoverPanel({
   for (const r of preCat) if (!isExcluded(r)) catCounts[r.category] = (catCounts[r.category] || 0) + 1
   const base = catFilter ? preCat.filter((r) => r.category === catFilter) : preCat
   let kept = base.filter((r) => !isExcluded(r))
+  if (gemsOnly) kept = kept.filter((r) => scoreUrbex(r) >= 60)
   const excluded = base.filter((r) => isExcluded(r))
   // Tri : pertinence (ordre calculé), proches d'abord, ou meilleures notes IA.
   const aiRank = (r) =>
@@ -399,26 +456,53 @@ export default function DiscoverPanel({
       style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 5.5rem)' }}
     >
       <div className="flex items-center gap-3 border-b border-white/10 px-4 py-3">
-        <Radar size={18} className="text-violet-300" />
+        <div className="glass-card flex h-9 w-9 items-center justify-center rounded-xl">
+          <Radar size={17} className="text-indigo-300" />
+        </div>
         <div className="min-w-0 flex-1">
-          <h2 className="text-base font-bold text-zinc-100">Découvrir</h2>
-          <p className="text-[11px] text-zinc-500">Lieux abandonnés autour d'un point (OpenStreetMap)</p>
+          <h2 className="text-[14px] font-bold uppercase tracking-[0.22em] text-zinc-100">Découvrir</h2>
+          <p className="text-[10px] text-zinc-500">OSM · Wikipédia · BASIAS · wikimaginot</p>
         </div>
         <button
           onClick={onClose}
           title="Fermer"
           aria-label="Fermer"
-          className="rounded-lg p-2 text-zinc-400 transition hover:bg-zinc-700/60 hover:text-zinc-200"
+          className="rounded-full p-2 text-zinc-400 transition hover:bg-white/10 hover:text-zinc-200"
         >
           <X size={16} />
         </button>
       </div>
 
+      {/* Réglages repliés : résumé compact + bouton Modifier */}
+      {!configOpen && (
+        <div className="flex items-center gap-2 border-b border-white/10 px-4 py-2.5">
+          <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-zinc-400">
+            📍 {center ? `${center.lat.toFixed(3)}, ${center.lng.toFixed(3)}` : '—'} · {radiusKm} km
+            {intensive ? ' · 🔥 intense' : ''}
+          </span>
+          <button
+            onClick={onSearch}
+            disabled={status === 'loading'}
+            title="Relancer la recherche"
+            className="flex items-center gap-1.5 rounded-full bg-white/5 px-3 py-1.5 text-[11px] font-medium text-zinc-300 ring-1 ring-white/10 transition hover:bg-white/10 disabled:opacity-50"
+          >
+            {status === 'loading' ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+          </button>
+          <button
+            onClick={() => setConfigOpen(true)}
+            className="rounded-full bg-indigo-400/15 px-3 py-1.5 text-[11px] font-semibold text-indigo-200 ring-1 ring-indigo-400/30 transition hover:bg-indigo-400/25"
+          >
+            Modifier
+          </button>
+        </div>
+      )}
+
       {/* Réglages de recherche */}
+      {configOpen && (
       <div className="space-y-3 border-b border-white/10 px-4 py-3">
         {/* Recentrer par ville/adresse, sans passer par la carte */}
         <div className="relative">
-          <div className="flex items-center gap-2 rounded-xl bg-zinc-800/50 px-3 py-2.5">
+          <div className="glass-card flex items-center gap-2 rounded-full px-4 py-2.5">
             <Search size={14} className="shrink-0 text-zinc-500" />
             <input
               value={placeQ}
@@ -439,7 +523,7 @@ export default function DiscoverPanel({
             )}
           </div>
           {(placeHits.length > 0 || placeStatus === 'searching' || placeStatus === 'empty') && (
-            <div className="absolute inset-x-0 top-full z-10 mt-1 overflow-hidden rounded-xl border border-white/10 bg-zinc-900/95 shadow-xl backdrop-blur-xl">
+            <div className="absolute inset-x-0 top-full z-10 mt-1 overflow-hidden rounded-2xl border border-white/10 bg-zinc-900/95 shadow-2xl backdrop-blur-xl">
               {placeStatus === 'searching' && <p className="px-3 py-2 text-[11px] text-zinc-500">Recherche…</p>}
               {placeStatus === 'empty' && <p className="px-3 py-2 text-[11px] text-zinc-500">Aucun résultat</p>}
               {placeHits.map((h, i) => (
@@ -458,13 +542,13 @@ export default function DiscoverPanel({
             </div>
           )}
         </div>
-        <div className="flex items-center justify-between rounded-xl bg-zinc-800/50 px-3 py-2.5 text-xs">
+        <div className="glass-card flex items-center justify-between rounded-2xl px-3.5 py-2.5 text-xs">
           <span className="font-mono text-zinc-300">
             {center ? `${center.lat.toFixed(4)}, ${center.lng.toFixed(4)}` : '—'}
           </span>
           <button
             onClick={onRecenter}
-            className="flex items-center gap-1.5 rounded-lg bg-zinc-700/60 px-2.5 py-1.5 text-[11px] font-medium text-violet-200 transition hover:bg-zinc-600/60"
+            className="flex items-center gap-1.5 rounded-full bg-indigo-400/15 px-3 py-1.5 text-[11px] font-semibold text-indigo-200 ring-1 ring-indigo-400/30 transition hover:bg-indigo-400/25"
           >
             <LocateFixed size={12} /> {locating ? '…' : 'Ma position'}
           </button>
@@ -472,7 +556,7 @@ export default function DiscoverPanel({
         <div>
           <label className="mb-1 flex items-center justify-between text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
             <span>Rayon</span>
-            <span className="text-violet-300">{radiusKm} km</span>
+            <span className="font-mono text-indigo-300">{radiusKm} km</span>
           </label>
           <input
             type="range"
@@ -480,7 +564,7 @@ export default function DiscoverPanel({
             max={MAX_DISCOVER_RADIUS_KM}
             value={radiusKm}
             onChange={(e) => onRadius(Number(e.target.value))}
-            className="w-full accent-violet-400"
+            className="w-full accent-indigo-400"
           />
           {radiusKm >= 20 && (
             <p className="mt-1 text-[10px] text-zinc-600">
@@ -492,19 +576,19 @@ export default function DiscoverPanel({
           <button
             onClick={() => onIntensive?.(!intensive)}
             className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left transition ${
-              intensive ? 'bg-violet-500/20 ring-1 ring-violet-400/40' : 'bg-zinc-800/50 hover:bg-zinc-800/80'
+              intensive ? 'bg-indigo-500/20 ring-1 ring-indigo-400/40' : 'glass-card hover:bg-white/5'
             }`}
           >
             <span>
               <span className="flex items-center gap-1.5 text-xs font-semibold text-zinc-100">
-                <Flame size={13} className={intensive ? 'text-violet-300' : 'text-zinc-500'} /> Fouille intense
+                <Flame size={13} className={intensive ? 'text-indigo-300' : 'text-zinc-500'} /> Fouille intense
               </span>
               <span className="mt-0.5 block text-[10px] leading-snug text-zinc-500">
                 Découpe la zone en 4 sous-recherches : jusqu'à 4× plus de lieux dans les zones denses (plus lent).
               </span>
             </span>
             <span
-              className={`relative h-5 w-9 shrink-0 rounded-full transition ${intensive ? 'bg-violet-500' : 'bg-zinc-700'}`}
+              className={`relative h-5 w-9 shrink-0 rounded-full transition ${intensive ? 'bg-indigo-500' : 'bg-zinc-700'}`}
             >
               <span
                 className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all ${intensive ? 'left-4.5 translate-x-0' : 'left-0.5'}`}
@@ -516,7 +600,7 @@ export default function DiscoverPanel({
         <button
           onClick={onSearch}
           disabled={status === 'loading' || !center}
-          className="flex w-full items-center justify-center gap-2 rounded-xl bg-violet-500 py-2.5 text-sm font-bold text-white transition hover:bg-violet-400 disabled:opacity-50"
+          className="glow-soft flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-b from-indigo-400 to-indigo-600 py-3 text-sm font-bold text-white ring-1 ring-white/25 transition hover:brightness-110 active:scale-[0.98] disabled:opacity-50"
         >
           {status === 'loading' ? (
             <>
@@ -529,6 +613,7 @@ export default function DiscoverPanel({
           )}
         </button>
       </div>
+      )}
 
       {/* Résultats */}
       <div className="flex-1 overflow-y-auto px-2 py-2">
@@ -562,7 +647,7 @@ export default function DiscoverPanel({
         {/* Recherche ciblée : filtre texte + puces par type de lieu */}
         {status === 'done' && results.length > 0 && (
           <div className="space-y-1.5 px-2 pb-1">
-            <div className="flex items-center gap-2 rounded-xl bg-zinc-800/50 px-3 py-2">
+            <div className="glass-card flex items-center gap-2 rounded-full px-4 py-2">
               <Search size={13} className="shrink-0 text-zinc-500" />
               <input
                 value={textFilter}
@@ -581,7 +666,7 @@ export default function DiscoverPanel({
                 <button
                   onClick={() => setCatFilter('')}
                   className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium transition ${
-                    !catFilter ? 'bg-violet-500/30 text-violet-200' : 'bg-zinc-800/70 text-zinc-400'
+                    !catFilter ? 'bg-indigo-400/25 text-indigo-200 ring-1 ring-indigo-400/40' : 'bg-white/5 text-zinc-400 ring-1 ring-white/10'
                   }`}
                 >
                   Tous
@@ -591,7 +676,7 @@ export default function DiscoverPanel({
                     key={c.id}
                     onClick={() => setCatFilter((v) => (v === c.id ? '' : c.id))}
                     className={`flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium transition ${
-                      catFilter === c.id ? 'bg-violet-500/30 text-violet-200' : 'bg-zinc-800/70 text-zinc-400'
+                      catFilter === c.id ? 'bg-indigo-400/25 text-indigo-200 ring-1 ring-indigo-400/40' : 'bg-white/5 text-zinc-400 ring-1 ring-white/10'
                     }`}
                   >
                     <span>{c.emoji}</span>
@@ -613,7 +698,7 @@ export default function DiscoverPanel({
                   key={s.id}
                   onClick={() => setSortBy(s.id)}
                   className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition ${
-                    sortBy === s.id ? 'bg-violet-500/30 text-violet-200' : 'bg-zinc-800/70 text-zinc-400'
+                    sortBy === s.id ? 'bg-indigo-400/25 text-indigo-200 ring-1 ring-indigo-400/40' : 'bg-white/5 text-zinc-400 ring-1 ring-white/10'
                   }`}
                 >
                   {s.label}
@@ -636,16 +721,27 @@ export default function DiscoverPanel({
               )}
               {enriching && <Loader2 size={11} className="animate-spin text-zinc-600" />}
             </span>
-            {notableCount > 0 && (
+            <span className="flex items-center gap-1.5">
               <button
-                onClick={() => setDocsOnly((v) => !v)}
+                onClick={() => setGemsOnly((v) => !v)}
+                title="Ne garder que les lieux à fort score urbex (≥ 60)"
                 className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium transition ${
-                  docsOnly ? 'bg-violet-500/30 text-violet-200' : 'bg-zinc-800/70 text-zinc-400'
+                  gemsOnly ? 'bg-emerald-400/20 text-emerald-200 ring-1 ring-emerald-400/40' : 'bg-white/5 text-zinc-400 ring-1 ring-white/10'
                 }`}
               >
-                <BookOpen size={10} /> Documentés
+                💎 Pépites
               </button>
-            )}
+              {notableCount > 0 && (
+                <button
+                  onClick={() => setDocsOnly((v) => !v)}
+                  className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium transition ${
+                    docsOnly ? 'bg-indigo-400/25 text-indigo-200 ring-1 ring-indigo-400/40' : 'bg-white/5 text-zinc-400 ring-1 ring-white/10'
+                  }`}
+                >
+                  <BookOpen size={10} /> Documentés
+                </button>
+              )}
+            </span>
           </div>
         )}
         {paged.map((r) => (
@@ -656,7 +752,7 @@ export default function DiscoverPanel({
         {shown.length > limit && (
           <button
             onClick={() => setLimit((l) => l + 120)}
-            className="mx-auto mt-1 flex items-center gap-1.5 rounded-xl bg-zinc-800/70 px-4 py-2 text-xs font-medium text-zinc-300 transition hover:bg-zinc-700/70"
+            className="mx-auto mt-1 flex items-center gap-1.5 rounded-xl bg-white/5 px-4 py-2 text-xs font-medium text-zinc-300 ring-1 ring-white/10 transition hover:bg-white/10"
           >
             <ChevronDown size={13} /> Voir plus ({shown.length - limit} restants)
           </button>
@@ -665,7 +761,7 @@ export default function DiscoverPanel({
         {status === 'done' && unanalyzed.length > 0 && !enriching && (
           <button
             onClick={() => onEnrichMore?.(unanalyzed.slice(0, 30))}
-            className="mx-auto mt-2 flex items-center gap-1.5 rounded-xl bg-violet-500/20 px-4 py-2 text-xs font-medium text-violet-200 transition hover:bg-violet-500/30"
+            className="mx-auto mt-2 flex items-center gap-1.5 rounded-xl bg-indigo-400/20 px-4 py-2 text-xs font-semibold text-indigo-200 ring-1 ring-indigo-400/30 transition hover:bg-indigo-400/30"
           >
             <Sparkles size={13} /> Analyser {Math.min(30, unanalyzed.length)} lieu
             {Math.min(30, unanalyzed.length) > 1 ? 'x' : ''} de plus (histoire, photos, IA)

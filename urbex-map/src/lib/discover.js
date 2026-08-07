@@ -179,6 +179,12 @@ function tagline(tags) {
   return 'OpenStreetMap'
 }
 
+// Noms qui trahissent un site banal pour l'urbex (surtout côté BASIAS :
+// déchetteries, garages, stations-service…). On ne les CACHE pas — on les
+// déclasse fortement pour que les vrais lieux remontent.
+export const NOISE_NAME_RE =
+  /d[ée]chett?erie|d[ée]charge\b|station[- ]?service|\bgarage\b|pressing|casse[- ]?auto|carrosserie|chaufferie|transformateur|\bDLI\b|d[ée]p[oô]t (de )?(liquides?|carburants?|gaz)|blanchisserie|teinturerie/i
+
 // Score d'« intérêt » : un lieu documenté (Wikipédia/patrimoine) ou nommé
 // remonte au-dessus des ruines anonymes.
 function interestOf(tags) {
@@ -192,6 +198,8 @@ function interestOf(tags) {
   if (hasName) score += 3
   if (hasImage) score += 2
   if (tags.start_date || tags.architect || tags['building:architecture']) score += 1
+  // Nom « banal » (garage, station-service…) → déclassé sous les anonymes.
+  if (NOISE_NAME_RE.test(tags.name || tags['name:fr'] || '')) score -= 5
   const notable = Boolean(tags.wikipedia || tags.wikidata || heritage)
   return { score, notable, wiki: parseWikipediaTag(tags.wikipedia), wikidata: tags.wikidata || null }
 }
@@ -454,8 +462,9 @@ function parseCasias(items, center, radiusKm) {
       tagline: 'BASIAS',
       osmUrl: null,
       distanceKm: dist,
-      score: 4,
-      notable: true,
+      // Déchetterie/garage/station-service… → tout en bas de liste.
+      score: NOISE_NAME_RE.test(it.name || '') ? 0 : 4,
+      notable: !NOISE_NAME_RE.test(it.name || ''),
       wiki: null,
       wikipedia: null,
       wikidata: null,

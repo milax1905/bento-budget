@@ -273,10 +273,13 @@ que c'est réhabilité / actif (ex. devenu mairie, musée, hôtel, château rest
 et habité). Ne les note JAMAIS "quelconque" juste par manque d'info.
 
 LIEUX « basias: true » : anciens sites industriels de l'inventaire officiel
-Géorisques (BASIAS) — ce sont des FRICHES probables (usine/atelier/dépôt/station
-désaffecté). Garde-les par défaut (urbex:true, verdict "moyen" en général). Ne mets
-"urbex": false QUE si tu sais que le site est aujourd'hui reconstruit / réhabilité /
-en activité. Ne les note JAMAIS "quelconque" juste par manque d'info.
+Géorisques (BASIAS) — ce sont des FRICHES probables. Garde par défaut
+(urbex:true, verdict "moyen") les sites à POTENTIEL urbex : usine, filature,
+fonderie, manufacture, moulin, brasserie, mine, four, verrerie, papeterie,
+tuilerie… MAIS si le nom indique une activité BANALE sans intérêt d'exploration
+(déchetterie, décharge, garage, station-service, pressing, carrosserie,
+blanchisserie, dépôt de liquides/carburants, transformateur…), mets "verdict":
+"quelconque" — un ancien garage n'est pas un spot d'urbex.
 
 FORTIFICATIONS (bunker, casemate, blockhaus, fort, ouvrage Maginot…) : elles
 sont presque toujours désaffectées → garde-les par défaut (urbex:true), MÊME
