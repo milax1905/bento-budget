@@ -13,7 +13,7 @@
 export const config = { maxDuration: 60 }
 
 const BUDGET_MS = 55000
-const UA = 'UrbexAtlas/3.4 (+https://urbex-phi.vercel.app; contact via GitHub milax1905/bento-budget)'
+const UA = 'UrbexAtlas/3.5 (+https://urbex-phi.vercel.app; contact via GitHub milax1905/bento-budget)'
 const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5'
 const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile'
 
@@ -114,6 +114,98 @@ async function wikiFor(site, signal) {
     }
   }
   return null
+}
+
+// ── Photos du lieu (libres de droits) ──────────────────────────────────────
+// Sources, par ordre de fiabilité : photo taguée dans OSM (image=*), fichier
+// Commons tagué (wikimedia_commons=File:…), vignette Wikipédia, puis photos
+// GÉOLOCALISÉES sur Wikimedia Commons à ≤ 250 m du point (espace de noms
+// Fichier). Toutes librement réutilisables — contrairement aux photos de
+// sites tiers (ex. wikimaginot.eu, tous droits réservés → jamais reprises).
+const commonsFileThumb = (file, w = 480) =>
+  `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(file.replace(/^File:/i, '').replace(/ /g, '_'))}?width=${w}`
+
+// Clé canonique d'une photo = son NOM DE FICHIER : les trois sources renvoient
+// des URL différentes pour le MÊME fichier (…/thumb/a/ab/Foo.jpg/330px-Foo.jpg,
+// Special:FilePath/Foo.jpg?width=480, …/480px-Foo.jpg) → sans ça, la même
+// image apparaissait 2-3 fois dans le bandeau.
+function photoKey(url) {
+  try {
+    const seg = decodeURIComponent(String(url).split('?')[0].split('/').pop() || '')
+    return seg.replace(/^\d+px-/i, '').toLowerCase() || String(url)
+  } catch {
+    return String(url)
+  }
+}
+
+async function commonsNearby(lat, lng, signal) {
+  // Plafond dur par appel (8 s) : une requête Commons qui traîne ne doit
+  // retarder ni la réponse ni les autres lieux.
+  const ctrl = new AbortController()
+  const onAbort = () => ctrl.abort()
+  if (signal) signal.addEventListener('abort', onAbort, { once: true })
+  if (signal?.aborted) ctrl.abort()
+  const cap = setTimeout(() => ctrl.abort(), 8000)
+  try {
+    const url =
+      `https://commons.wikimedia.org/w/api.php?action=query&generator=geosearch` +
+      `&ggscoord=${lat}%7C${lng}&ggsradius=250&ggslimit=8&ggsnamespace=6` +
+      `&prop=imageinfo&iiprop=url%7Cmime&iiurlwidth=480&format=json&origin=*`
+    const d = await getJson(url, ctrl.signal)
+    const pages = Object.values(d.query?.pages || {})
+    return pages
+      .map((p) => p.imageinfo?.[0])
+      // La VIGNETTE (thumburl) est toujours affichable (rendue en JPEG/PNG par
+      // MediaWiki) : on filtre seulement les non-images (vidéos, PDF, audio),
+      // pas les formats d'origine exotiques (TIFF…).
+      .filter((ii) => ii && /^image\//i.test(ii.mime || ''))
+      .map((ii) => ({ thumb: ii.thumburl || ii.url, page: ii.descriptionurl || ii.url }))
+  } finally {
+    clearTimeout(cap)
+    if (signal) signal.removeEventListener('abort', onAbort)
+  }
+}
+
+async function photosFor(site, wiki, signal) {
+  const out = []
+  const seen = new Set()
+  const push = (thumb, page) => {
+    const key = photoKey(thumb)
+    if (!thumb || seen.has(key)) return
+    seen.add(key)
+    out.push({ thumb, page: page || thumb })
+  }
+  // Tag OSM image=* : souvent une PAGE web (Flickr, Mapillary, page Commons…)
+  // qui casserait un <img>. On n'accepte que : une page Commons « File: »
+  // (convertie en vignette) ou une URL de fichier image directe.
+  const img = (site.image || '').trim()
+  const commonsPage = img.match(/^https?:\/\/commons\.wikimedia\.org\/wiki\/(File:.+)$/i)
+  if (commonsPage) {
+    let f = commonsPage[1]
+    try {
+      f = decodeURIComponent(f)
+    } catch {
+      /* déjà décodé */
+    }
+    push(commonsFileThumb(f), img)
+  } else if (/^https?:\/\/\S+\.(jpe?g|png|webp|gif)(\?\S*)?$/i.test(img)) {
+    push(img, img)
+  }
+  const cm = (site.commons || '').trim()
+  if (/^File:/i.test(cm))
+    push(commonsFileThumb(cm), `https://commons.wikimedia.org/wiki/${encodeURIComponent(cm.replace(/ /g, '_'))}`)
+  if (wiki?.thumbnail) push(wiki.thumbnail, wiki.url || wiki.thumbnail)
+  // Photos géolocalisées voisines : PAS pour les lieux « Ma carte » (même
+  // garde-fou que wikiFor — on ne colle pas les photos du voisinage à un spot
+  // curé par l'utilisateur).
+  if (site.source !== 'perso' && out.length < 6) {
+    const near = await commonsNearby(site.lat, site.lng, signal).catch(() => [])
+    for (const p of near) {
+      if (out.length >= 6) break
+      push(p.thumb, p.page)
+    }
+  }
+  return out.slice(0, 6)
 }
 
 // ── Analyse IA (offre gratuite) ────────────────────────────────────────────
@@ -372,26 +464,37 @@ export default async function handler(req, res) {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), BUDGET_MS)
   try {
-    // 1) Histoire Wikipédia/Wikidata (gratuit, toujours tenté).
+    // 1) Histoire Wikipédia/Wikidata (gratuit, toujours tenté) — l'IA et les
+    //    photos en dépendent toutes les deux.
     const wikiEntries = await Promise.all(
       sites.map(async (s) => [s.id, await wikiFor(s, controller.signal).catch(() => null)]),
     )
     const wikiMap = {}
     for (const [id, w] of wikiEntries) wikiMap[id] = w
 
-    // 2) Analyse IA (clé de l'appareil OU variable d'environnement) — best-effort.
-    let aiMap = {}
+    // 2) Analyse IA et photos EN PARALLÈLE : une requête Commons lente ne
+    //    retarde jamais l'analyse (et réciproquement). Tous deux best-effort.
     let aiEnabled = false
-    let aiError = null
+    let aiP = Promise.resolve({ map: {}, error: null })
     if (hasAiKey() || userKeyValid) {
       aiEnabled = true
-      const ai = await aiAnalyze(sites, wikiMap, controller.signal, userKeyValid ? userKey : null).catch((e) => ({ map: {}, error: e?.message || 'erreur IA' }))
-      aiMap = ai.map || {}
-      aiError = ai.error || null
+      aiP = aiAnalyze(sites, wikiMap, controller.signal, userKeyValid ? userKey : null).catch((e) => ({
+        map: {},
+        error: e?.message || 'erreur IA',
+      }))
     }
+    const photosP = Promise.all(sites.map((s) => photosFor(s, wikiMap[s.id], controller.signal).catch(() => [])))
+    const [ai, photoLists] = await Promise.all([aiP, photosP])
+    const aiMap = ai.map || {}
+    const aiError = ai.error || null
+    const photoMap = {}
+    sites.forEach((s, i) => {
+      photoMap[s.id] = photoLists[i] || []
+    })
 
     const out = {}
-    for (const s of sites) out[s.id] = { wiki: wikiMap[s.id] || null, ai: aiMap[s.id] || null }
+    for (const s of sites)
+      out[s.id] = { wiki: wikiMap[s.id] || null, ai: aiMap[s.id] || null, photos: photoMap[s.id] || [] }
     // Cache court quand l'IA a échoué ; cache long sinon (le contenu bouge peu).
     // Jamais de cache quand une clé d'appareil est utilisée (réponse par-appareil).
     const aiOk = !aiEnabled || Object.keys(aiMap).length > 0

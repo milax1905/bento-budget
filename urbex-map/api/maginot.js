@@ -14,7 +14,7 @@ export const config = { maxDuration: 60 }
 
 const BUDGET_MS = 50000
 const INDEX_URL = 'https://wikimaginot.eu/_kml_files/WIKIFULL.kml'
-const UA = 'UrbexAtlas/3.4 (+https://urbex-phi.vercel.app; contact via GitHub milax1905/bento-budget)'
+const UA = 'UrbexAtlas/3.5 (+https://urbex-phi.vercel.app; contact via GitHub milax1905/bento-budget)'
 
 let memory = { ts: 0, points: null } // cache du conteneur (instances chaudes)
 

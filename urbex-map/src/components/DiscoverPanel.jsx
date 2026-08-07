@@ -14,13 +14,27 @@ import {
   AlertTriangle,
   Sparkles,
   Star,
+  Navigation,
 } from 'lucide-react'
-import { categoryById } from '../lib/constants'
+import { CATEGORIES, categoryById } from '../lib/constants'
 import { formatDistance } from '../lib/geo'
 import { MAX_DISCOVER_RADIUS_KM, extractLooksActive } from '../lib/discover'
 import { webSearchUrl } from '../lib/wiki'
 
 const DANGER_COLORS = { 1: '#10b981', 2: '#f59e0b', 3: '#f97316', 4: '#ef4444' }
+
+// Direction cardinale (français) du lieu vu depuis le centre de recherche —
+// aide à trier 500 résultats d'un coup d'œil (« 98 km NO »).
+function bearingLabel(from, to) {
+  if (!from || to?.lat == null) return null
+  const dLng = ((to.lng - from.lng) * Math.PI) / 180
+  const la1 = (from.lat * Math.PI) / 180
+  const la2 = (to.lat * Math.PI) / 180
+  const y = Math.sin(dLng) * Math.cos(la2)
+  const x = Math.cos(la1) * Math.sin(la2) - Math.sin(la1) * Math.cos(la2) * Math.cos(dLng)
+  const deg = ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360
+  return ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'][Math.round(deg / 45) % 8]
+}
 
 // Danger effectif : celui de l'IA s'il existe, sinon celui calculé localement.
 function effectiveDanger(r) {
@@ -62,11 +76,13 @@ function DangerBadge({ danger, small }) {
   )
 }
 
-function DiscoverResult({ r, onAdd, onSelect }) {
+function DiscoverResult({ r, onAdd, onSelect, center }) {
   const cat = categoryById(r.category)
   const [open, setOpen] = useState(false)
+  const dir = bearingLabel(center, r)
   const ai = r.enrichment?.ai || null
   const wiki = r.enrichment?.wiki || null
+  const photos = r.enrichment?.photos || []
   const danger = effectiveDanger(r)
   const summary = ai?.resume || wiki?.extract || null
   const quelconque = ai?.verdict === 'quelconque'
@@ -97,7 +113,10 @@ function DiscoverResult({ r, onAdd, onSelect }) {
             </span>
             <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-zinc-500">
               <DangerBadge danger={danger} small />
-              <span>{formatDistance(r.distanceKm)}</span>
+              <span>
+                {formatDistance(r.distanceKm)}
+                {dir ? ` ${dir}` : ''}
+              </span>
               {ai?.interet > 0 && (
                 <span className="flex items-center gap-0.5 text-amber-300/80" title={`Intérêt ${ai.interet}/5`}>
                   {Array.from({ length: 5 }).map((_, i) => (
@@ -128,11 +147,30 @@ function DiscoverResult({ r, onAdd, onSelect }) {
 
       {open && (
         <div className="space-y-2.5 px-3 pb-3">
+          {/* Photos du lieu (OSM / Wikipédia / Commons géolocalisées, libres) */}
+          {photos.length > 0 && (
+            <div className="-mx-0.5 flex gap-1.5 overflow-x-auto pb-1">
+              {photos.map((p, i) => (
+                <a key={i} href={p.page} target="_blank" rel="noreferrer" className="shrink-0">
+                  <img
+                    src={p.thumb}
+                    alt=""
+                    loading="lazy"
+                    className="h-24 w-32 rounded-xl object-cover ring-1 ring-white/10"
+                    onError={(e) => {
+                      e.currentTarget.parentElement.style.display = 'none'
+                    }}
+                  />
+                </a>
+              ))}
+            </div>
+          )}
+
           {/* Résumé (IA ou Wikipédia) */}
           {summary && (
             <div className="rounded-lg bg-zinc-900/50 p-2.5">
               <div className="flex gap-2.5">
-                {wiki?.thumbnail && (
+                {wiki?.thumbnail && photos.length === 0 && (
                   <img src={wiki.thumbnail} alt="" className="h-16 w-16 shrink-0 rounded-lg object-cover" />
                 )}
                 <p className="text-[11px] leading-relaxed text-zinc-300">{summary}</p>
@@ -185,8 +223,22 @@ function DiscoverResult({ r, onAdd, onSelect }) {
             </div>
           )}
 
+          {/* Coordonnées précises (repérage carte / GPS) */}
+          <p className="px-0.5 font-mono text-[10px] text-zinc-600">
+            📍 {r.lat.toFixed(5)}, {r.lng.toFixed(5)}
+            {dir ? ` · ${formatDistance(r.distanceKm)} ${dir}` : ''}
+          </p>
+
           {/* Liens */}
           <div className="flex flex-wrap gap-1.5">
+            <a
+              href={`https://www.google.com/maps/dir/?api=1&destination=${r.lat},${r.lng}`}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-1 rounded-lg bg-violet-500/20 px-2 py-1.5 text-[11px] font-medium text-violet-200 transition hover:bg-violet-500/30"
+            >
+              <Navigation size={11} /> Itinéraire
+            </a>
             <a
               href={webSearchUrl(r.name, r.lat, r.lng)}
               target="_blank"
@@ -245,6 +297,10 @@ export default function DiscoverPanel({
   const { radiusKm, status, results, error, center, enriching, aiEnabled, aiError } = discover
   const [docsOnly, setDocsOnly] = useState(false)
   const [showExcluded, setShowExcluded] = useState(false)
+  // Recherche ciblée : filtre par type de lieu + filtre texte (indispensable
+  // quand une recherche à grand rayon renvoie des centaines de lieux).
+  const [catFilter, setCatFilter] = useState('')
+  const [textFilter, setTextFilter] = useState('')
 
   const notableCount = results.filter((r) => r.notable).length
   const anyAi = results.some((r) => r.enrichment?.ai)
@@ -264,10 +320,21 @@ export default function DiscoverPanel({
                 ? `L’IA n’a rien renvoyé — ${aiError}`
                 : 'L’IA n’a rien renvoyé cette fois — réessaie dans un instant.',
             }
-  const base = docsOnly ? results.filter((r) => r.notable) : results
+  const q = textFilter.trim().toLowerCase()
+  const matchesText = (r) =>
+    !q ||
+    (r.name || '').toLowerCase().includes(q) ||
+    (r.typeLabel || '').toLowerCase().includes(q) ||
+    (r.enrichment?.ai?.resume || r.enrichment?.wiki?.extract || '').toLowerCase().includes(q)
+  const preCat = (docsOnly ? results.filter((r) => r.notable) : results).filter(matchesText)
+  // Compteurs par type (sur les lieux gardés, hors filtre de type) → puces.
+  const catCounts = {}
+  for (const r of preCat) if (!isExcluded(r)) catCounts[r.category] = (catCounts[r.category] || 0) + 1
+  const base = catFilter ? preCat.filter((r) => r.category === catFilter) : preCat
   const kept = base.filter((r) => !isExcluded(r))
   const excluded = base.filter((r) => isExcluded(r))
   const shown = showExcluded ? [...kept, ...excluded] : kept
+  const filterCats = CATEGORIES.filter((c) => catCounts[c.id])
 
   return (
     <div className="glass pointer-events-auto pt-safe pb-safe flex h-full w-full flex-col overflow-hidden rounded-none sm:rounded-2xl">
@@ -365,6 +432,50 @@ export default function DiscoverPanel({
             {aiStatus.title}
           </p>
         )}
+        {/* Recherche ciblée : filtre texte + puces par type de lieu */}
+        {status === 'done' && results.length > 0 && (
+          <div className="space-y-1.5 px-2 pb-1">
+            <div className="flex items-center gap-2 rounded-xl bg-zinc-800/50 px-3 py-2">
+              <Search size={13} className="shrink-0 text-zinc-500" />
+              <input
+                value={textFilter}
+                onChange={(e) => setTextFilter(e.target.value)}
+                placeholder="Filtrer les résultats (nom, type…)"
+                className="w-full bg-transparent text-xs text-zinc-100 placeholder-zinc-500 outline-none"
+              />
+              {textFilter && (
+                <button onClick={() => setTextFilter('')} className="text-zinc-500 hover:text-zinc-300">
+                  <X size={13} />
+                </button>
+              )}
+            </div>
+            {filterCats.length > 1 && (
+              <div className="-mx-0.5 flex gap-1.5 overflow-x-auto pb-1">
+                <button
+                  onClick={() => setCatFilter('')}
+                  className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium transition ${
+                    !catFilter ? 'bg-violet-500/30 text-violet-200' : 'bg-zinc-800/70 text-zinc-400'
+                  }`}
+                >
+                  Tous
+                </button>
+                {filterCats.map((c) => (
+                  <button
+                    key={c.id}
+                    onClick={() => setCatFilter((v) => (v === c.id ? '' : c.id))}
+                    className={`flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium transition ${
+                      catFilter === c.id ? 'bg-violet-500/30 text-violet-200' : 'bg-zinc-800/70 text-zinc-400'
+                    }`}
+                  >
+                    <span>{c.emoji}</span>
+                    {c.label.split(' / ')[0]}
+                    <span className={catFilter === c.id ? 'opacity-70' : 'text-zinc-600'}>{catCounts[c.id]}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         {status === 'done' && results.length > 0 && (
           <div className="flex items-center justify-between px-3 pb-1 pt-1">
             <span className="flex items-center gap-1.5 text-[11px] text-zinc-500">
@@ -393,9 +504,14 @@ export default function DiscoverPanel({
         )}
         {shown.map((r) => (
           <div key={r.id} className={showExcluded && isExcluded(r) ? 'opacity-45' : ''}>
-            <DiscoverResult r={r} onAdd={onAdd} onSelect={onSelect} />
+            <DiscoverResult r={r} onAdd={onAdd} onSelect={onSelect} center={center} />
           </div>
         ))}
+        {status === 'done' && results.length > 0 && shown.length === 0 && (
+          <p className="px-4 py-6 text-center text-xs text-zinc-500">
+            Aucun lieu ne correspond aux filtres — change de type ou vide le filtre texte.
+          </p>
+        )}
         {status === 'done' && excluded.length > 0 && (
           <button
             onClick={() => setShowExcluded((v) => !v)}
