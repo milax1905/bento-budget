@@ -4,6 +4,8 @@ import { StoreProvider, useStore } from './lib/store'
 import { trailRoute, directRoute, walkMinutes } from './lib/routing'
 import { discoverAbandoned, enrichDiscoveries, refCandidates } from './lib/discover'
 import { formatDistance, distanceKm } from './lib/geo'
+import { APP_VERSION } from './lib/constants'
+import { fetchServerVersion, checkSwUpdate, forceAppUpdate } from './lib/update'
 import MapView from './components/MapView'
 import MapControls from './components/MapControls'
 import BottomNav from './components/BottomNav'
@@ -62,6 +64,32 @@ function Shell() {
   const [userPos, setUserPos] = useState(null)
   const [locating, setLocating] = useState(false)
   const mapRef = useRef(null)
+  // Version serveur ≠ version locale → bannière « Mise à jour disponible »
+  // (iOS garde parfois l'ancienne PWA en cache malgré le service worker).
+  const [serverVersion, setServerVersion] = useState(null)
+  const [updating, setUpdating] = useState(false)
+
+  useEffect(() => {
+    let last = 0
+    const check = async () => {
+      if (Date.now() - last < 60000) return
+      last = Date.now()
+      checkSwUpdate()
+      const v = await fetchServerVersion()
+      if (v) setServerVersion(v)
+    }
+    check()
+    const iv = setInterval(check, 5 * 60 * 1000)
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') check()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      clearInterval(iv)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [])
+  const updateAvailable = Boolean(serverVersion && serverVersion !== APP_VERSION)
 
   useEffect(() => localStorage.setItem(LS_LAYER, layerId), [layerId])
   useEffect(() => localStorage.setItem(LS_LABELS, labelsOn ? '1' : '0'), [labelsOn])
@@ -667,6 +695,27 @@ function Shell() {
           <button onClick={() => setAddMode(false)} className="rounded-lg p-1 text-zinc-400 hover:text-zinc-200">
             <X size={15} />
           </button>
+        </div>
+      )}
+
+      {/* Bannière de mise à jour (version serveur ≠ version locale) */}
+      {updateAvailable && (
+        <div className="pointer-events-none absolute inset-x-0 top-[calc(0.75rem+env(safe-area-inset-top))] z-[2100] flex justify-center px-4">
+          <div className="glass pointer-events-auto flex items-center gap-3 rounded-2xl px-4 py-2.5 shadow-2xl shadow-black/50">
+            <span className="text-xs text-zinc-200">
+              Nouvelle version <span className="font-bold text-indigo-300">v{serverVersion}</span> disponible
+            </span>
+            <button
+              onClick={() => {
+                setUpdating(true)
+                forceAppUpdate()
+              }}
+              disabled={updating}
+              className="rounded-full bg-gradient-to-b from-indigo-400 to-indigo-600 px-3.5 py-1.5 text-xs font-bold text-white ring-1 ring-white/20 transition hover:brightness-110 disabled:opacity-60"
+            >
+              {updating ? 'Mise à jour…' : 'Mettre à jour'}
+            </button>
+          </div>
         </div>
       )}
 
