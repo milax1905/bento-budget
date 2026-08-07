@@ -103,15 +103,29 @@ async function wikipediaAround(lat, lng, radiusKm, signal) {
 // point, avec coordonnées. Best-effort.
 async function wikidataAround(lat, lng, radiusKm, signal) {
   const r = Math.min(Math.max(Number(radiusKm) || 5, 1), 100)
-  const q = `SELECT ?item ?itemLabel ?coord WHERE {
+  // Deux branches : bâtiments abandonnés / villes fantômes (générique) ET
+  // fortifications de la Ligne Maginot (Q162746 ; P361+ transitif car un
+  // ouvrage appartient à un secteur fortifié, lui-même partie de la Ligne ;
+  // Q124035054 = gros ouvrage, Q125418014 = ouvrage). Le drapeau ?maginot
+  // permet au client de les étiqueter « Fortification Maginot ».
+  const q = `SELECT ?item ?itemLabel ?coord ?maginot WHERE {
   SERVICE wikibase:around {
     ?item wdt:P625 ?coord .
     bd:serviceParam wikibase:center "Point(${lng} ${lat})"^^geo:wktLiteral .
     bd:serviceParam wikibase:radius "${r}" .
   }
-  { ?item wdt:P31/wdt:P279* wd:Q19860854 . } UNION { ?item wdt:P31 wd:Q74047 . }
+  {
+    { ?item wdt:P31/wdt:P279* wd:Q19860854 . } UNION { ?item wdt:P31 wd:Q74047 . }
+  }
+  UNION
+  {
+    { ?item wdt:P361+ wd:Q162746 . }
+    UNION { ?item wdt:P31/wdt:P279* wd:Q124035054 . }
+    UNION { ?item wdt:P31/wdt:P279* wd:Q125418014 . }
+    BIND(true AS ?maginot)
+  }
   SERVICE wikibase:label { bd:serviceParam wikibase:language "fr,en". }
-} LIMIT 80`
+} LIMIT 120`
   const url = 'https://query.wikidata.org/sparql?format=json&query=' + encodeURIComponent(q)
   const res = await fetch(url, {
     headers: { 'User-Agent': UA, Accept: 'application/sparql-results+json' },
@@ -119,15 +133,25 @@ async function wikidataAround(lat, lng, radiusKm, signal) {
   })
   if (!res.ok) throw new Error('wd ' + res.status)
   const d = await res.json()
-  const out = []
+  // Un item peut sortir des deux branches (deux lignes) : on déduplique par
+  // qid en préférant la ligne marquée maginot.
+  const byQid = new Map()
   for (const b of d.results?.bindings || []) {
     const m = /Point\(([-\d.]+) ([-\d.]+)\)/.exec(b.coord?.value || '')
     if (!m) continue
     const qid = (b.item?.value || '').split('/').pop()
     if (!qid) continue
-    out.push({ qid, name: b.itemLabel?.value || null, lat: parseFloat(m[2]), lng: parseFloat(m[1]) })
+    const row = {
+      qid,
+      name: b.itemLabel?.value || null,
+      lat: parseFloat(m[2]),
+      lng: parseFloat(m[1]),
+      maginot: b.maginot?.value === 'true',
+    }
+    const prev = byQid.get(qid)
+    if (!prev || (row.maginot && !prev.maginot)) byQid.set(qid, row)
   }
-  return out
+  return [...byQid.values()]
 }
 
 // Extrait un couple {la, lo} d'un item CASIAS. La géométrie Géorisques est du

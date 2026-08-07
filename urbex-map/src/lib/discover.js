@@ -95,6 +95,13 @@ ${lines}
   nwr["man_made"="adit"]${b};
   nwr["man_made"="tailings_pond"]${b};
   nwr["military"="bunker"]${b};
+  nwr["building"="bunker"]${b};
+  nwr["bunker_type"]${b};
+  nwr["historic"="bunker"]${b};
+  nwr["fortification_type"]${b};
+  nwr["ruins:military"]${b};
+  nwr["ruins:building"]${b};
+  nwr["site_type"="fortification"]${b};
 );
 out center 700;`
 }
@@ -149,6 +156,14 @@ function qualifies(tags) {
   if (tags.landuse === 'brownfield') return true
   if (tags.man_made === 'mineshaft' || tags.man_made === 'adit') return true
   if (tags.military === 'bunker') return true
+  // Fortifications : les bunkers/casemates/forts sont presque toujours
+  // désaffectés même sans tag abandoned:* (Ligne Maginot, mur de l'Atlantique…).
+  // Inclut aussi historic=fort/citadel/manor, déjà interrogés par la requête
+  // mais silencieusement écartés ici auparavant (bug corrigé).
+  if (tags.building === 'bunker' || tags.bunker_type) return true
+  if (['fort', 'citadel', 'bunker', 'manor'].includes(tags.historic)) return true
+  if (tags.fortification_type || tags.site_type === 'fortification') return true
+  if (Object.keys(tags).some((k) => k.startsWith('ruins:'))) return true
   return false
 }
 
@@ -158,6 +173,8 @@ function tagline(tags) {
   if (tags.building === 'ruins') return 'building=ruins'
   if (tags.ruins === 'yes') return 'ruins=yes'
   if (tags.historic === 'ruins') return 'historic=ruins'
+  if (tags.military === 'bunker' || tags.building === 'bunker' || tags.bunker_type) return 'bunker'
+  if (tags.historic === 'fort' || tags.historic === 'citadel') return `historic=${tags.historic}`
   return 'OpenStreetMap'
 }
 
@@ -204,6 +221,11 @@ const TYPE_LABELS = {
   'landuse=brownfield': 'Friche industrielle',
   'historic=archaeological_site': 'Site archéologique / ruines',
   'military=bunker': 'Ancien bunker',
+  'building=bunker': 'Ancien bunker',
+  'historic=bunker': 'Bunker historique',
+  'historic=fort': 'Fort / ouvrage fortifié',
+  'historic=citadel': 'Citadelle',
+  'historic=manor': 'Manoir',
   'military=barracks': 'Anciennes casernes',
   'military=airfield': 'Ancien aérodrome militaire',
   'power=plant': 'Ancienne centrale électrique',
@@ -229,6 +251,8 @@ function primaryTag(tags) {
   if (tags.historic === 'ruins') return { domain: 'historic', value: 'ruins' }
   if (tags.man_made === 'mineshaft' || tags.man_made === 'adit') return { domain: 'man_made', value: tags.man_made }
   if (tags.military === 'bunker') return { domain: 'military', value: 'bunker' }
+  if (tags.building === 'bunker' || tags.bunker_type) return { domain: 'military', value: 'bunker' }
+  if (['fort', 'citadel', 'bunker', 'manor'].includes(tags.historic)) return { domain: 'historic', value: tags.historic }
   if (tags.building === 'ruins') return { domain: 'building', value: 'ruins' }
   if (tags.ruins && tags.ruins !== 'no') return { domain: 'ruins', value: 'yes' }
   return null
@@ -242,12 +266,19 @@ function describeSite(tags, category) {
   if (p) {
     typeLabel = TYPE_LABELS[`${p.domain}=${p.value}`] || TYPE_LABELS[`building=${tags.building}`] || typeLabel
   }
+  // Fortification de la Ligne Maginot reconnue à son nom (« Ouvrage du
+  // Hackenberg », « Casemate de… », mention Maginot…) → libellé dédié.
+  const MAGINOT_RE = /maginot|^(ouvrage|casemate|abri|observatoire|blockhaus)\s(du |de |des |d'|d’)/i
+  const nameish = `${tags.name || ''} ${tags['name:fr'] || ''} ${tags.description || ''}`.trim()
+  if (category === 'militaire' && MAGINOT_RE.test(nameish)) typeLabel = 'Fortification Maginot'
   const name =
     tags.name || tags['name:fr'] || tags.old_name || tags.former_name || typeLabel
 
   const facts = []
   const year = (tags.start_date || '').match(/\d{3,4}/)?.[0]
   if (year) facts.push({ label: 'Année', value: year })
+  if (tags.bunker_type || tags.fortification_type)
+    facts.push({ label: 'Type', value: tags.bunker_type || tags.fortification_type })
   if (tags.old_name || tags.former_name) facts.push({ label: 'Ancien nom', value: tags.old_name || tags.former_name })
   if (tags.operator) facts.push({ label: 'Exploitant', value: tags.operator })
   if (tags.heritage || tags['heritage:operator'] || /monument|classé|inscrit/i.test(tags.historic || ''))
@@ -313,20 +344,23 @@ function parseWikidata(items, center, radiusKm) {
     if (radiusKm && dist > radiusKm * 1.05) continue
     if (seen.has(it.qid)) continue
     seen.add(it.qid)
+    // Ouvrage de la Ligne Maginot (drapeau posé par le proxy via Wikidata) →
+    // catégorie militaire et libellé dédié.
+    const maginot = Boolean(it.maginot)
     out.push({
       id: `wd/${it.qid}`,
       lat: it.lat,
       lng: it.lng,
-      name: it.name || 'Lieu documenté',
-      category: 'autre',
-      typeLabel: 'Ruines / lieu documenté',
+      name: it.name || (maginot ? 'Fortification Maginot' : 'Lieu documenté'),
+      category: maginot ? 'militaire' : 'autre',
+      typeLabel: maginot ? 'Fortification Maginot' : 'Ruines / lieu documenté',
       facts: [],
       osmDescription: null,
-      danger: assessDanger('autre', {}),
-      tagline: 'Wikidata',
+      danger: assessDanger(maginot ? 'militaire' : 'autre', {}),
+      tagline: maginot ? 'Wikidata · Ligne Maginot' : 'Wikidata',
       osmUrl: null,
       distanceKm: dist,
-      score: 6, // documenté → remonte
+      score: maginot ? 7 : 6, // documenté → remonte
       notable: true,
       wiki: null,
       wikipedia: null,

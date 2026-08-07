@@ -18,7 +18,7 @@ export default async function handler(req, res) {
   const base = {
     ok: true,
     service: 'urbex-discover',
-    version: '3.2',
+    version: '3.3',
     anthropic: Boolean(anthropicKey),
     groq: Boolean(groqKey),
     anthropicModel,
@@ -51,6 +51,65 @@ export default async function handler(req, res) {
       res.status(200).json({ ...base, basiasTest: out })
     } catch (e) {
       res.status(200).json({ ...base, basiasTest: { error: e?.message || 'exception', url: testUrl } })
+    } finally {
+      clearTimeout(t)
+    }
+    return
+  }
+
+  // Diagnostic WikiMaginot EN DIRECT : /api/ping?maginot=1
+  // Sonde l'export KML officiel (bouton « tout télécharger » du site) pour
+  // vérifier sa forme réelle avant de brancher la source dans /api/discover
+  // (inatteignable depuis mon environnement de développement).
+  if (/[?&]maginot=1(?:&|$)/.test(req.url || '') || req.query?.maginot === '1') {
+    const testUrl = 'https://wikimaginot.eu/_kml_files/WIKIFULL.kml'
+    const ctrl = new AbortController()
+    const t = setTimeout(() => ctrl.abort(), 15000)
+    try {
+      const r = await fetch(testUrl, { headers: { Accept: '*/*', 'User-Agent': 'UrbexAtlas/ping' }, signal: ctrl.signal })
+      const text = await r.text()
+      res.status(200).json({
+        ...base,
+        maginotTest: {
+          status: r.status,
+          contentType: r.headers.get('content-type'),
+          bytes: text.length,
+          isNetworkLink: /<NetworkLink[\s>]/i.test(text),
+          placemarks: (text.match(/<Placemark[\s>]/g) || []).length,
+          head: text.slice(0, 300),
+          sample: ((text.match(/<Placemark[\s>][\s\S]*?<\/Placemark>/) || [''])[0] || '').slice(0, 800),
+        },
+      })
+    } catch (e) {
+      res.status(200).json({ ...base, maginotTest: { error: e?.message || 'exception', url: testUrl } })
+    } finally {
+      clearTimeout(t)
+    }
+    return
+  }
+
+  // Diagnostic WFS DataGrandEst : /api/ping?wfs=1 — liste les couches du
+  // GeoServer wikimaginot (si une couche de POINTS de constructions existe,
+  // ce sera la meilleure source, filtrable par bbox).
+  if (/[?&]wfs=1(?:&|$)/.test(req.url || '') || req.query?.wfs === '1') {
+    const testUrl =
+      'https://www.datagrandest.fr/geoserver/wikimaginot/wfs?service=WFS&version=2.0.0&request=GetCapabilities'
+    const ctrl = new AbortController()
+    const t = setTimeout(() => ctrl.abort(), 15000)
+    try {
+      const r = await fetch(testUrl, { headers: { Accept: '*/*', 'User-Agent': 'UrbexAtlas/ping' }, signal: ctrl.signal })
+      const text = await r.text()
+      res.status(200).json({
+        ...base,
+        wfsTest: {
+          status: r.status,
+          bytes: text.length,
+          layers: (text.match(/<Name>([^<]+)<\/Name>/g) || []).slice(0, 30),
+          head: text.slice(0, 300),
+        },
+      })
+    } catch (e) {
+      res.status(200).json({ ...base, wfsTest: { error: e?.message || 'exception', url: testUrl } })
     } finally {
       clearTimeout(t)
     }

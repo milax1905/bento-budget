@@ -186,9 +186,16 @@ désaffecté). Garde-les par défaut (urbex:true, verdict "moyen" en général).
 "urbex": false QUE si tu sais que le site est aujourd'hui reconstruit / réhabilité /
 en activité. Ne les note JAMAIS "quelconque" juste par manque d'info.
 
+FORTIFICATIONS (bunker, casemate, blockhaus, fort, ouvrage Maginot…) : elles
+sont presque toujours désaffectées → garde-les par défaut (urbex:true), MÊME
+sans info. Exceptions à écarter (urbex:false) : transformées en MUSÉE visitable
+(ex. gros ouvrages célèbres comme Hackenberg, Schoenenbourg, Fermont) ou encore
+en zone militaire active.
+
 LIEUX en ligne (macarte ET basias absents/false) : sois STRICT. En cas de doute
 réel qu'un lieu ne soit pas vraiment abandonné, mets "urbex": false. Réserve
-"verdict": "quelconque" aux lieux sans intérêt pour l'urbex.
+"verdict": "quelconque" aux lieux sans intérêt pour l'urbex. (La règle
+FORTIFICATIONS ci-dessus reste prioritaire pour les bunkers/forts.)
 
 Pour chaque lieu renvoie :
 - "urbex" : true (vrai spot abandonné explorable) | false (à écarter).
