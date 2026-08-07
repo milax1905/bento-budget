@@ -614,7 +614,25 @@ function parseMaginot(points, center, radiusKm) {
   return out.slice(0, 150)
 }
 
-export async function discoverAbandoned(center, radiusKm, { signal } = {}) {
+// Découpe la zone en 4 quadrants (avec un léger recouvrement) pour le mode
+// « fouille intense » : chaque sous-requête Overpass a SA limite de 700
+// éléments → jusqu'à ~2 800 lieux sur une zone dense, là où une requête
+// unique tronquait silencieusement à 700.
+function quadrantsOf(center, radiusKm) {
+  const b = bboxOf(center.lat, center.lng, radiusKm)
+  const midLat = center.lat
+  const midLng = center.lng
+  const oLat = (b.n - b.s) * 0.02
+  const oLng = (b.e - b.w) * 0.02
+  return [
+    { s: midLat - oLat, w: b.w, n: b.n, e: midLng + oLng }, // nord-ouest
+    { s: midLat - oLat, w: midLng - oLng, n: b.n, e: b.e }, // nord-est
+    { s: b.s, w: b.w, n: midLat + oLat, e: midLng + oLng }, // sud-ouest
+    { s: b.s, w: midLng - oLng, n: midLat + oLat, e: b.e }, // sud-est
+  ]
+}
+
+export async function discoverAbandoned(center, radiusKm, { signal, intensive } = {}) {
   const radius = Math.min(Math.max(radiusKm, 0.5), MAX_DISCOVER_RADIUS_KM)
   const query = buildQuery(bboxOf(center.lat, center.lng, radius))
 
@@ -625,15 +643,49 @@ export async function discoverAbandoned(center, radiusKm, { signal } = {}) {
   // Overpass voyage dans le corps (+ la géo pour la recherche Wikidata) → pas
   // d'URL géante, et « /api/discover » n'a aucun mot filtré par un bloqueur.
   try {
-    const data = await fetchJson(
-      '/api/discover',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ data: query, geo: { lat: center.lat, lng: center.lng, radiusKm: radius } }),
-      },
-      signal,
-    )
+    let data
+    if (intensive && radius >= 15) {
+      // FOUILLE INTENSE : 4 sous-requêtes Overpass (une par quadrant) pour
+      // contourner la limite d'éléments, en parallèle. Seule la première porte
+      // la géo (Wikidata/Wikipédia/BASIAS couvrent déjà tout le rayon) — les
+      // autres ne interrogent qu'Overpass. Best-effort : un quadrant qui
+      // échoue n'annule pas les trois autres.
+      const quads = quadrantsOf(center, radius)
+      const calls = quads.map((qd, i) =>
+        fetchJson(
+          '/api/discover',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              data: buildQuery(qd),
+              geo: i === 0 ? { lat: center.lat, lng: center.lng, radiusKm: radius } : null,
+            }),
+          },
+          signal,
+        ),
+      )
+      const settled = await Promise.allSettled(calls)
+      if (signal?.aborted) throw new Error('abort')
+      const oks = settled.filter((s) => s.status === 'fulfilled').map((s) => s.value)
+      if (!oks.length) throw settled[0].reason || new Error('réseau')
+      data = {
+        elements: oks.flatMap((d) => d.elements || []),
+        wikidata: oks.flatMap((d) => d.wikidata || []),
+        wikipedia: oks.flatMap((d) => d.wikipedia || []),
+        casias: oks.flatMap((d) => d.casias || []),
+      }
+    } else {
+      data = await fetchJson(
+        '/api/discover',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ data: query, geo: { lat: center.lat, lng: center.lng, radiusKm: radius } }),
+        },
+        signal,
+      )
+    }
     const osm = parseElements(data.elements || [], center, radius)
     const wd = parseWikidata(data.wikidata || [], center, radius)
     const wp = parseWikipedia(data.wikipedia || [], center, radius)

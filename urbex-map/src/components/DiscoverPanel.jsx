@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Radar,
   X,
@@ -15,10 +15,12 @@ import {
   Sparkles,
   Star,
   Navigation,
+  Flame,
 } from 'lucide-react'
 import { CATEGORIES, categoryById } from '../lib/constants'
 import { formatDistance } from '../lib/geo'
 import { MAX_DISCOVER_RADIUS_KM, extractLooksActive } from '../lib/discover'
+import { searchPlaces } from '../lib/geocode'
 import { webSearchUrl } from '../lib/wiki'
 
 const DANGER_COLORS = { 1: '#10b981', 2: '#f59e0b', 3: '#f97316', 4: '#ef4444' }
@@ -292,15 +294,61 @@ export default function DiscoverPanel({
   onAdd,
   onSelect,
   onRecenter,
+  onIntensive,
+  onCenterChange,
+  onEnrichMore,
   locating,
 }) {
-  const { radiusKm, status, results, error, center, enriching, aiEnabled, aiError } = discover
+  const { radiusKm, status, results, error, center, enriching, aiEnabled, aiError, intensive } = discover
   const [docsOnly, setDocsOnly] = useState(false)
   const [showExcluded, setShowExcluded] = useState(false)
   // Recherche ciblée : filtre par type de lieu + filtre texte (indispensable
   // quand une recherche à grand rayon renvoie des centaines de lieux).
   const [catFilter, setCatFilter] = useState('')
   const [textFilter, setTextFilter] = useState('')
+  // Tri de la liste + pagination (fluidité avec des centaines de résultats).
+  const [sortBy, setSortBy] = useState('pertinence') // pertinence | proche | top
+  const [limit, setLimit] = useState(80)
+  // Recherche de ville/adresse pour recentrer sans toucher la carte.
+  const [placeQ, setPlaceQ] = useState('')
+  const [placeHits, setPlaceHits] = useState([])
+  const [placeStatus, setPlaceStatus] = useState('idle')
+  const placeAbort = useRef(null)
+
+  useEffect(() => {
+    placeAbort.current?.abort()
+    const q = placeQ.trim()
+    if (q.length < 3) {
+      setPlaceHits([])
+      setPlaceStatus('idle')
+      return
+    }
+    const ctrl = new AbortController()
+    placeAbort.current = ctrl
+    setPlaceStatus('searching')
+    const t = setTimeout(() => {
+      searchPlaces(q, { signal: ctrl.signal })
+        .then((r) => {
+          setPlaceHits(r.slice(0, 5))
+          setPlaceStatus(r.length ? 'idle' : 'empty')
+        })
+        .catch((e) => {
+          if (e.name !== 'AbortError') {
+            setPlaceHits([])
+            setPlaceStatus('error')
+          }
+        })
+    }, 400)
+    return () => {
+      clearTimeout(t)
+      ctrl.abort()
+    }
+  }, [placeQ])
+
+  // Nouvelle recherche ou changement de filtre → on repart en haut de liste.
+  useEffect(() => {
+    setLimit(80)
+  }, [results, catFilter, textFilter, sortBy, docsOnly, showExcluded])
 
   const notableCount = results.filter((r) => r.notable).length
   const anyAi = results.some((r) => r.enrichment?.ai)
@@ -331,13 +379,25 @@ export default function DiscoverPanel({
   const catCounts = {}
   for (const r of preCat) if (!isExcluded(r)) catCounts[r.category] = (catCounts[r.category] || 0) + 1
   const base = catFilter ? preCat.filter((r) => r.category === catFilter) : preCat
-  const kept = base.filter((r) => !isExcluded(r))
+  let kept = base.filter((r) => !isExcluded(r))
   const excluded = base.filter((r) => isExcluded(r))
+  // Tri : pertinence (ordre calculé), proches d'abord, ou meilleures notes IA.
+  const aiRank = (r) =>
+    (r.enrichment?.ai?.verdict === 'top' ? 100 : 0) + (Number(r.enrichment?.ai?.interet) || 0)
+  if (sortBy === 'proche') kept = [...kept].sort((a, b) => a.distanceKm - b.distanceKm)
+  else if (sortBy === 'top') kept = [...kept].sort((a, b) => aiRank(b) - aiRank(a) || a.distanceKm - b.distanceKm)
   const shown = showExcluded ? [...kept, ...excluded] : kept
+  const paged = shown.slice(0, limit)
   const filterCats = CATEGORIES.filter((c) => catCounts[c.id])
+  // Lieux du filtre courant pas encore enrichis (ni histoire, ni IA, ni photos)
+  // → cible du bouton « Analyser plus » (par lots de 30, quota IA oblige).
+  const unanalyzed = kept.filter((r) => !r.enrichment)
 
   return (
-    <div className="glass pointer-events-auto pt-safe pb-safe flex h-full w-full flex-col overflow-hidden rounded-none sm:rounded-2xl">
+    <div
+      className="glass pointer-events-auto pt-safe flex h-full w-full flex-col overflow-hidden rounded-none sm:rounded-2xl"
+      style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 5.5rem)' }}
+    >
       <div className="flex items-center gap-3 border-b border-white/10 px-4 py-3">
         <Radar size={18} className="text-violet-300" />
         <div className="min-w-0 flex-1">
@@ -356,6 +416,48 @@ export default function DiscoverPanel({
 
       {/* Réglages de recherche */}
       <div className="space-y-3 border-b border-white/10 px-4 py-3">
+        {/* Recentrer par ville/adresse, sans passer par la carte */}
+        <div className="relative">
+          <div className="flex items-center gap-2 rounded-xl bg-zinc-800/50 px-3 py-2.5">
+            <Search size={14} className="shrink-0 text-zinc-500" />
+            <input
+              value={placeQ}
+              onChange={(e) => setPlaceQ(e.target.value)}
+              placeholder="Chercher autour d'une ville, adresse…"
+              className="w-full bg-transparent text-xs text-zinc-100 placeholder-zinc-500 outline-none"
+            />
+            {placeQ && (
+              <button
+                onClick={() => {
+                  setPlaceQ('')
+                  setPlaceHits([])
+                }}
+                className="text-zinc-500 hover:text-zinc-300"
+              >
+                <X size={13} />
+              </button>
+            )}
+          </div>
+          {(placeHits.length > 0 || placeStatus === 'searching' || placeStatus === 'empty') && (
+            <div className="absolute inset-x-0 top-full z-10 mt-1 overflow-hidden rounded-xl border border-white/10 bg-zinc-900/95 shadow-xl backdrop-blur-xl">
+              {placeStatus === 'searching' && <p className="px-3 py-2 text-[11px] text-zinc-500">Recherche…</p>}
+              {placeStatus === 'empty' && <p className="px-3 py-2 text-[11px] text-zinc-500">Aucun résultat</p>}
+              {placeHits.map((h, i) => (
+                <button
+                  key={i}
+                  onClick={() => {
+                    onCenterChange?.({ lat: h.lat, lng: h.lng })
+                    setPlaceQ('')
+                    setPlaceHits([])
+                  }}
+                  className="block w-full px-3 py-2 text-left text-[11px] text-zinc-300 transition hover:bg-zinc-700/60"
+                >
+                  {h.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <div className="flex items-center justify-between rounded-xl bg-zinc-800/50 px-3 py-2.5 text-xs">
           <span className="font-mono text-zinc-300">
             {center ? `${center.lat.toFixed(4)}, ${center.lng.toFixed(4)}` : '—'}
@@ -386,6 +488,31 @@ export default function DiscoverPanel({
             </p>
           )}
         </div>
+        {radiusKm >= 15 && (
+          <button
+            onClick={() => onIntensive?.(!intensive)}
+            className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left transition ${
+              intensive ? 'bg-violet-500/20 ring-1 ring-violet-400/40' : 'bg-zinc-800/50 hover:bg-zinc-800/80'
+            }`}
+          >
+            <span>
+              <span className="flex items-center gap-1.5 text-xs font-semibold text-zinc-100">
+                <Flame size={13} className={intensive ? 'text-violet-300' : 'text-zinc-500'} /> Fouille intense
+              </span>
+              <span className="mt-0.5 block text-[10px] leading-snug text-zinc-500">
+                Découpe la zone en 4 sous-recherches : jusqu'à 4× plus de lieux dans les zones denses (plus lent).
+              </span>
+            </span>
+            <span
+              className={`relative h-5 w-9 shrink-0 rounded-full transition ${intensive ? 'bg-violet-500' : 'bg-zinc-700'}`}
+            >
+              <span
+                className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all ${intensive ? 'left-4.5 translate-x-0' : 'left-0.5'}`}
+                style={{ left: intensive ? '1.125rem' : '0.125rem' }}
+              />
+            </span>
+          </button>
+        )}
         <button
           onClick={onSearch}
           disabled={status === 'loading' || !center}
@@ -474,6 +601,25 @@ export default function DiscoverPanel({
                 ))}
               </div>
             )}
+            {/* Tri */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] uppercase tracking-wider text-zinc-600">Tri</span>
+              {[
+                { id: 'pertinence', label: 'Pertinence' },
+                { id: 'proche', label: 'Proches' },
+                { id: 'top', label: 'Top IA' },
+              ].map((s) => (
+                <button
+                  key={s.id}
+                  onClick={() => setSortBy(s.id)}
+                  className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition ${
+                    sortBy === s.id ? 'bg-violet-500/30 text-violet-200' : 'bg-zinc-800/70 text-zinc-400'
+                  }`}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
           </div>
         )}
         {status === 'done' && results.length > 0 && (
@@ -502,11 +648,29 @@ export default function DiscoverPanel({
             )}
           </div>
         )}
-        {shown.map((r) => (
+        {paged.map((r) => (
           <div key={r.id} className={showExcluded && isExcluded(r) ? 'opacity-45' : ''}>
             <DiscoverResult r={r} onAdd={onAdd} onSelect={onSelect} center={center} />
           </div>
         ))}
+        {shown.length > limit && (
+          <button
+            onClick={() => setLimit((l) => l + 120)}
+            className="mx-auto mt-1 flex items-center gap-1.5 rounded-xl bg-zinc-800/70 px-4 py-2 text-xs font-medium text-zinc-300 transition hover:bg-zinc-700/70"
+          >
+            <ChevronDown size={13} /> Voir plus ({shown.length - limit} restants)
+          </button>
+        )}
+        {/* Analyser plus : enrichit le prochain lot (30) du filtre courant */}
+        {status === 'done' && unanalyzed.length > 0 && !enriching && (
+          <button
+            onClick={() => onEnrichMore?.(unanalyzed.slice(0, 30))}
+            className="mx-auto mt-2 flex items-center gap-1.5 rounded-xl bg-violet-500/20 px-4 py-2 text-xs font-medium text-violet-200 transition hover:bg-violet-500/30"
+          >
+            <Sparkles size={13} /> Analyser {Math.min(30, unanalyzed.length)} lieu
+            {Math.min(30, unanalyzed.length) > 1 ? 'x' : ''} de plus (histoire, photos, IA)
+          </button>
+        )}
         {status === 'done' && results.length > 0 && shown.length === 0 && (
           <p className="px-4 py-6 text-center text-xs text-zinc-500">
             Aucun lieu ne correspond aux filtres — change de type ou vide le filtre texte.
