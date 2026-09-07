@@ -4,19 +4,25 @@ import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.LongArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
-import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import fr.cubeland.metiers.CubelandMetiers;
-import fr.cubeland.metiers.Reglages;
 import fr.cubeland.metiers.cuisine.Catalogue;
 import fr.cubeland.metiers.cuisine.Plat;
 import fr.cubeland.metiers.cuisine.Qualite;
+import fr.cubeland.metiers.cuisine.Vente;
 import fr.cubeland.metiers.metier.DonneesMetiers;
 import fr.cubeland.metiers.metier.Metiers;
 import fr.cubeland.metiers.metier.PontBoutique;
+import fr.cubeland.metiers.quete.Quete;
+import fr.cubeland.metiers.quete.Quetes;
+import fr.cubeland.metiers.quete.TypeQuete;
+import fr.cubeland.metiers.reseau.PaquetCuisine;
 import fr.cubeland.metiers.reseau.PaquetEtat;
 import fr.cubeland.metiers.reseau.PaquetOuvrir;
+import fr.cubeland.metiers.reseau.PaquetQuetes;
 import fr.cubeland.metiers.reseau.Reseau;
+import java.util.ArrayList;
+import java.util.List;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
@@ -28,10 +34,26 @@ import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod.EventBusSubscriber;
 
-@EventBusSubscriber(
-   modid = "cubelandmetiers"
-)
+/**
+ * Les commandes du mod.
+ *
+ * <pre>
+ * /metiers                    ouvre le panneau
+ * /metiers cuisine            ouvre le carnet de cuisine
+ * /metiers recharger          relit réglages et catalogue (op)
+ * /metiers reprendre          reprend l'XP de la boutique (op)
+ * /metiers xp joueur métier n donne de l'XP (op)
+ * /cuisinier                  ouvre le carnet de cuisine
+ * /cuisinier vendre [tout]    vend le plat en main, ou tous les plats
+ * /cuisinier prix             estime le plat en main
+ * /cuisinier livrer           livre ce qu'on a pour la commande de livraison
+ * /cuisinier palier joueur n  force un palier, 0 pour revenir aux recettes (op)
+ * </pre>
+ */
+@EventBusSubscriber(modid = CubelandMetiers.MODID)
 public final class Commandes {
+   private static final int OP = 3;
+
    private Commandes() {
    }
 
@@ -39,63 +61,48 @@ public final class Commandes {
    public static void enregistrer(RegisterCommandsEvent e) {
       CommandDispatcher<CommandSourceStack> d = e.getDispatcher();
       d.register(
-         (LiteralArgumentBuilder)((LiteralArgumentBuilder)((LiteralArgumentBuilder)((LiteralArgumentBuilder)((LiteralArgumentBuilder)Commands.literal(
-                           "metiers"
-                        )
-                        .executes(c -> ouvrir((CommandSourceStack)c.getSource(), 0)))
-                     .then(Commands.literal("cuisine").executes(c -> ouvrir((CommandSourceStack)c.getSource(), 1))))
-                  .then(
-                     ((LiteralArgumentBuilder)Commands.literal("recharger").requires(s -> s.hasPermission(3)))
-                        .executes(c -> recharger((CommandSourceStack)c.getSource()))
-                  ))
-               .then(
-                  ((LiteralArgumentBuilder)Commands.literal("reprendre").requires(s -> s.hasPermission(3)))
-                     .executes(c -> reprendre((CommandSourceStack)c.getSource()))
-               ))
+         Commands.literal("metiers")
+            .executes(c -> ouvrir(c.getSource(), 0))
+            .then(Commands.literal("cuisine").executes(c -> ouvrir(c.getSource(), 1)))
+            .then(Commands.literal("recharger").requires(s -> s.hasPermission(OP)).executes(c -> recharger(c.getSource())))
+            .then(Commands.literal("reprendre").requires(s -> s.hasPermission(OP)).executes(c -> reprendre(c.getSource())))
             .then(
-               ((LiteralArgumentBuilder)Commands.literal("xp").requires(s -> s.hasPermission(3)))
+               Commands.literal("xp")
+                  .requires(s -> s.hasPermission(OP))
                   .then(
                      Commands.argument("joueur", EntityArgument.player())
                         .then(
                            Commands.argument("metier", StringArgumentType.word())
                               .then(
-                                 Commands.argument("montant", LongArgumentType.longArg())
+                                 Commands.argument("montant", LongArgumentType.longArg(1L))
                                     .executes(
                                        c -> donnerXp(
-                                             (CommandSourceStack)c.getSource(),
-                                             EntityArgument.getPlayer(c, "joueur"),
-                                             StringArgumentType.getString(c, "metier"),
-                                             LongArgumentType.getLong(c, "montant")
-                                          )
+                                          c.getSource(),
+                                          EntityArgument.getPlayer(c, "joueur"),
+                                          StringArgumentType.getString(c, "metier"),
+                                          LongArgumentType.getLong(c, "montant")
+                                       )
                                     )
                               )
                         )
                   )
             )
       );
+      d.register(Commands.literal("cubeland").executes(c -> ouvrir(c.getSource(), 0)).then(Commands.literal("cuisine").executes(c -> ouvrir(c.getSource(), 1))));
       d.register(
-         (LiteralArgumentBuilder)((LiteralArgumentBuilder)Commands.literal("cubeland").executes(c -> ouvrir((CommandSourceStack)c.getSource(), 0)))
-            .then(Commands.literal("cuisine").executes(c -> ouvrir((CommandSourceStack)c.getSource(), 1)))
-      );
-      d.register(
-         (LiteralArgumentBuilder)((LiteralArgumentBuilder)((LiteralArgumentBuilder)((LiteralArgumentBuilder)Commands.literal("cuisinier")
-                     .executes(c -> ouvrir((CommandSourceStack)c.getSource(), 1)))
-                  .then(
-                     ((LiteralArgumentBuilder)Commands.literal("vendre").executes(c -> vendre((CommandSourceStack)c.getSource())))
-                        .then(Commands.literal("tout").executes(c -> vendreTout((CommandSourceStack)c.getSource())))
-                  ))
-               .then(Commands.literal("prix").executes(c -> prix((CommandSourceStack)c.getSource()))))
+         Commands.literal("cuisinier")
+            .executes(c -> ouvrir(c.getSource(), 1))
+            .then(Commands.literal("vendre").executes(c -> vendre(c.getSource())).then(Commands.literal("tout").executes(c -> vendreTout(c.getSource()))))
+            .then(Commands.literal("prix").executes(c -> prix(c.getSource())))
+            .then(Commands.literal("livrer").executes(c -> livrer(c.getSource())))
             .then(
-               ((LiteralArgumentBuilder)Commands.literal("palier").requires(s -> s.hasPermission(3)))
+               Commands.literal("palier")
+                  .requires(s -> s.hasPermission(OP))
                   .then(
                      Commands.argument("joueur", EntityArgument.player())
                         .then(
-                           Commands.argument("palier", IntegerArgumentType.integer(1, 5))
-                              .executes(
-                                 c -> forcerPalier(
-                                       (CommandSourceStack)c.getSource(), EntityArgument.getPlayer(c, "joueur"), IntegerArgumentType.getInteger(c, "palier")
-                                    )
-                              )
+                           Commands.argument("palier", IntegerArgumentType.integer(0, 5))
+                              .executes(c -> forcerPalier(c.getSource(), EntityArgument.getPlayer(c, "joueur"), IntegerArgumentType.getInteger(c, "palier")))
                         )
                   )
             )
@@ -106,6 +113,8 @@ public final class Commandes {
       ServerPlayer joueur = src.getPlayerOrException();
       DonneesMetiers donnees = DonneesMetiers.de(joueur.server);
       Reseau.versJoueur(joueur, PaquetEtat.pour(joueur, donnees));
+      Reseau.versJoueur(joueur, PaquetCuisine.pour(joueur, donnees));
+      Reseau.versJoueur(joueur, PaquetQuetes.pour(joueur, donnees));
       Reseau.versJoueur(joueur, new PaquetOuvrir(onglet));
       return 1;
    }
@@ -115,35 +124,46 @@ public final class Commandes {
       ItemStack pile = joueur.getMainHandItem();
       Plat plat = Catalogue.de(pile);
       if (plat == null) {
-         src.sendFailure(Component.literal("Tiens le plat a vendre dans ta main principale."));
+         src.sendFailure(Component.translatable("cubelandmetiers.cmd.tenir_plat"));
          return 0;
-      } else if (Qualite.horsPalier(pile)) {
-         src.sendFailure(Component.literal("Ce plat a ete cuisine hors palier : personne n'en veut."));
-         return 0;
-      } else {
-         int q = Math.max(1, Qualite.de(pile));
-         int nombre = pile.getCount();
-         long unite = Qualite.prix(plat, q);
-         long brut = unite * (long)nombre;
-         long commission = brut * (long)Math.max(0, Reglages.get().commissionVente) / 100L;
-         long net = Math.max(0L, brut - commission);
-         if (!PontBoutique.crediter(joueur.server, joueur.getUUID(), net)) {
-            src.sendFailure(Component.literal("La boutique ne repond pas : vente annulee."));
-            return 0;
-         } else {
-            pile.setCount(0);
-            src.sendSuccess(
-               Component.literal("Vendu ")
-                  .append(Component.literal(nombre + " × " + plat.nom()).withStyle(ChatFormatting.WHITE))
-                  .append(Component.literal(" (" + Qualite.nom(q) + ") pour "))
-                  .append(Component.literal(net + " P").withStyle(ChatFormatting.GOLD))
-                  .append(Component.literal(commission > 0L ? "  — commission " + commission + " P" : ""))
-                  .withStyle(ChatFormatting.GRAY),
-               false
-            );
-            return 1;
-         }
       }
+      if (Qualite.horsPalier(pile)) {
+         src.sendFailure(Component.translatable("cubelandmetiers.cmd.hors_palier"));
+         return 0;
+      }
+      int q = Math.max(1, Qualite.de(pile));
+      int nombre = pile.getCount();
+      Vente.Bilan bilan = Vente.vendre(joueur, List.of(pile));
+      return conclure(src, joueur, bilan, Component.literal(nombre + " × ").append(plat.nom()).append(" (").append(Qualite.nom(q)).append(")"));
+   }
+
+   private static int vendreTout(CommandSourceStack src) throws CommandSyntaxException {
+      ServerPlayer joueur = src.getPlayerOrException();
+      List<ItemStack> piles = new ArrayList<>(joueur.getInventory().items);
+      Vente.Bilan bilan = Vente.vendre(joueur, piles);
+      if (bilan == Vente.Bilan.RIEN) {
+         src.sendFailure(Component.translatable("cubelandmetiers.cmd.rien_a_vendre"));
+         return 0;
+      }
+      return conclure(src, joueur, bilan, Component.translatable("cubelandmetiers.cmd.n_plats", bilan == null ? 0 : bilan.plats()));
+   }
+
+   private static int conclure(CommandSourceStack src, ServerPlayer joueur, Vente.Bilan bilan, Component quoi) {
+      if (bilan == null) {
+         src.sendFailure(Component.translatable("cubelandmetiers.cmd.boutique_muette"));
+         return 0;
+      }
+      if (bilan == Vente.Bilan.RIEN) {
+         src.sendFailure(Component.translatable("cubelandmetiers.cmd.rien_a_vendre"));
+         return 0;
+      }
+      Component message = Component.translatable("cubelandmetiers.cmd.vendu", quoi, Component.literal(bilan.net() + " P").withStyle(ChatFormatting.GOLD)).withStyle(ChatFormatting.GRAY);
+      if (bilan.commission() > 0L) {
+         message = message.copy().append(Component.translatable("cubelandmetiers.cmd.commission", bilan.commission()).withStyle(ChatFormatting.DARK_GRAY));
+      }
+      src.sendSuccess(message, false);
+      Quetes.surVente(joueur, DonneesMetiers.de(joueur.server));
+      return 1;
    }
 
    private static int prix(CommandSourceStack src) throws CommandSyntaxException {
@@ -151,69 +171,48 @@ public final class Commandes {
       ItemStack pile = joueur.getMainHandItem();
       Plat plat = Catalogue.de(pile);
       if (plat == null) {
-         src.sendFailure(Component.literal("Tiens un plat dans ta main principale."));
+         src.sendFailure(Component.translatable("cubelandmetiers.cmd.tenir_plat"));
          return 0;
-      } else {
-         int q = Math.max(1, Qualite.de(pile));
-         src.sendSuccess(
-            Component.literal(plat.nom() + " · ")
-               .append(Component.literal(Qualite.nom(q)).withStyle(Qualite.couleur(q)))
-               .append(
-                  Component.literal(" · " + Qualite.prix(plat, q) + " P l'unite, " + Qualite.prix(plat, q) * (long)pile.getCount() + " P la pile")
-                     .withStyle(ChatFormatting.GRAY)
-               ),
-            false
-         );
-         return 1;
       }
+      int q = Math.max(1, Qualite.de(pile));
+      long unite = Qualite.prix(plat, q);
+      src.sendSuccess(
+         plat.nom().copy()
+            .append(" · ")
+            .append(Qualite.nom(q).copy().withStyle(Qualite.couleur(q)))
+            .append(Component.translatable("cubelandmetiers.cmd.prix", unite, unite * pile.getCount()).withStyle(ChatFormatting.GRAY)),
+         false
+      );
+      return 1;
    }
 
-   private static int vendreTout(CommandSourceStack src) throws CommandSyntaxException {
+   private static int livrer(CommandSourceStack src) throws CommandSyntaxException {
       ServerPlayer joueur = src.getPlayerOrException();
-      long brut = 0L;
-      int plats = 0;
-
-      for (ItemStack pile : joueur.getInventory().items) {
-         Plat plat = Catalogue.de(pile);
-         if (plat != null && !Qualite.horsPalier(pile)) {
-            int q = Math.max(1, Qualite.de(pile));
-            brut += Qualite.prix(plat, q) * (long)pile.getCount();
-            plats += pile.getCount();
-            pile.setCount(0);
+      DonneesMetiers donnees = DonneesMetiers.de(joueur.server);
+      Quete livraison = null;
+      for (Quete q : Quetes.assurer(joueur, donnees)) {
+         if (q.type() == TypeQuete.LIVRAISON) {
+            livraison = q;
          }
       }
-
-      if (plats == 0) {
-         src.sendFailure(Component.literal("Aucun plat vendable dans ton inventaire."));
+      if (livraison == null) {
+         src.sendFailure(Component.translatable("cubelandmetiers.cmd.pas_de_livraison"));
          return 0;
-      } else {
-         long commission = brut * (long)Math.max(0, Reglages.get().commissionVente) / 100L;
-         long net = Math.max(0L, brut - commission);
-         if (!PontBoutique.crediter(joueur.server, joueur.getUUID(), net)) {
-            src.sendFailure(Component.literal("La boutique ne repond pas : rien n'a ete vendu."));
-            return 0;
-         } else {
-            src.sendSuccess(
-               Component.literal(plats + " plats vendus pour ")
-                  .append(Component.literal(net + " P").withStyle(ChatFormatting.GOLD))
-                  .append(Component.literal(commission > 0L ? "  — commission " + commission + " P" : ""))
-                  .withStyle(ChatFormatting.GRAY),
-               false
-            );
-            return 1;
-         }
       }
+      int pris = Quetes.livrer(joueur, donnees, livraison.id());
+      if (pris == 0) {
+         src.sendFailure(Component.translatable("cubelandmetiers.msg.rien_a_livrer"));
+         return 0;
+      }
+      src.sendSuccess(Component.translatable("cubelandmetiers.msg.livre", pris).withStyle(ChatFormatting.GREEN), false);
+      Reseau.versJoueur(joueur, PaquetCuisine.pour(joueur, donnees));
+      return 1;
    }
 
    private static int recharger(CommandSourceStack src) {
-      Reglages.charger();
-      Catalogue.charger();
+      CubelandMetiers.recharger(src.getServer());
       src.sendSuccess(
-         Component.literal(
-               "Cubeland Metiers " + CubelandMetiers.version() + " · recharge : " + Catalogue.nombre() + " plats, " + Metiers.tous().size() + " metiers."
-            )
-            .withStyle(ChatFormatting.GREEN),
-         true
+         Component.translatable("cubelandmetiers.cmd.recharge", CubelandMetiers.version(), Catalogue.nombre(), Metiers.tous().size()).withStyle(ChatFormatting.GREEN), true
       );
       return 1;
    }
@@ -221,44 +220,32 @@ public final class Commandes {
    private static int reprendre(CommandSourceStack src) {
       if (src.getServer() == null) {
          return 0;
-      } else {
-         DonneesMetiers donnees = DonneesMetiers.de(src.getServer());
-         int n = PontBoutique.importer(src.getServer(), donnees);
-         donnees.marquerImport();
-         src.sendSuccess(Component.literal("Experience reprise depuis la boutique pour " + n + " joueur(s).").withStyle(ChatFormatting.GREEN), true);
-         return 1;
       }
+      DonneesMetiers donnees = DonneesMetiers.de(src.getServer());
+      int n = PontBoutique.importer(src.getServer(), donnees);
+      donnees.marquerImport();
+      src.sendSuccess(Component.translatable("cubelandmetiers.cmd.repris", n).withStyle(ChatFormatting.GREEN), true);
+      return 1;
    }
 
    private static int donnerXp(CommandSourceStack src, ServerPlayer cible, String metier, long montant) {
       if (!Metiers.existe(metier)) {
-         src.sendFailure(Component.literal("Metier inconnu : " + metier + ". Connus : " + String.join(", ", Metiers.tous())));
+         src.sendFailure(Component.translatable("cubelandmetiers.cmd.metier_inconnu", metier, String.join(", ", Metiers.tous())));
          return 0;
-      } else {
-         DonneesMetiers donnees = DonneesMetiers.de(cible.server);
-         donnees.ajouter(cible.getUUID(), metier, montant);
-         Reseau.versJoueur(cible, PaquetEtat.pour(cible, donnees));
-         src.sendSuccess(Component.literal(montant + " XP " + metier + " pour " + cible.getGameProfile().getName()), true);
-         return 1;
       }
+      DonneesMetiers donnees = DonneesMetiers.de(cible.server);
+      donnees.ajouter(cible.getUUID(), metier, montant);
+      Reseau.versJoueur(cible, PaquetEtat.pour(cible, donnees));
+      src.sendSuccess(Component.translatable("cubelandmetiers.cmd.xp_donnee", montant, Metiers.nom(metier), cible.getGameProfile().getName()), true);
+      return 1;
    }
 
    private static int forcerPalier(CommandSourceStack src, ServerPlayer cible, int palier) {
       DonneesMetiers donnees = DonneesMetiers.de(cible.server);
-      int besoin = Reglages.get().palierRecettes[Math.max(0, Math.min(4, palier - 1))];
-      int actuel = donnees.nombreRecettes(cible.getUUID());
-      if (actuel >= besoin) {
-         src.sendSuccess(Component.literal(cible.getGameProfile().getName() + " est deja au palier " + donnees.palier(cible.getUUID()) + "."), false);
-         return 1;
-      } else {
-         for (int i = actuel; i < besoin; i++) {
-            donnees.decouvrir(cible.getUUID(), "cubelandmetiers:test_" + i);
-         }
-
-         donnees.ajouter(cible.getUUID(), "cuisinier", 0L);
-         Reseau.versJoueur(cible, PaquetEtat.pour(cible, donnees));
-         src.sendSuccess(Component.literal(cible.getGameProfile().getName() + " passe au palier " + donnees.palier(cible.getUUID()) + "."), true);
-         return 1;
-      }
+      donnees.forcerPalier(cible.getUUID(), palier);
+      Reseau.versJoueur(cible, PaquetEtat.pour(cible, donnees));
+      Reseau.versJoueur(cible, PaquetCuisine.pour(cible, donnees));
+      src.sendSuccess(Component.translatable("cubelandmetiers.cmd.palier_force", cible.getGameProfile().getName(), donnees.palier(cible.getUUID())), true);
+      return 1;
    }
 }

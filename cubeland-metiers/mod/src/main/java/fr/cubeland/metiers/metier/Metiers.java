@@ -1,11 +1,24 @@
 package fr.cubeland.metiers.metier;
 
+import fr.cubeland.metiers.Progression;
+import fr.cubeland.metiers.Reglages;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import net.minecraft.network.chat.Component;
 
+/** La table des six métiers. */
 public final class Metiers {
    private static final Map<String, Metier> TABLE = new LinkedHashMap<>();
+
+   static {
+      ajouter(new Metier(Metier.MINEUR, "minecraft:iron_pickaxe", List.of("mineur_minerai", "mineur_pierre")));
+      ajouter(new Metier(Metier.BUCHERON, "minecraft:iron_axe", List.of("bucheron_buche")));
+      ajouter(new Metier(Metier.FERMIER, "minecraft:iron_hoe", List.of("fermier_recolte")));
+      ajouter(new Metier(Metier.CHASSEUR, "minecraft:bow", List.of("chasseur_tuerie")));
+      ajouter(new Metier(Metier.PECHEUR, "minecraft:fishing_rod", List.of("pecheur_prise")));
+      ajouter(new Metier(Metier.CUISINIER, "farmersdelight:cooking_pot", List.of()));
+   }
 
    private Metiers() {
    }
@@ -26,57 +39,29 @@ public final class Metiers {
       return TABLE.containsKey(id);
    }
 
-   public static String nomAffiche(String id) {
+   public static Component nom(String id) {
       Metier m = TABLE.get(id);
-      return m == null ? id : m.nom();
+      return m == null ? Component.literal(id) : m.nom();
    }
 
-   public static String icone(String id) {
+   public static String embleme(String id) {
       Metier m = TABLE.get(id);
-      return m == null ? "•" : m.icone();
+      return m == null ? "minecraft:barrier" : m.embleme();
    }
 
-   public static String resume(String id) {
-      Metier m = TABLE.get(id);
-      return m == null ? "" : m.resume();
-   }
-
-   public static List<String[]> actions(String id) {
-      Metier m = TABLE.get(id);
-      return m == null ? List.of() : m.actions();
-   }
-
-   public static String titre(String id, int niveau) {
-      if (niveau < 5) {
-         return "";
-      } else {
-         String rang = niveau >= 50 ? "Legende" : (niveau >= 35 ? "Maitre" : (niveau >= 20 ? "Expert" : (niveau >= 10 ? "Confirme" : "Apprenti")));
-         return rang + " " + nomAffiche(id).toLowerCase();
+   /**
+    * Le titre porté à ce niveau (« Apprenti mineur », « Légende de la pêche »),
+    * ou un composant vide en dessous du premier rang.
+    */
+   public static Component titre(String id, int niveau) {
+      int rang = Progression.rang(niveau, Reglages.get().niveauMax);
+      if (rang <= 0) {
+         return Component.empty();
       }
+      return Component.translatable("cubelandmetiers.rang." + rang, nom(id));
    }
 
-   static {
-      ajouter(
-         new Metier(
-            "mineur",
-            "Mineur",
-            "⛏",
-            "Casser de la pierre et des minerais.",
-            List.of(new String[]{"Minerai casse", "10 a 22 XP"}, new String[]{"Pierre cassee", "1 XP"})
-         )
-      );
-      ajouter(new Metier("bucheron", "Bucheron", "\ud83e\ude93", "Abattre des arbres.", List.<String[]>of(new String[]{"Buche coupee", "4 a 9 XP"})));
-      ajouter(new Metier("fermier", "Fermier", "\ud83c\udf3e", "Recolter des cultures arrivees a maturite.", List.<String[]>of(new String[]{"Recolte", "5 a 9 XP"})));
-      ajouter(new Metier("chasseur", "Chasseur", "\ud83c\udff9", "Abattre des creatures.", List.<String[]>of(new String[]{"Creature tuee", "8 XP"})));
-      ajouter(new Metier("pecheur", "Pecheur", "\ud83c\udfa3", "Sortir des prises de l'eau.", List.<String[]>of(new String[]{"Prise", "12 a 28 XP"})));
-      ajouter(
-         new Metier(
-            "cuisinier",
-            "Cuisinier",
-            "\ud83c\udf72",
-            "Cuisiner des plats, en decouvrir de nouveaux, monter de palier.",
-            List.of(new String[]{"Plat cuisine", "5 XP"}, new String[]{"Recette decouverte", "40 XP"}, new String[]{"Par cran de qualite", "15 XP"})
-         )
-      );
+   public static boolean aUnTitre(String id, int niveau) {
+      return Progression.rang(niveau, Reglages.get().niveauMax) > 0;
    }
 }

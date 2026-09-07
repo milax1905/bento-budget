@@ -7,16 +7,16 @@ import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.fml.DistExecutor;
 import net.minecraftforge.network.NetworkEvent.Context;
 
-public record PaquetRepas(String plat, String effet, int qualite, int secondes) {
-   public static void ecrire(PaquetRepas p, FriendlyByteBuf t) {
-      t.writeUtf(p.plat, 128);
-      t.writeUtf(p.effet, 128);
-      t.writeVarInt(p.qualite);
-      t.writeVarInt(p.secondes);
+/** Le joueur vient de manger un plat : le HUD affiche l'effet qui court. */
+public record PaquetRepas(String plat, int qualite, int secondes) {
+   public static void ecrire(PaquetRepas p, FriendlyByteBuf b) {
+      b.writeUtf(p.plat, 200);
+      b.writeVarInt(p.qualite);
+      b.writeVarInt(p.secondes);
    }
 
-   public static PaquetRepas lire(FriendlyByteBuf t) {
-      return new PaquetRepas(t.readUtf(128), t.readUtf(128), t.readVarInt(), t.readVarInt());
+   public static PaquetRepas lire(FriendlyByteBuf b) {
+      return new PaquetRepas(b.readUtf(200), b.readVarInt(), b.readVarInt());
    }
 
    public static void traiter(PaquetRepas p, Supplier<Context> ctx) {

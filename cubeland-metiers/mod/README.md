@@ -1,109 +1,146 @@
 # Cubeland Métiers
 
-Mod Forge 1.19.2 pour le serveur français **Cubeland**. Il tient les six métiers des joueurs, le palier de cuisine, le livre des plats et (quand elle est là) le pont avec la boutique `cubeboutique`.
+Mod Forge 1.19.2 pour le serveur français **Cubeland**. Il tient les six métiers des joueurs, la cuisine en cinq paliers, le carnet de recettes et ses commandes, et (quand elle est là) le pont avec la boutique `cubeboutique`.
 
-**Modid :** `cubelandmetiers`  
-**Version :** 1.4.2  
-**Minecraft / Forge :** 1.19.2 / 43.4.4  
+**Modid :** `cubelandmetiers`
+**Version :** 2.0.0
+**Minecraft / Forge :** 1.19.2 / 43.4.4
 **Java :** 17 (ne pas compiler avec le JDK 21)
 
 ## Les six métiers
 
 Chaque geste compte : miner, couper, cultiver, chasser, pêcher. Le sixième métier, le **cuisinier**, progresse autrement : ce sont les *recettes différentes* qui font monter les paliers, pas la quantité cuisinée.
 
-| Métier     | Comment progresser                          |
-|------------|---------------------------------------------|
-| Mineur     | Casser de la pierre et des minerais         |
-| Bûcheron   | Abattre des arbres                          |
-| Fermier    | Récolter des cultures arrivées à maturité   |
-| Chasseur   | Abattre des créatures                       |
-| Pêcheur    | Sortir des prises de l'eau                  |
-| Cuisinier  | Cuisiner, découvrir, monter de palier       |
+Touche **J** (configurable), `/metiers`, ou le bouton de l'inventaire de la boutique ouvre le panneau.
 
-Touche **J** (configurable) ou `/metiers` ouvre le panneau.
+## La cuisine
 
-## Cuisine
+Cinq paliers, un poste par palier :
 
-Cinq paliers, du feu de camp aux plats à effet :
+1. Apprenti cuisinier — feu de camp, fourneau, planche
+2. Cuisinier en herbe — poêle (dès 4 recettes)
+3. Cuisinier confirmé — marmite (10)
+4. Artisan cuisinier — bouilloire (18)
+5. Maître cuisinier — Nether (28)
 
-1. Apprenti cuisinier — fourneau, planche
-2. Cuisinier en herbe — poêle
-3. Cuisinier confirmé — marmite
-4. Artisan cuisinier — bouilloire
-5. Maître cuisinier — nether
+Chaque plat a une **famille** (féculents, viandes, poissons, soupes, légumes, desserts, boissons) qui donne son effet quand on le mange, une **qualité** tirée au sort (Ordinaire → Signature) qui allonge l'effet et fait le prix, et une valeur de vente.
 
-Chaque plat appartient à une **famille** (féculents, viandes, poissons, soupes, légumes, desserts, boissons). Manger un plat donne l'effet de sa famille ; plus la **qualité** (1 à 5 : ordinaire → signature) est haute, plus l'effet dure. Un prix de base, multiplié par la qualité, sert à la vente (`/cuisinier vendre`, `/cuisinier vendre tout`, `/cuisinier prix`).
+**Un plat compte quand il sort d'un atelier.** Un plat trouvé dans un coffre, acheté ou reçu garde un effet minimal mais n'entre pas au carnet.
 
-Les réglages vivent dans `config/cubeland-metiers/` (paliers, XP, chances, postes, commission…).
+### Le carnet et ses commandes
+
+Trois commandes sont toujours ouvertes dans l'onglet Cuisine, une de chaque sorte, et aucune ne peut échouer :
+
+- **Découverte** — des plats qu'on ne connaît pas encore, dans une famille ou à un poste. Fait monter les paliers.
+- **Livraison** — des plats connus, en quantité, avec une qualité minimale. Payée 150 % du prix par la boutique, sans commission. Une livraison sur quatre est un **défi** du palier au-dessus : la réussir débloque le plat.
+- **Maîtrise** — sortir une qualité, cuisiner sa favorite, faire manger un autre joueur.
+
+À la première connexion, cinq **premiers pas** guident le joueur (allumer le feu, première fournée, goûter, vendre, première commande) et offrent un couteau en fer.
+
+### Commandes
+
+```
+/metiers                    ouvre le panneau
+/metiers cuisine            ouvre le carnet
+/cuisinier vendre [tout]    vend le plat en main, ou tous les plats
+/cuisinier prix             estime le plat en main
+/cuisinier livrer           livre la commande de livraison en cours
+/metiers recharger          relit réglages et catalogue, les renvoie aux joueurs (op)
+/metiers xp <joueur> <métier> <n>   (op)
+/cuisinier palier <joueur> <0-5>    force un palier, 0 pour l'annuler (op)
+```
+
+## Réglages
+
+Le serveur est le seul à lire `config/cubeland-metiers/` :
+
+- `reglages.json` — XP, seuils de paliers, chances de qualité, prix, commandes. Des nombres et des interrupteurs, pas de texte.
+- `plats.json` — le catalogue : `id`, `fam`, `poste`, `pal`, `val`, et `variante_de` pour qu'une part de tarte compte avec sa tarte.
+
+Il envoie tout ça aux joueurs à la connexion. Les clients ne lisent aucun fichier ; ce qu'ils affichent est exactement ce que le serveur applique. Les textes sont dans `assets/cubelandmetiers/lang/` (`fr_fr`, `en_us`).
 
 ## Boutique `cubeboutique` (optionnelle)
 
-Dépendance **non obligatoire**. Si le mod boutique est chargé :
-
-- reprise unique des métiers déjà enregistrés côté boutique (réglage `importerBoutique`) ;
-- l'expérience des métiers peut être reflétée vers la boutique pour ses bonus de prix (`refleterVersBoutique`) ;
-- la vente des plats passe par les comptes de la boutique (commission configurable).
-
-Sans boutique, les métiers et la cuisine fonctionnent tout seuls ; il n'y a simplement pas d'argent.
-
-Le code de la boutique vit dans le dossier [`boutique/`](boutique/) (mod `cubeboutique` 3.3.1, projet Gradle séparé). Voir [`boutique/README.md`](boutique/README.md) pour l'achat à l'unité et la note de protocole.
+Dépendance **non obligatoire**. Si le mod boutique est chargé : reprise unique de l'expérience, reflet de l'XP pour ses bonus de prix, vente et livraisons créditées sur ses comptes. Une vente ne retire jamais les plats tant que la boutique n'a pas crédité.
 
 ## Compiler
 
-JDK **17** obligatoire. Le JDK 21 (souvent le défaut système) ne convient pas à Forge 1.19.2.
+JDK **17** obligatoire.
 
 ```bash
 export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
-./gradlew build
+./gradlew build          # jar dans build/libs/cubeland-metiers-2.0.0.jar
+./gradlew test           # tests de la logique pure (niveaux, paliers, tirage)
 ```
 
-Le jar se trouve dans `build/libs/cubeland-metiers-1.4.2.jar`. Une copie est aussi dans `releases/`.
-
-## Tester les interfaces (mode démo)
-
-Pour regarder les écrans **sans serveur**, depuis le menu titre :
+## Regarder les écrans sans serveur (mode démo)
 
 ```bash
-export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
-./gradlew runClient -Pdemo=0   # onglet Métiers
-./gradlew runClient -Pdemo=1   # onglet Cuisine
-./gradlew runClient -Pdemo=2   # Le Livre
+./gradlew runClient -Pdemo=0                          # onglet Métiers
+./gradlew runClient -Pdemo=1                          # onglet Cuisine, avec trois commandes
+./gradlew runClient -Pdemo=2                          # le Livre
+./gradlew runClient -PdemoFiche=minecraft:rabbit_stew # une fiche
 ```
 
-Cela pose `-Dcubeland.demo=true` et `-Dcubeland.demo.ecran=N`, remplit le panneau de données factices et ouvre l'écran choisi. La fenêtre de démo fait 1600×900. Un bouton « Metiers (demo) » reste aussi sur le menu titre, au cas où.
+Le mode démo vit dans `src/demo` : il n'est jamais dans le jar livré.
 
-Sans `-Pdemo`, le mode démo est totalement inerte : aucun effet en jeu normal.
+## Logo
 
-## Compatibilité 1.3.4 → 1.4.2
+`src/main/resources/logo.png` est un logo de remplacement. Remplace-le par le logo Cubeland (carré, 128 × 128 ou plus) : c'est lui qui apparaît dans la liste des mods.
 
-Les 1.4.x **ne touchent pas** au protocole réseau, aux paquets, aux NBT ni aux identifiants. Un client 1.4.2 peut parler à un serveur qui tourne encore en 1.3.4 (et l'inverse). Seul le client a besoin de la mise à jour pour profiter des nouveaux écrans.
+## Structure
 
-## Changelog 1.3.4 → 1.4.0
+```
+fr.cubeland.metiers
+├── CubelandMetiers   démarrage, cycle de vie, synchronisation
+├── Reglages          les réglages, lus par le serveur, envoyés aux clients
+├── Progression       niveaux et paliers, sans Minecraft (testé)
+├── metier/           Metier, Metiers, DonneesMetiers (sauvegarde), EvenementsMetiers, PontBoutique
+├── cuisine/          Plat, Famille, Catalogue, Qualite, Tirage (testé), Couteaux, Postes,
+│                     Provenance (d'où vient un plat), Cuisine, Vente, Recettes, EvenementsCuisine
+├── quete/            Quete, TypeQuete, Quetes (génération, suivi, livraison), PremiersPas, TextesQuete
+├── reseau/           Reseau et les paquets (Sync, Etat, Cuisine, Quetes, Fiche, Repas, Annonce, Ouvrir,
+│                     Demande, DemandeFiche, Livrer)
+├── commande/         Commandes
+└── client/           EtatClient, HudCuisine, Dessin, Palette, Txt, Ateliers, Touches, Redirection
+    └── ecran/        EcranCubeland, Contexte (zones cliquables), Page, Widgets,
+                      PageMetiers, PageCuisine, PageLivre, PageFiche, PageGuide
+```
 
-Refonte **client uniquement** (interfaces). Rien côté métier, cuisine, commandes, sauvegarde ou réseau.
+## Changelog
 
-- **Chevauchements corrigés** : les noms autour du cadran (métiers et idées cuisine) sont placés par quadrant, tronqués ou coupés sur deux lignes pour ne plus se marcher dessus. Le HUD repas/cuisinier réserve la place des étoiles de qualité avant de tronquer le nom du plat.
-- **Livre réorganisé** : grille 4×3 avec recherche, pastilles de familles, défilement, compteur, vignettes connues/inconnues (palier + prix).
-- **Fiches plat** : recette en cercle (≤ 4 ingrédients) ou en liste, colonne atelier / effet / chances et prix par qualité. Les plats inconnus le disent clairement, sur deux lignes.
-- **Guide du cuisinier** : cinq sections (Débuter, Paliers, Familles, Qualités, Vendre) accessibles depuis le bouton GUIDE du livre.
-- **Mode démo** : `./gradlew runClient -Pdemo=N` pour inspecter les UIs hors serveur.
+### 2.0.0
 
-## Changelog 1.4.0 → 1.4.1
+Refonte complète, sauvegardes et réglages de la 1.4 relus tels quels. **Protocole réseau 2** : serveur et clients passent ensemble.
 
-Toujours **client uniquement**.
+Corrections
+- `/cuisinier vendre tout` ne détruit plus les plats si la boutique ne crédite pas.
+- L'XP de mineur, bûcheron, chasseur n'est plus donnée quand un mod de protection annule la casse ou la mort. Les animaux apprivoisés ne rapportent rien.
+- Un palier forcé par un administrateur est stocké à part : plus de recettes fantômes dans le carnet.
+- Le mode démo n'est plus dans le jar.
 
-- **Fiche plat** : deux onglets **FAIRE** (étapes concrètes : ingrédients, atelier, clic-droit sur le poste, inventaire / première découverte / palier) et **VALEUR** (atelier, effet, chances et prix). L'onglet FAIRE s'ouvre par défaut.
+Règle de cuisine
+- Un plat compte quand il sort d'un atelier (établi, four, menu de cuisine, ramassage près d'un poste). Un coffre de plats ne fait plus monter de palier.
+- Chaque plat porte son auteur et sa provenance.
 
-## Changelog 1.4.1 → 1.4.2
+Synchronisation
+- Le serveur envoie ses réglages et son catalogue à la connexion : HUD, guide, infobulles et prix affichent ce que le serveur applique. Les clients ne lisent ni n'écrivent plus de fichiers.
+- Le panneau ne redemande plus les 291 plats à chaque ouverture.
 
-Toujours **client uniquement**.
+Le carnet
+- Trois commandes permanentes (découverte, livraison, maîtrise), un défi sur quatre, livraison depuis le panneau ou `/cuisinier livrer`.
+- Cinq premiers pas guidés à la première connexion.
+- Catalogue nettoyé : 207 plats au lieu de 291, variantes reliées à leur plat.
 
-- **Onglet FAIRE** de chaque fiche : plus un texte générique. Le poste est nommé (marmite, four, planche…), puis les gestes **de cet atelier** : poser le bloc, remplir, attendre, récupérer, clic-droit pour que le carnet note la recette.
+Interface et textes
+- Écran découpé en pages avec des zones cliquables déclarées au dessin.
+- Textes dans des fichiers de langue avec accents, français et anglais ; noms des plats traduits par le jeu ; chiffres tirés des réglages.
+- Titres de métiers proportionnels au niveau maximum.
+
+### 1.4.x
+
+Voir l'historique git : refontes successives de l'interface client.
 
 ## Licence
 
 Tous droits réservés — Cubeland.
-
-## Captures des interfaces (v1.4.0)
-
-Les captures des ecrans retravailles sont dans [docs/captures/](docs/captures/) : onglets Metiers et Cuisine, le Livre, fiches de plat (connue/inconnue) et les pages du guide du cuisinier.

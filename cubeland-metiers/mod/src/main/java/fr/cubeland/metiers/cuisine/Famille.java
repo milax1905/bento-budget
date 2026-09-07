@@ -1,28 +1,26 @@
 package fr.cubeland.metiers.cuisine;
 
+import net.minecraft.network.chat.Component;
 import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.effect.MobEffects;
 
+/** Les sept familles de plats. Chacune donne un effet, et un second en qualité Signature. */
 public enum Famille {
-   FECULENT("feculent", "Feculents", "Miner", 15253626, MobEffects.DIG_SPEED, MobEffects.NIGHT_VISION),
-   VIANDE("viande", "Viandes", "Combattre", 15231355, MobEffects.DAMAGE_BOOST, MobEffects.FIRE_RESISTANCE),
-   POISSON("poisson", "Poissons", "Explorer l'eau", 7323591, MobEffects.MOVEMENT_SPEED, MobEffects.WATER_BREATHING),
-   SOUPE("soupe", "Soupes", "Tenir la duree", 15764028, MobEffects.SATURATION, MobEffects.REGENERATION),
-   LEGUME("legume", "Legumes", "Encaisser", 7323534, MobEffects.DAMAGE_RESISTANCE, MobEffects.ABSORPTION),
-   DESSERT("dessert", "Desserts", "Chercher", 13081576, MobEffects.LUCK, MobEffects.LUCK),
-   BOISSON("boisson", "Boissons", "Voyager", 11897455, MobEffects.MOVEMENT_SPEED, MobEffects.JUMP);
+   FECULENT("feculent", 0xE8B4FA, MobEffects.DIG_SPEED, MobEffects.NIGHT_VISION),
+   VIANDE("viande", 0xE86A7B, MobEffects.DAMAGE_BOOST, MobEffects.FIRE_RESISTANCE),
+   POISSON("poisson", 0x6FBFC7, MobEffects.MOVEMENT_SPEED, MobEffects.WATER_BREATHING),
+   SOUPE("soupe", 0xF08B3C, MobEffects.SATURATION, MobEffects.REGENERATION),
+   LEGUME("legume", 0x6FBF8E, MobEffects.DAMAGE_RESISTANCE, MobEffects.ABSORPTION),
+   DESSERT("dessert", 0xC79CE8, MobEffects.LUCK, MobEffects.LUCK),
+   BOISSON("boisson", 0xB5A3EF, MobEffects.MOVEMENT_SPEED, MobEffects.JUMP);
 
    private final String id;
-   private final String nom;
-   private final String sert;
    private final int couleur;
    private final MobEffect effet;
    private final MobEffect bonus;
 
-   private Famille(String id, String nom, String sert, int couleur, MobEffect effet, MobEffect bonus) {
+   Famille(String id, int couleur, MobEffect effet, MobEffect bonus) {
       this.id = id;
-      this.nom = nom;
-      this.sert = sert;
       this.couleur = couleur;
       this.effet = effet;
       this.bonus = bonus;
@@ -32,14 +30,7 @@ public enum Famille {
       return this.id;
    }
 
-   public String nom() {
-      return this.nom;
-   }
-
-   public String sert() {
-      return this.sert;
-   }
-
+   /** Couleur d'accent (RVB sans alpha). */
    public int couleur() {
       return this.couleur;
    }
@@ -48,8 +39,22 @@ public enum Famille {
       return this.effet;
    }
 
+   /** Le second effet, ajouté en qualité Signature. Peut être le même que {@link #effet()}. */
    public MobEffect bonus() {
       return this.bonus;
+   }
+
+   public boolean aUnBonus() {
+      return this.bonus != this.effet;
+   }
+
+   public Component nom() {
+      return Component.translatable("cubelandmetiers.famille." + this.id);
+   }
+
+   /** À quoi sert cette famille, en deux mots (« Miner », « Combattre »…). */
+   public Component sert() {
+      return Component.translatable("cubelandmetiers.famille." + this.id + ".sert");
    }
 
    public static Famille par(String id) {
@@ -58,7 +63,6 @@ public enum Famille {
             return f;
          }
       }
-
       return FECULENT;
    }
 }

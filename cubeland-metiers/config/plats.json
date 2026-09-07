@@ -363,73 +363,82 @@
   "id": "farmersdelight:apple_pie_slice",
   "nom": "Slice of Apple Pie",
   "fam": "dessert",
-  "poste": "planche",
+  "poste": "fourneau",
   "pal": 2,
-  "val": 30
+  "val": 30,
+  "variante_de": "farmersdelight:apple_pie"
  },
  {
   "id": "delightful:blueberry_pie_slice",
   "nom": "Slice of Blueberry Pie",
   "fam": "dessert",
-  "poste": "planche",
+  "poste": "fourneau",
   "pal": 2,
-  "val": 30
+  "val": 30,
+  "variante_de": "delightful:blueberry_pie"
  },
  {
   "id": "farmersdelight:chocolate_pie_slice",
   "nom": "Slice of Chocolate Pie",
   "fam": "dessert",
-  "poste": "planche",
+  "poste": "fourneau",
   "pal": 2,
-  "val": 30
+  "val": 30,
+  "variante_de": "farmersdelight:chocolate_pie"
  },
  {
   "id": "delightful:gloomgourd_pie_slice",
   "nom": "Slice of Gloomgourd Pie",
   "fam": "dessert",
-  "poste": "planche",
+  "poste": "fourneau",
   "pal": 2,
-  "val": 30
+  "val": 30,
+  "variante_de": "delightful:gloomgourd_pie"
  },
  {
   "id": "collectorsreap:lime_cake_slice",
   "nom": "Slice of Lime Cake",
   "fam": "dessert",
-  "poste": "planche",
+  "poste": "fourneau",
   "pal": 2,
-  "val": 30
+  "val": 30,
+  "variante_de": "collectorsreap:lime_cake"
  },
  {
   "id": "collectorsreap:pomegranate_cake_slice",
   "nom": "Slice of Pomegranate Cake",
   "fam": "dessert",
-  "poste": "planche",
+  "poste": "fourneau",
   "pal": 2,
-  "val": 30
+  "val": 30,
+  "variante_de": "collectorsreap:pomegranate_cake"
  },
  {
   "id": "delightful:pumpkin_pie_slice",
   "nom": "Slice of Pumpkin Pie",
   "fam": "dessert",
-  "poste": "planche",
+  "poste": "fourneau",
   "pal": 2,
-  "val": 30
+  "val": 30,
+  "variante_de": "delightful:pumpkin_pie"
  },
  {
   "id": "delightful:salmonberry_pie_slice",
   "nom": "Slice of Salmonberry Pie",
   "fam": "dessert",
-  "poste": "planche",
+  "poste": "fourneau",
   "pal": 2,
-  "val": 30
+  "val": 30,
+  "variante_de": "delightful:salmonberry_pie"
  },
  {
   "id": "farmersdelight:sweet_berry_cheesecake_slice",
   "nom": "Slice of Sweet Berry Cheesecake",
   "fam": "dessert",
-  "poste": "planche",
+  "poste": "fourneau",
   "pal": 2,
-  "val": 30
+  "val": 30,
+  "variante_de": "farmersdelight:sweet_berry_cheesecake"
  },
  {
   "id": "berries_and_cherries:strawberry_jam",
@@ -739,49 +748,55 @@
   "id": "farmersrespite:rose_hip_pie_slice",
   "nom": "Rose Hip Pie Slice",
   "fam": "dessert",
-  "poste": "planche",
+  "poste": "fourneau",
   "pal": 3,
-  "val": 45
+  "val": 45,
+  "variante_de": "farmersrespite:rose_hip_pie"
  },
  {
   "id": "delightful:crimson_berry_pie_slice",
   "nom": "Slice of Crimson Berry Pie",
   "fam": "dessert",
-  "poste": "planche",
+  "poste": "fourneau",
   "pal": 3,
-  "val": 45
+  "val": 45,
+  "variante_de": "delightful:crimson_berry_pie"
  },
  {
   "id": "delightful:green_apple_pie_slice",
   "nom": "Slice of Green Apple Pie",
   "fam": "dessert",
-  "poste": "planche",
+  "poste": "fourneau",
   "pal": 3,
-  "val": 45
+  "val": 45,
+  "variante_de": "delightful:green_apple_pie"
  },
  {
   "id": "collectorsreap:lime_pie_slice",
   "nom": "Slice of Key Lime Pie",
   "fam": "dessert",
-  "poste": "planche",
+  "poste": "fourneau",
   "pal": 3,
-  "val": 45
+  "val": 45,
+  "variante_de": "collectorsreap:lime_pie"
  },
  {
   "id": "delightful:nightshade_berry_pie_slice",
   "nom": "Slice of Nightshade Berry Pie",
   "fam": "dessert",
-  "poste": "planche",
+  "poste": "fourneau",
   "pal": 3,
-  "val": 45
+  "val": 45,
+  "variante_de": "delightful:nightshade_berry_pie"
  },
  {
   "id": "delightful:source_berry_pie_slice",
   "nom": "Slice of Source Berry Pie",
   "fam": "dessert",
-  "poste": "planche",
+  "poste": "fourneau",
   "pal": 3,
-  "val": 45
+  "val": 45,
+  "variante_de": "delightful:source_berry_pie"
  },
  {
   "id": "delightful:source_berry_pie",
@@ -1269,7 +1284,8 @@
   "fam": "dessert",
   "poste": "fourneau",
   "pal": 4,
-  "val": 50
+  "val": 50,
+  "variante_de": "farmersrespite:coffee_cake"
  },
  {
   "id": "moredelight:toast_with_blueberries",
@@ -1477,7 +1493,8 @@
   "fam": "dessert",
   "poste": "nether",
   "pal": 5,
-  "val": 70
+  "val": 70,
+  "variante_de": "mynethersdelight:magma_cake"
  },
  {
   "id": "collectorsreap:candle_pomegranate_cake",

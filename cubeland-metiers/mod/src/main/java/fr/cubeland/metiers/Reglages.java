@@ -13,41 +13,68 @@ import java.nio.file.Paths;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+/**
+ * Les réglages du mod, lus dans {@code config/cubeland-metiers/reglages.json}.
+ *
+ * <p>Le serveur est le seul à lire le fichier. Il envoie ensuite ses réglages
+ * aux joueurs à la connexion ({@code PaquetSync}) ; le client ne touche jamais
+ * au disque et affiche exactement ce que le serveur applique.</p>
+ *
+ * <p>Les textes (noms de paliers, récompenses, titres) ne sont plus ici : ils
+ * vivent dans les fichiers de langue. Le fichier ne contient que des nombres
+ * et des interrupteurs.</p>
+ */
 public final class Reglages {
    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
    private static final Path DOSSIER = Paths.get("config", "cubeland-metiers");
    private static final Path FICHIER = DOSSIER.resolve("reglages.json");
    private static Reglages courant = new Reglages();
+
+   // --- métiers -------------------------------------------------------------
+   /** XP du niveau n = xpBase × n². */
    public long xpBase = 120L;
    public int niveauMax = 50;
    public boolean reprendreMetiers = true;
    public boolean importerBoutique = true;
    public boolean refleterVersBoutique = true;
+   /** Gain d'XP par geste : [minimum, maximum]. Un maximum à 0 vaut « fixe ». */
    public Map<String, long[]> gains = new LinkedHashMap<>();
+
+   // --- cuisine -------------------------------------------------------------
    public long xpPlat = 5L;
    public long xpDecouverte = 40L;
    public long xpQualite = 15L;
+   /** Recettes différentes exigées pour chaque palier (le premier vaut 0). */
    public int[] palierRecettes = new int[]{0, 4, 10, 18, 28};
+   /** Bonus d'XP de cuisine par palier, en pourcent. */
    public int[] palierBonusXp = new int[]{0, 5, 12, 20, 30};
-   public String[] palierNom = new String[]{"Apprenti cuisinier", "Cuisinier en herbe", "Cuisinier confirme", "Artisan cuisinier", "Maitre cuisinier"};
-   public String[] palierGeste = new String[]{"Cuire", "Assembler", "Mijoter", "Infuser", "Signer"};
-   public String[] palierRecompense = new String[]{
-      "",
-      "Un couteau en fer et le tablier de cuisinier",
-      "L'acces aux commandes du ravitailleur",
-      "Le livre de recettes, vendu par la boutique",
-      "La toque du maitre : un artefact porte, visible de tout le serveur"
-   };
+   /** Chances (sur 100) de chaque qualité, une ligne par palier. */
    public int[][] probabilites = new int[][]{{70, 25, 5, 0, 0}, {45, 38, 15, 2, 0}, {25, 38, 28, 8, 1}, {12, 30, 35, 20, 3}, {5, 20, 35, 30, 10}};
+   /** Multiplicateur de prix par qualité. */
    public double[] multiplicateurs = new double[]{1.0, 1.4, 2.2, 3.2, 4.5};
+   /** Durée de l'effet d'un plat, en secondes, par qualité. */
    public int[] dureeEffet = new int[]{20, 45, 90, 180, 300};
+   /** Palier auquel chaque poste de cuisine s'ouvre. */
    public Map<String, Integer> postes = new LinkedHashMap<>();
    public int[] couteauTemps = new int[]{10, 20, 30, 40, 45};
    public int[] couteauQualite = new int[]{0, 3, 6, 10, 12};
    public boolean platHorsPalierInerte = true;
    public boolean bloquerFabricationHorsPalier = false;
    public int commissionVente = 5;
-   public int fenetrePoste = 180;
+
+   // --- commandes -----------------------------------------------------------
+   public boolean commandes = true;
+   public boolean premiersPas = true;
+   /** Ce que paie une livraison, en pourcent du prix de vente normal. */
+   public int livraisonPourcent = 150;
+   /** Une commande de livraison non faite est remplacée après ce délai. */
+   public int rotationLivraisonMinutes = 20;
+   public int xpCommandeDecouverte = 80;
+   public int xpCommandeLivraison = 60;
+   public int xpCommandeMaitrise = 50;
+   public int xpPremiersPas = 30;
+   /** Objet offert à la fin des premiers pas (vide pour rien). */
+   public String recompensePremiersPas = "farmersdelight:iron_knife";
 
    public static Reglages get() {
       return courant;
@@ -68,70 +95,62 @@ public final class Reglages {
       this.postes.put("nether", 5);
    }
 
+   // --- calculs -------------------------------------------------------------
+
    public long seuil(int niveau) {
-      return niveau <= 0 ? 0L : this.xpBase * (long)niveau * (long)niveau;
+      return Progression.seuil(this.xpBase, niveau);
    }
 
    public int niveauPour(long xp) {
-      int n = 0;
-
-      while (n < this.niveauMax && xp >= this.seuil(n + 1)) {
-         n++;
-      }
-
-      return n;
+      return Progression.niveauPour(this.xpBase, this.niveauMax, xp);
    }
 
    public float progression(long xp) {
-      int n = this.niveauPour(xp);
-      if (n >= this.niveauMax) {
-         return 1.0F;
-      } else {
-         long bas = this.seuil(n);
-         long haut = this.seuil(n + 1);
-         return haut <= bas ? 1.0F : Math.max(0.0F, Math.min(1.0F, (float)(xp - bas) / (float)(haut - bas)));
-      }
+      return Progression.progression(this.xpBase, this.niveauMax, xp);
    }
 
    public int palierPour(int recettes) {
-      int p = 1;
+      return Progression.palierPour(this.palierRecettes, recettes);
+   }
 
-      for (int i = 1; i < this.palierRecettes.length; i++) {
-         if (recettes >= this.palierRecettes[i]) {
-            p = i + 1;
-         }
-      }
-
-      return p;
+   /** Recettes exigées pour le palier suivant, 0 au palier maximum. */
+   public int seuilSuivant(int palier) {
+      return palier >= Progression.PALIER_MAX ? 0 : this.palierRecettes[palier];
    }
 
    public int bonusXpDe(int palier) {
-      int i = Math.max(0, Math.min(this.palierBonusXp.length - 1, palier - 1));
-      return this.palierBonusXp[i];
+      return this.palierBonusXp[Progression.bornerPalier(palier) - 1];
    }
 
    public int palierDuPoste(String poste) {
       Integer v = this.postes.get(poste);
-      return v == null ? 1 : Math.max(1, Math.min(5, v));
+      return v == null ? 1 : Progression.bornerPalier(v);
    }
+
+   public long[] gain(String cle) {
+      long[] g = this.gains.get(cle);
+      return g == null || g.length == 0 ? new long[]{0L, 0L} : (g.length == 1 ? new long[]{g[0], 0L} : g);
+   }
+
+   // --- fichier (serveur seulement) -----------------------------------------
 
    public static void charger() {
       try {
          Files.createDirectories(DOSSIER);
          if (Files.exists(FICHIER)) {
             try (Reader r = Files.newBufferedReader(FICHIER, StandardCharsets.UTF_8)) {
-               Reglages lu = (Reglages)GSON.fromJson(r, Reglages.class);
+               Reglages lu = GSON.fromJson(r, Reglages.class);
                if (lu != null) {
+                  lu.reparer();
                   courant = lu;
-                  courant.reparer();
+                  sauver();
                   return;
                }
             }
          }
-      } catch (JsonSyntaxException | IOException var5) {
-         CubelandMetiers.LOG.error("Reglages illisibles, valeurs par defaut : {}", var5.toString());
+      } catch (JsonSyntaxException | IOException e) {
+         CubelandMetiers.LOG.error("Réglages illisibles, valeurs par défaut : {}", e.toString());
       }
-
       courant = new Reglages();
       sauver();
    }
@@ -139,77 +158,76 @@ public final class Reglages {
    public static void sauver() {
       try {
          Files.createDirectories(DOSSIER);
-
          try (Writer w = Files.newBufferedWriter(FICHIER, StandardCharsets.UTF_8)) {
             GSON.toJson(courant, w);
          }
-      } catch (IOException var5) {
-         CubelandMetiers.LOG.error("Impossible d'ecrire les reglages : {}", var5.toString());
+      } catch (IOException e) {
+         CubelandMetiers.LOG.error("Impossible d'écrire les réglages : {}", e.toString());
       }
    }
 
-   private void reparer() {
+   // --- synchronisation vers les clients ------------------------------------
+
+   /** Les réglages courants sous forme de JSON, pour le paquet de synchronisation. */
+   public static String exporter() {
+      return GSON.toJson(courant);
+   }
+
+   /** Côté client : adopte les réglages reçus du serveur. */
+   public static void appliquerDistant(String json) {
+      try {
+         Reglages lu = GSON.fromJson(json, Reglages.class);
+         if (lu != null) {
+            lu.reparer();
+            courant = lu;
+         }
+      } catch (JsonSyntaxException e) {
+         CubelandMetiers.LOG.warn("Réglages reçus illisibles, on garde les valeurs par défaut : {}", e.toString());
+      }
+   }
+
+   /** Remet une valeur par défaut partout où le fichier est absurde. */
+   void reparer() {
       Reglages d = new Reglages();
       if (this.xpBase <= 0L) {
          this.xpBase = d.xpBase;
       }
-
       if (this.niveauMax <= 0) {
          this.niveauMax = d.niveauMax;
       }
-
       if (this.gains == null || this.gains.isEmpty()) {
          this.gains = d.gains;
       }
-
       if (this.postes == null || this.postes.isEmpty()) {
          this.postes = d.postes;
       }
-
-      if (this.palierRecettes == null || this.palierRecettes.length != 5) {
-         this.palierRecettes = d.palierRecettes;
-      }
-
-      if (this.palierBonusXp == null || this.palierBonusXp.length != 5) {
-         this.palierBonusXp = d.palierBonusXp;
-      }
-
-      if (this.palierNom == null || this.palierNom.length != 5) {
-         this.palierNom = d.palierNom;
-      }
-
-      if (this.palierGeste == null || this.palierGeste.length != 5) {
-         this.palierGeste = d.palierGeste;
-      }
-
-      if (this.palierRecompense == null || this.palierRecompense.length != 5) {
-         this.palierRecompense = d.palierRecompense;
-      }
-
+      this.palierRecettes = cinq(this.palierRecettes, d.palierRecettes);
+      this.palierBonusXp = cinq(this.palierBonusXp, d.palierBonusXp);
+      this.dureeEffet = cinq(this.dureeEffet, d.dureeEffet);
+      this.couteauTemps = cinq(this.couteauTemps, d.couteauTemps);
+      this.couteauQualite = cinq(this.couteauQualite, d.couteauQualite);
       if (this.multiplicateurs == null || this.multiplicateurs.length != 5) {
          this.multiplicateurs = d.multiplicateurs;
       }
-
-      if (this.dureeEffet == null || this.dureeEffet.length != 5) {
-         this.dureeEffet = d.dureeEffet;
-      }
-
-      if (this.couteauTemps == null || this.couteauTemps.length != 5) {
-         this.couteauTemps = d.couteauTemps;
-      }
-
-      if (this.couteauQualite == null || this.couteauQualite.length != 5) {
-         this.couteauQualite = d.couteauQualite;
-      }
-
       if (this.probabilites == null || this.probabilites.length != 5) {
          this.probabilites = d.probabilites;
       }
-
       for (int i = 0; i < 5; i++) {
-         if (this.probabilites[i] == null || this.probabilites[i].length != 5) {
-            this.probabilites[i] = d.probabilites[i];
-         }
+         this.probabilites[i] = cinq(this.probabilites[i], d.probabilites[i]);
       }
+      if (this.livraisonPourcent < 100) {
+         this.livraisonPourcent = d.livraisonPourcent;
+      }
+      if (this.rotationLivraisonMinutes <= 0) {
+         this.rotationLivraisonMinutes = d.rotationLivraisonMinutes;
+      }
+      if (this.recompensePremiersPas == null) {
+         this.recompensePremiersPas = "";
+      }
+      this.commissionVente = Math.max(0, Math.min(100, this.commissionVente));
+   }
+
+   private static int[] cinq(int[] valeur, int[] defaut) {
+      return valeur == null || valeur.length != 5 ? defaut.clone() : valeur;
    }
 }

@@ -7,13 +7,14 @@ import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.fml.DistExecutor;
 import net.minecraftforge.network.NetworkEvent.Context;
 
+/** Le serveur demande au client d'ouvrir le panneau sur un onglet. */
 public record PaquetOuvrir(int onglet) {
-   public static void ecrire(PaquetOuvrir p, FriendlyByteBuf tampon) {
-      tampon.writeVarInt(p.onglet);
+   public static void ecrire(PaquetOuvrir p, FriendlyByteBuf b) {
+      b.writeVarInt(p.onglet);
    }
 
-   public static PaquetOuvrir lire(FriendlyByteBuf tampon) {
-      return new PaquetOuvrir(tampon.readVarInt());
+   public static PaquetOuvrir lire(FriendlyByteBuf b) {
+      return new PaquetOuvrir(b.readVarInt());
    }
 
    public static void traiter(PaquetOuvrir p, Supplier<Context> ctx) {

@@ -14,167 +14,147 @@ import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.item.crafting.Recipe;
 import net.minecraftforge.registries.ForgeRegistries;
 
+/** Lecture des recettes du serveur, pour dire où et avec quoi un plat se prépare. */
 public final class Recettes {
    private static final int MAX_FACONS = 3;
    private static final int MAX_INGREDIENTS = 9;
+   private static final int MAX_UTILE_A = 8;
 
    private Recettes() {
    }
 
+   /** Une façon de faire un plat : type de recette, ingrédients et quantités, rendement. */
+   public record Facon(String type, List<String> ingredients, List<Integer> combien, int rendement) {
+   }
+
+   private static ItemStack sortie(Recipe<?> r) {
+      try {
+         ItemStack s = r.getResultItem();
+         return s == null ? ItemStack.EMPTY : s;
+      } catch (Throwable t) {
+         return ItemStack.EMPTY;
+      }
+   }
+
+   /** Pour chaque objet produit par une recette, le type de cette recette. */
    public static Map<Item, String> indexerAteliers(MinecraftServer serveur) {
       Map<Item, String> out = new HashMap<>();
       if (serveur == null) {
          return out;
-      } else {
-         for (Recipe<?> r : serveur.getRecipeManager().getRecipes()) {
-            ItemStack sortie;
-            try {
-               sortie = r.getResultItem();
-            } catch (Throwable var6) {
-               continue;
-            }
-
-            if (sortie != null && !sortie.isEmpty() && !out.containsKey(sortie.getItem())) {
-               ResourceLocation type = ForgeRegistries.RECIPE_TYPES.getKey(r.getType());
-               if (type != null) {
-                  out.put(sortie.getItem(), type.toString());
-               }
-            }
-         }
-
-         return out;
       }
+      for (Recipe<?> r : serveur.getRecipeManager().getRecipes()) {
+         ItemStack sortie = sortie(r);
+         if (sortie.isEmpty() || out.containsKey(sortie.getItem())) {
+            continue;
+         }
+         ResourceLocation type = ForgeRegistries.RECIPE_TYPES.getKey(r.getType());
+         if (type != null) {
+            out.put(sortie.getItem(), type.toString());
+         }
+      }
+      return out;
    }
 
+   /** Les plats du catalogue dans lesquels cet objet entre comme ingrédient. */
    public static List<String> utileA(MinecraftServer serveur, Item ingredient) {
       List<String> out = new ArrayList<>();
-      if (serveur != null && ingredient != null) {
-         for (Recipe<?> r : serveur.getRecipeManager().getRecipes()) {
-            ItemStack sortie;
-            try {
-               sortie = r.getResultItem();
-            } catch (Throwable var13) {
+      if (serveur == null || ingredient == null) {
+         return out;
+      }
+      for (Recipe<?> r : serveur.getRecipeManager().getRecipes()) {
+         ItemStack sortie = sortie(r);
+         if (sortie.isEmpty() || sortie.getItem() == ingredient || Catalogue.de(sortie.getItem()) == null) {
+            continue;
+         }
+         if (contient(r, ingredient)) {
+            ResourceLocation id = ForgeRegistries.ITEMS.getKey(sortie.getItem());
+            if (id != null && !out.contains(id.toString())) {
+               out.add(id.toString());
+            }
+            if (out.size() >= MAX_UTILE_A) {
+               break;
+            }
+         }
+      }
+      return out;
+   }
+
+   private static boolean contient(Recipe<?> r, Item ingredient) {
+      try {
+         for (Ingredient i : r.getIngredients()) {
+            if (i == null || i.isEmpty()) {
                continue;
             }
-
-            if (sortie != null && !sortie.isEmpty() && sortie.getItem() != ingredient && Catalogue.de(sortie.getItem()) != null) {
-               boolean dedans = false;
-
-               try {
-                  for (Ingredient i : r.getIngredients()) {
-                     if (i != null && !i.isEmpty()) {
-                        for (ItemStack c : i.getItems()) {
-                           if (c.getItem() == ingredient) {
-                              dedans = true;
-                              break;
-                           }
-                        }
-
-                        if (dedans) {
-                           break;
-                        }
-                     }
-                  }
-               } catch (Throwable var14) {
-                  continue;
-               }
-
-               if (dedans) {
-                  ResourceLocation id = ForgeRegistries.ITEMS.getKey(sortie.getItem());
-                  if (id != null && !out.contains(id.toString())) {
-                     out.add(id.toString());
-                  }
-
-                  if (out.size() >= 8) {
-                     break;
-                  }
+            for (ItemStack c : i.getItems()) {
+               if (c.getItem() == ingredient) {
+                  return true;
                }
             }
          }
-
-         return out;
-      } else {
-         return out;
+      } catch (Throwable t) {
+         return false;
       }
+      return false;
    }
 
-   public static List<Recettes.Facon> pour(MinecraftServer serveur, Item resultat) {
-      List<Recettes.Facon> out = new ArrayList<>();
-      if (serveur != null && resultat != null) {
-         for (Recipe<?> r : serveur.getRecipeManager().getRecipes()) {
-            ItemStack sortie;
-            try {
-               sortie = r.getResultItem();
-            } catch (Throwable var7) {
-               continue;
-            }
-
-            if (sortie != null && !sortie.isEmpty() && sortie.getItem() == resultat) {
-               Recettes.Facon f = decrire(r, sortie);
-               if (f != null) {
-                  out.add(f);
-               }
-
-               if (out.size() >= 3) {
-                  break;
-               }
-            }
+   /** Jusqu'à trois façons de faire cet objet. */
+   public static List<Facon> pour(MinecraftServer serveur, Item resultat) {
+      List<Facon> out = new ArrayList<>();
+      if (serveur == null || resultat == null) {
+         return out;
+      }
+      for (Recipe<?> r : serveur.getRecipeManager().getRecipes()) {
+         ItemStack sortie = sortie(r);
+         if (sortie.isEmpty() || sortie.getItem() != resultat) {
+            continue;
          }
-
-         return out;
-      } else {
-         return out;
+         Facon f = decrire(r, sortie);
+         if (f != null) {
+            out.add(f);
+         }
+         if (out.size() >= MAX_FACONS) {
+            break;
+         }
       }
+      return out;
    }
 
-   private static Recettes.Facon decrire(Recipe<?> r, ItemStack sortie) {
+   private static Facon decrire(Recipe<?> r, ItemStack sortie) {
       NonNullList<Ingredient> liste;
       try {
          liste = r.getIngredients();
-      } catch (Throwable var8) {
+      } catch (Throwable t) {
          return null;
       }
-
-      if (liste != null && !liste.isEmpty()) {
-         Map<String, Integer> compte = new LinkedHashMap<>();
-
-         for (Ingredient i : liste) {
-            if (i != null && !i.isEmpty()) {
-               ItemStack[] choix;
-               try {
-                  choix = i.getItems();
-               } catch (Throwable var9) {
-                  continue;
-               }
-
-               if (choix != null && choix.length != 0) {
-                  ResourceLocation id = ForgeRegistries.ITEMS.getKey(choix[0].getItem());
-                  if (id != null) {
-                     compte.merge(id.toString(), 1, Integer::sum);
-                     if (compte.size() >= 9) {
-                        break;
-                     }
-                  }
-               }
+      if (liste == null || liste.isEmpty()) {
+         return null;
+      }
+      Map<String, Integer> compte = new LinkedHashMap<>();
+      for (Ingredient i : liste) {
+         if (i == null || i.isEmpty()) {
+            continue;
+         }
+         ItemStack[] choix;
+         try {
+            choix = i.getItems();
+         } catch (Throwable t) {
+            continue;
+         }
+         if (choix == null || choix.length == 0) {
+            continue;
+         }
+         ResourceLocation id = ForgeRegistries.ITEMS.getKey(choix[0].getItem());
+         if (id != null) {
+            compte.merge(id.toString(), 1, Integer::sum);
+            if (compte.size() >= MAX_INGREDIENTS) {
+               break;
             }
          }
-
-         if (compte.isEmpty()) {
-            return null;
-         } else {
-            ResourceLocation type = ForgeRegistries.RECIPE_TYPES.getKey(r.getType());
-            return new Recettes.Facon(
-               type == null ? "minecraft:crafting" : type.toString(),
-               new ArrayList<>(compte.keySet()),
-               new ArrayList<>(compte.values()),
-               Math.max(1, sortie.getCount())
-            );
-         }
-      } else {
+      }
+      if (compte.isEmpty()) {
          return null;
       }
-   }
-
-   public static record Facon(String type, List<String> ingredients, List<Integer> combien, int rendement) {
+      ResourceLocation type = ForgeRegistries.RECIPE_TYPES.getKey(r.getType());
+      return new Facon(type == null ? "minecraft:crafting" : type.toString(), new ArrayList<>(compte.keySet()), new ArrayList<>(compte.values()), Math.max(1, sortie.getCount()));
    }
 }

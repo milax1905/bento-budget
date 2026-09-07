@@ -8,14 +8,20 @@ modId="${mod_id}"
 version="${mod_version}"
 displayName="${mod_name}"
 authors="${mod_authors}"
-displayTest="IGNORE_SERVER_VERSION"
+credits="Le serveur Cubeland et ses cuisiniers."
+logoFile="logo.png"
+displayURL="https://cubeland.fr"
+displayTest="MATCH_VERSION"
 description='''
-Les six metiers de Cubeland, panneau compris : mineur, bucheron, fermier,
-chasseur, pecheur et cuisinier. C'est ce mod qui tient les metiers ; la boutique
-ne garde que l'argent et la vente, et recoit l'experience pour ses bonus de prix.
-La cuisine se joue en cinq paliers ; chaque plat a une famille, un effet,
-une qualite tiree au sort et une valeur marchande.
-Tout se regle dans config/cubeland-metiers/.
+Les six métiers de Cubeland, panneau compris : mineur, bûcheron, fermier,
+chasseur, pêcheur et cuisinier. C'est ce mod qui tient les métiers ; la boutique
+ne garde que l'argent et la vente, et reçoit l'expérience pour ses bonus de prix.
+
+La cuisine se joue en cinq paliers, un poste par palier. Chaque plat a une
+famille, un effet, une qualité tirée au sort et une valeur marchande. Le carnet
+propose trois commandes en permanence et guide les premiers pas.
+
+Le serveur lit seul config/cubeland-metiers/ et envoie ses réglages aux joueurs.
 '''
 
 [[dependencies.${mod_id}]]

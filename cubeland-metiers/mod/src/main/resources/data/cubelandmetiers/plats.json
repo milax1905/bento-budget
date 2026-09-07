@@ -1,27 +1,59 @@
 [
  {
-  "id": "cratedelight:cookie_bag",
-  "nom": "Cookie Bag",
+  "id": "sweetberryfoods:cooked_blueberries",
+  "nom": "Cooked Blueberries",
+  "fam": "dessert",
+  "poste": "fourneau",
+  "pal": 1,
+  "val": 30
+ },
+ {
+  "id": "sweetberryfoods:cooked_sweet_berries",
+  "nom": "Cooked Sweet Berries",
+  "fam": "dessert",
+  "poste": "fourneau",
+  "pal": 1,
+  "val": 30
+ },
+ {
+  "id": "farmersdelight:fruit_salad",
+  "nom": "Fruit Salad",
   "fam": "dessert",
   "poste": "planche",
   "pal": 1,
-  "val": 35
+  "val": 30
  },
  {
-  "id": "farmersdelight:apple_pie_slice",
-  "nom": "Slice of Apple Pie",
+  "id": "farmersdelight:honey_cookie",
+  "nom": "Honey Cookie",
+  "fam": "dessert",
+  "poste": "planche",
+  "pal": 1,
+  "val": 30
+ },
+ {
+  "id": "sweetberryfoods:honey_dipped_blueberries",
+  "nom": "Honey Dipped Blueberries",
+  "fam": "dessert",
+  "poste": "planche",
+  "pal": 1,
+  "val": 30
+ },
+ {
+  "id": "sweetberryfoods:honey_dipped_sweet_berries",
+  "nom": "Honey Dipped Sweet Berries",
+  "fam": "dessert",
+  "poste": "planche",
+  "pal": 1,
+  "val": 30
+ },
+ {
+  "id": "delightful:cooked_marshmallow_stick",
+  "nom": "Roasted Marshmallow on a Stick",
   "fam": "dessert",
   "poste": "fourneau",
   "pal": 1,
-  "val": 35
- },
- {
-  "id": "delightful:blueberry_pie_slice",
-  "nom": "Slice of Blueberry Pie",
-  "fam": "dessert",
-  "poste": "fourneau",
-  "pal": 1,
-  "val": 35
+  "val": 30
  },
  {
   "id": "farmersdelight:cake_slice",
@@ -29,77 +61,21 @@
   "fam": "dessert",
   "poste": "fourneau",
   "pal": 1,
-  "val": 35
- },
- {
-  "id": "farmersdelight:chocolate_pie_slice",
-  "nom": "Slice of Chocolate Pie",
-  "fam": "dessert",
-  "poste": "fourneau",
-  "pal": 1,
-  "val": 35
- },
- {
-  "id": "delightful:gloomgourd_pie_slice",
-  "nom": "Slice of Gloomgourd Pie",
-  "fam": "dessert",
-  "poste": "fourneau",
-  "pal": 1,
-  "val": 35
- },
- {
-  "id": "collectorsreap:lime_cake_slice",
-  "nom": "Slice of Lime Cake",
-  "fam": "dessert",
-  "poste": "fourneau",
-  "pal": 1,
-  "val": 35
- },
- {
-  "id": "collectorsreap:pomegranate_cake_slice",
-  "nom": "Slice of Pomegranate Cake",
-  "fam": "dessert",
-  "poste": "fourneau",
-  "pal": 1,
-  "val": 35
- },
- {
-  "id": "delightful:pumpkin_pie_slice",
-  "nom": "Slice of Pumpkin Pie",
-  "fam": "dessert",
-  "poste": "fourneau",
-  "pal": 1,
-  "val": 35
- },
- {
-  "id": "delightful:salmonberry_pie_slice",
-  "nom": "Slice of Salmonberry Pie",
-  "fam": "dessert",
-  "poste": "fourneau",
-  "pal": 1,
-  "val": 35
- },
- {
-  "id": "farmersdelight:rice_bag",
-  "nom": "Bag of Rice",
-  "fam": "feculent",
-  "poste": "planche",
-  "pal": 1,
-  "val": 25
- },
- {
-  "id": "cratedelight:bread_bag",
-  "nom": "Bread Bag",
-  "fam": "feculent",
-  "poste": "fourneau",
-  "pal": 1,
-  "val": 25
+  "val": 20
  },
  {
   "id": "moredelight:bread_slice",
   "nom": "Bread Slice",
   "fam": "feculent",
-  "poste": "fourneau",
+  "poste": "planche",
+  "pal": 1,
+  "val": 20
+ },
+ {
+  "id": "farmersdelight:cooked_rice",
+  "nom": "Cooked Rice",
+  "fam": "feculent",
+  "poste": "planche",
   "pal": 1,
   "val": 25
  },
@@ -112,25 +88,25 @@
   "val": 25
  },
  {
-  "id": "farmersdelight:raw_pasta",
-  "nom": "Raw Pasta",
-  "fam": "feculent",
-  "poste": "planche",
-  "pal": 1,
-  "val": 25
- },
- {
-  "id": "farmersdelight:rice",
-  "nom": "Rice",
-  "fam": "feculent",
-  "poste": "planche",
-  "pal": 1,
-  "val": 25
- },
- {
   "id": "moredelight:toast",
   "nom": "Toast",
   "fam": "feculent",
+  "poste": "planche",
+  "pal": 1,
+  "val": 20
+ },
+ {
+  "id": "delightful:field_salad",
+  "nom": "Field Salad",
+  "fam": "legume",
+  "poste": "planche",
+  "pal": 1,
+  "val": 25
+ },
+ {
+  "id": "farmersdelight:mixed_salad",
+  "nom": "Mixed Salad",
+  "fam": "legume",
   "poste": "planche",
   "pal": 1,
   "val": 25
@@ -141,13 +117,21 @@
   "fam": "poisson",
   "poste": "planche",
   "pal": 1,
-  "val": 35
+  "val": 25
  },
  {
   "id": "farmersdelight:cooked_cod_slice",
   "nom": "Cooked Cod Slice",
   "fam": "poisson",
   "poste": "planche",
+  "pal": 1,
+  "val": 25
+ },
+ {
+  "id": "aquaculture:fish_fillet_cooked",
+  "nom": "Cooked Fish Fillet",
+  "fam": "poisson",
+  "poste": "fourneau",
   "pal": 1,
   "val": 35
  },
@@ -156,6 +140,70 @@
   "nom": "Cooked Salmon Slice",
   "fam": "poisson",
   "poste": "planche",
+  "pal": 1,
+  "val": 25
+ },
+ {
+  "id": "farmersdelight:cooked_bacon",
+  "nom": "Cooked Bacon",
+  "fam": "viande",
+  "poste": "fourneau",
+  "pal": 1,
+  "val": 35
+ },
+ {
+  "id": "alexsdelight:cooked_bison",
+  "nom": "Cooked Bison",
+  "fam": "viande",
+  "poste": "fourneau",
+  "pal": 1,
+  "val": 35
+ },
+ {
+  "id": "alexsdelight:cooked_bunfungus",
+  "nom": "Cooked Bunfungus",
+  "fam": "viande",
+  "poste": "fourneau",
+  "pal": 1,
+  "val": 35
+ },
+ {
+  "id": "alexsdelight:cooked_bunfungus_drumstick",
+  "nom": "Cooked Bunfungus Drumstick",
+  "fam": "viande",
+  "poste": "fourneau",
+  "pal": 1,
+  "val": 35
+ },
+ {
+  "id": "alexsdelight:cooked_centipede_leg",
+  "nom": "Cooked Centipede Leg",
+  "fam": "viande",
+  "poste": "fourneau",
+  "pal": 1,
+  "val": 35
+ },
+ {
+  "id": "delightful:cooked_goat",
+  "nom": "Cooked Chevon",
+  "fam": "viande",
+  "poste": "fourneau",
+  "pal": 1,
+  "val": 35
+ },
+ {
+  "id": "farmersdelight:cooked_chicken_cuts",
+  "nom": "Cooked Chicken Cuts",
+  "fam": "viande",
+  "poste": "fourneau",
+  "pal": 1,
+  "val": 35
+ },
+ {
+  "id": "alexsdelight:cooked_kangaroo_shank",
+  "nom": "Cooked Kangaroo Shank",
+  "fam": "viande",
+  "poste": "fourneau",
   "pal": 1,
   "val": 35
  },
@@ -176,8 +224,8 @@
   "val": 40
  },
  {
-  "id": "berries_and_cherries:blueberryjam",
-  "nom": "Blueberry Jam",
+  "id": "sweetberryfoods:blueberry_jam_sandwich",
+  "nom": "Blueberry Jam Sandwich",
   "fam": "dessert",
   "poste": "planche",
   "pal": 2,
@@ -193,14 +241,6 @@
  },
  {
   "id": "delightful:blueberry_pie",
-  "nom": "Blueberry Pie",
-  "fam": "dessert",
-  "poste": "fourneau",
-  "pal": 2,
-  "val": 40
- },
- {
-  "id": "berries_and_cherries:blueberry_pie",
   "nom": "Blueberry Pie",
   "fam": "dessert",
   "poste": "fourneau",
@@ -240,6 +280,14 @@
   "val": 40
  },
  {
+  "id": "berries_and_cherries:dark_grape_jam",
+  "nom": "Dark Grape Jam",
+  "fam": "dessert",
+  "poste": "planche",
+  "pal": 2,
+  "val": 40
+ },
+ {
   "id": "delightful:gloomgourd_pie",
   "nom": "Gloomgourd Pie",
   "fam": "dessert",
@@ -248,24 +296,8 @@
   "val": 40
  },
  {
-  "id": "farmersdelight:honey_cookie",
-  "nom": "Honey Cookie",
-  "fam": "dessert",
-  "poste": "planche",
-  "pal": 2,
-  "val": 40
- },
- {
-  "id": "berries_and_cherries:jam_jar_1",
-  "nom": "Jam Jar",
-  "fam": "dessert",
-  "poste": "planche",
-  "pal": 2,
-  "val": 40
- },
- {
-  "id": "berries_and_cherries:jam_jar_2",
-  "nom": "Jam Jars",
+  "id": "berries_and_cherries:green_grape_jam",
+  "nom": "Green Grape Jam",
   "fam": "dessert",
   "poste": "planche",
   "pal": 2,
@@ -284,14 +316,6 @@
   "nom": "Lime Cookie",
   "fam": "dessert",
   "poste": "planche",
-  "pal": 2,
-  "val": 40
- },
- {
-  "id": "farmersdelight:pie_crust",
-  "nom": "Pie Crust",
-  "fam": "dessert",
-  "poste": "fourneau",
   "pal": 2,
   "val": 40
  },
@@ -328,22 +352,6 @@
   "val": 40
  },
  {
-  "id": "farmersrespite:rose_hip_pie_slice",
-  "nom": "Rose Hip Pie Slice",
-  "fam": "dessert",
-  "poste": "fourneau",
-  "pal": 2,
-  "val": 40
- },
- {
-  "id": "collectorsreap:salmon_tartare",
-  "nom": "Salmon Tartare",
-  "fam": "dessert",
-  "poste": "fourneau",
-  "pal": 2,
-  "val": 40
- },
- {
   "id": "delightful:salmonberry_pie",
   "nom": "Salmonberry Pie",
   "fam": "dessert",
@@ -352,52 +360,76 @@
   "val": 40
  },
  {
-  "id": "farmersdelight:shepherds_pie_block",
-  "nom": "Shepherd's Pie",
+  "id": "farmersdelight:apple_pie_slice",
+  "nom": "Slice of Apple Pie",
   "fam": "dessert",
   "poste": "fourneau",
   "pal": 2,
-  "val": 40
+  "val": 30,
+  "variante_de": "farmersdelight:apple_pie"
  },
  {
-  "id": "delightful:crimson_berry_pie_slice",
-  "nom": "Slice of Crimson Berry Pie",
+  "id": "delightful:blueberry_pie_slice",
+  "nom": "Slice of Blueberry Pie",
   "fam": "dessert",
   "poste": "fourneau",
   "pal": 2,
-  "val": 40
+  "val": 30,
+  "variante_de": "delightful:blueberry_pie"
  },
  {
-  "id": "delightful:green_apple_pie_slice",
-  "nom": "Slice of Green Apple Pie",
+  "id": "farmersdelight:chocolate_pie_slice",
+  "nom": "Slice of Chocolate Pie",
   "fam": "dessert",
   "poste": "fourneau",
   "pal": 2,
-  "val": 40
+  "val": 30,
+  "variante_de": "farmersdelight:chocolate_pie"
  },
  {
-  "id": "collectorsreap:lime_pie_slice",
-  "nom": "Slice of Key Lime Pie",
+  "id": "delightful:gloomgourd_pie_slice",
+  "nom": "Slice of Gloomgourd Pie",
   "fam": "dessert",
   "poste": "fourneau",
   "pal": 2,
-  "val": 40
+  "val": 30,
+  "variante_de": "delightful:gloomgourd_pie"
  },
  {
-  "id": "delightful:nightshade_berry_pie_slice",
-  "nom": "Slice of Nightshade Berry Pie",
+  "id": "collectorsreap:lime_cake_slice",
+  "nom": "Slice of Lime Cake",
   "fam": "dessert",
   "poste": "fourneau",
   "pal": 2,
-  "val": 40
+  "val": 30,
+  "variante_de": "collectorsreap:lime_cake"
  },
  {
-  "id": "delightful:source_berry_pie_slice",
-  "nom": "Slice of Source Berry Pie",
+  "id": "collectorsreap:pomegranate_cake_slice",
+  "nom": "Slice of Pomegranate Cake",
   "fam": "dessert",
   "poste": "fourneau",
   "pal": 2,
-  "val": 40
+  "val": 30,
+  "variante_de": "collectorsreap:pomegranate_cake"
+ },
+ {
+  "id": "delightful:pumpkin_pie_slice",
+  "nom": "Slice of Pumpkin Pie",
+  "fam": "dessert",
+  "poste": "fourneau",
+  "pal": 2,
+  "val": 30,
+  "variante_de": "delightful:pumpkin_pie"
+ },
+ {
+  "id": "delightful:salmonberry_pie_slice",
+  "nom": "Slice of Salmonberry Pie",
+  "fam": "dessert",
+  "poste": "fourneau",
+  "pal": 2,
+  "val": 30,
+  "variante_de": "delightful:salmonberry_pie"
  },
  {
   "id": "farmersdelight:sweet_berry_cheesecake_slice",
@@ -405,11 +437,20 @@
   "fam": "dessert",
   "poste": "fourneau",
   "pal": 2,
-  "val": 40
+  "val": 30,
+  "variante_de": "farmersdelight:sweet_berry_cheesecake"
  },
  {
   "id": "berries_and_cherries:strawberry_jam",
   "nom": "Strawberry Jam",
+  "fam": "dessert",
+  "poste": "planche",
+  "pal": 2,
+  "val": 40
+ },
+ {
+  "id": "collectorsreap:strawberry_jam_bun",
+  "nom": "Strawberry Jam Bun",
   "fam": "dessert",
   "poste": "planche",
   "pal": 2,
@@ -424,28 +465,52 @@
   "val": 40
  },
  {
-  "id": "alexsdelight:bunfungus_sandwich",
-  "nom": "Bunfungus Sandwich",
-  "fam": "feculent",
+  "id": "farmersdelight:sweet_berry_cheesecake",
+  "nom": "Sweet Berry Cheesecake",
+  "fam": "dessert",
   "poste": "fourneau",
   "pal": 2,
-  "val": 35
+  "val": 40
  },
  {
-  "id": "alexsdelight:cooked_bunfungus",
-  "nom": "Cooked Bunfungus",
-  "fam": "feculent",
-  "poste": "fourneau",
-  "pal": 2,
-  "val": 35
- },
- {
-  "id": "farmersdelight:cooked_rice",
-  "nom": "Cooked Rice",
-  "fam": "feculent",
+  "id": "farmersdelight:sweet_berry_cookie",
+  "nom": "Sweet Berry Cookie",
+  "fam": "dessert",
   "poste": "planche",
   "pal": 2,
-  "val": 35
+  "val": 40
+ },
+ {
+  "id": "sweetberryfoods:sweet_berry_jam",
+  "nom": "Sweet Berry Jam",
+  "fam": "dessert",
+  "poste": "planche",
+  "pal": 2,
+  "val": 40
+ },
+ {
+  "id": "sweetberryfoods:sweet_berry_jam_sandwich",
+  "nom": "Sweet Berry Jam Sandwich",
+  "fam": "dessert",
+  "poste": "planche",
+  "pal": 2,
+  "val": 40
+ },
+ {
+  "id": "sweetberryfoods:sweet_berry_muffin",
+  "nom": "Sweet Berry Muffin",
+  "fam": "dessert",
+  "poste": "fourneau",
+  "pal": 2,
+  "val": 40
+ },
+ {
+  "id": "sweetberryfoods:sweet_berry_tart",
+  "nom": "Sweet Berry Tart",
+  "fam": "dessert",
+  "poste": "fourneau",
+  "pal": 2,
+  "val": 40
  },
  {
   "id": "farmersdelight:egg_sandwich",
@@ -464,14 +529,6 @@
   "val": 35
  },
  {
-  "id": "alexsdelight:kangaroo_pasta",
-  "nom": "Kangaroo Pasta",
-  "fam": "feculent",
-  "poste": "planche",
-  "pal": 2,
-  "val": 35
- },
- {
   "id": "collectorsreap:portobello_pasta",
   "nom": "Mushroom Pasta",
   "fam": "feculent",
@@ -482,14 +539,6 @@
  {
   "id": "farmersdelight:mushroom_rice",
   "nom": "Mushroom Rice",
-  "fam": "feculent",
-  "poste": "planche",
-  "pal": 2,
-  "val": 35
- },
- {
-  "id": "farmersdelight:rice_bale",
-  "nom": "Rice Bale",
   "fam": "feculent",
   "poste": "planche",
   "pal": 2,
@@ -520,36 +569,12 @@
   "val": 35
  },
  {
-  "id": "farmersdelight:wild_rice",
-  "nom": "Wild Rice",
-  "fam": "feculent",
-  "poste": "planche",
+  "id": "delightful:cactus_steak",
+  "nom": "Cactus Steak",
+  "fam": "legume",
+  "poste": "poele",
   "pal": 2,
   "val": 35
- },
- {
-  "id": "sweetberryfoods:cooked_blueberries",
-  "nom": "Cooked Blueberries",
-  "fam": "legume",
-  "poste": "planche",
-  "pal": 2,
-  "val": 40
- },
- {
-  "id": "delightful:cooked_goat",
-  "nom": "Cooked Chevon",
-  "fam": "legume",
-  "poste": "planche",
-  "pal": 2,
-  "val": 40
- },
- {
-  "id": "delightful:field_salad",
-  "nom": "Field Salad",
-  "fam": "legume",
-  "poste": "planche",
-  "pal": 2,
-  "val": 40
  },
  {
   "id": "farmersdelight:fried_egg",
@@ -557,23 +582,7 @@
   "fam": "legume",
   "poste": "poele",
   "pal": 2,
-  "val": 40
- },
- {
-  "id": "farmersdelight:fruit_salad",
-  "nom": "Fruit Salad",
-  "fam": "legume",
-  "poste": "planche",
-  "pal": 2,
-  "val": 40
- },
- {
-  "id": "berries_and_cherries:ironbowl",
-  "nom": "Iron Bowl",
-  "fam": "legume",
-  "poste": "planche",
-  "pal": 2,
-  "val": 40
+  "val": 35
  },
  {
   "id": "alexsdelight:maggot_salad",
@@ -581,15 +590,7 @@
   "fam": "legume",
   "poste": "planche",
   "pal": 2,
-  "val": 40
- },
- {
-  "id": "farmersdelight:mixed_salad",
-  "nom": "Mixed Salad",
-  "fam": "legume",
-  "poste": "planche",
-  "pal": 2,
-  "val": 40
+  "val": 35
  },
  {
   "id": "farmersdelight:nether_salad",
@@ -597,11 +598,27 @@
   "fam": "legume",
   "poste": "planche",
   "pal": 2,
-  "val": 40
+  "val": 35
  },
  {
-  "id": "alexsdelight:lobster_pasta",
-  "nom": "Lobster Pasta",
+  "id": "collectorsreap:pomegranate_bean_salad",
+  "nom": "Pomegranate Bean Salad",
+  "fam": "legume",
+  "poste": "planche",
+  "pal": 2,
+  "val": 35
+ },
+ {
+  "id": "aquaculturedelight:cooked_small_turtle_meat",
+  "nom": "Cooked Small Turtle Meat",
+  "fam": "poisson",
+  "poste": "fourneau",
+  "pal": 2,
+  "val": 45
+ },
+ {
+  "id": "collectorsreap:salmon_tartare",
+  "nom": "Salmon Tartare",
   "fam": "poisson",
   "poste": "planche",
   "pal": 2,
@@ -613,15 +630,15 @@
   "fam": "viande",
   "poste": "planche",
   "pal": 2,
-  "val": 50
+  "val": 45
  },
  {
-  "id": "delightful:cactus_steak",
-  "nom": "Cactus Steak",
+  "id": "alexsdelight:bunfungus_sandwich",
+  "nom": "Bunfungus Sandwich",
   "fam": "viande",
-  "poste": "poele",
+  "poste": "planche",
   "pal": 2,
-  "val": 50
+  "val": 45
  },
  {
   "id": "moredelight:chicken_salad",
@@ -629,7 +646,7 @@
   "fam": "viande",
   "poste": "planche",
   "pal": 2,
-  "val": 50
+  "val": 45
  },
  {
   "id": "farmersdelight:chicken_sandwich",
@@ -637,23 +654,15 @@
   "fam": "viande",
   "poste": "planche",
   "pal": 2,
-  "val": 50
+  "val": 45
  },
  {
-  "id": "farmersdelight:cooked_bacon",
-  "nom": "Cooked Bacon",
+  "id": "alexsdelight:cooked_loose_moose_rib",
+  "nom": "Cooked Loose Moose Rib",
   "fam": "viande",
-  "poste": "planche",
+  "poste": "fourneau",
   "pal": 2,
-  "val": 50
- },
- {
-  "id": "alexsdelight:cooked_bison",
-  "nom": "Cooked Bison",
-  "fam": "viande",
-  "poste": "planche",
-  "pal": 2,
-  "val": 50
+  "val": 45
  },
  {
   "id": "farmersdelight:mutton_wrap",
@@ -661,47 +670,23 @@
   "fam": "viande",
   "poste": "planche",
   "pal": 2,
-  "val": 50
+  "val": 45
  },
  {
   "id": "moredelight:porkchop_sandwich",
   "nom": "Porkchop Sandwich",
   "fam": "viande",
-  "poste": "poele",
+  "poste": "planche",
   "pal": 2,
-  "val": 50
- },
- {
-  "id": "farmersdelight:roast_chicken_block",
-  "nom": "Roast Chicken",
-  "fam": "viande",
-  "poste": "poele",
-  "pal": 2,
-  "val": 50
+  "val": 45
  },
  {
   "id": "moredelight:steak_sandwich",
   "nom": "Steak Sandwich",
   "fam": "viande",
-  "poste": "poele",
+  "poste": "planche",
   "pal": 2,
-  "val": 50
- },
- {
-  "id": "sweetberryfoods:blueberry_jam_sandwich",
-  "nom": "Blueberry Jam Sandwich",
-  "fam": "dessert",
-  "poste": "planche",
-  "pal": 3,
-  "val": 50
- },
- {
-  "id": "sweetberryfoods:cooked_sweet_berries",
-  "nom": "Cooked Sweet Berries",
-  "fam": "dessert",
-  "poste": "planche",
-  "pal": 3,
-  "val": 50
+  "val": 45
  },
  {
   "id": "delightful:crimson_berry_pie",
@@ -709,15 +694,7 @@
   "fam": "dessert",
   "poste": "fourneau",
   "pal": 3,
-  "val": 50
- },
- {
-  "id": "berries_and_cherries:dark_grape_jam",
-  "nom": "Dark Grape Jam",
-  "fam": "dessert",
-  "poste": "planche",
-  "pal": 3,
-  "val": 50
+  "val": 55
  },
  {
   "id": "berries_and_cherries:dgrapepie",
@@ -725,7 +702,7 @@
   "fam": "dessert",
   "poste": "fourneau",
   "pal": 3,
-  "val": 50
+  "val": 55
  },
  {
   "id": "delightful:green_apple_pie",
@@ -733,15 +710,7 @@
   "fam": "dessert",
   "poste": "fourneau",
   "pal": 3,
-  "val": 50
- },
- {
-  "id": "berries_and_cherries:green_grape_jam",
-  "nom": "Green Grape Jam",
-  "fam": "dessert",
-  "poste": "planche",
-  "pal": 3,
-  "val": 50
+  "val": 55
  },
  {
   "id": "berries_and_cherries:ggrapepie",
@@ -749,23 +718,7 @@
   "fam": "dessert",
   "poste": "fourneau",
   "pal": 3,
-  "val": 50
- },
- {
-  "id": "sweetberryfoods:honey_dipped_blueberries",
-  "nom": "Honey Dipped Blueberries",
-  "fam": "dessert",
-  "poste": "planche",
-  "pal": 3,
-  "val": 50
- },
- {
-  "id": "collectorsreap:honey_lime_chicken",
-  "nom": "Honey Lime Chicken",
-  "fam": "dessert",
-  "poste": "planche",
-  "pal": 3,
-  "val": 50
+  "val": 55
  },
  {
   "id": "collectorsreap:lime_pie",
@@ -773,7 +726,7 @@
   "fam": "dessert",
   "poste": "fourneau",
   "pal": 3,
-  "val": 50
+  "val": 55
  },
  {
   "id": "delightful:nightshade_berry_pie",
@@ -781,15 +734,7 @@
   "fam": "dessert",
   "poste": "fourneau",
   "pal": 3,
-  "val": 50
- },
- {
-  "id": "farmersdelight:shepherds_pie",
-  "nom": "Plate of Shepherd's Pie",
-  "fam": "dessert",
-  "poste": "fourneau",
-  "pal": 3,
-  "val": 50
+  "val": 55
  },
  {
   "id": "farmersrespite:rose_hip_pie",
@@ -797,7 +742,61 @@
   "fam": "dessert",
   "poste": "fourneau",
   "pal": 3,
-  "val": 50
+  "val": 55
+ },
+ {
+  "id": "farmersrespite:rose_hip_pie_slice",
+  "nom": "Rose Hip Pie Slice",
+  "fam": "dessert",
+  "poste": "fourneau",
+  "pal": 3,
+  "val": 45,
+  "variante_de": "farmersrespite:rose_hip_pie"
+ },
+ {
+  "id": "delightful:crimson_berry_pie_slice",
+  "nom": "Slice of Crimson Berry Pie",
+  "fam": "dessert",
+  "poste": "fourneau",
+  "pal": 3,
+  "val": 45,
+  "variante_de": "delightful:crimson_berry_pie"
+ },
+ {
+  "id": "delightful:green_apple_pie_slice",
+  "nom": "Slice of Green Apple Pie",
+  "fam": "dessert",
+  "poste": "fourneau",
+  "pal": 3,
+  "val": 45,
+  "variante_de": "delightful:green_apple_pie"
+ },
+ {
+  "id": "collectorsreap:lime_pie_slice",
+  "nom": "Slice of Key Lime Pie",
+  "fam": "dessert",
+  "poste": "fourneau",
+  "pal": 3,
+  "val": 45,
+  "variante_de": "collectorsreap:lime_pie"
+ },
+ {
+  "id": "delightful:nightshade_berry_pie_slice",
+  "nom": "Slice of Nightshade Berry Pie",
+  "fam": "dessert",
+  "poste": "fourneau",
+  "pal": 3,
+  "val": 45,
+  "variante_de": "delightful:nightshade_berry_pie"
+ },
+ {
+  "id": "delightful:source_berry_pie_slice",
+  "nom": "Slice of Source Berry Pie",
+  "fam": "dessert",
+  "poste": "fourneau",
+  "pal": 3,
+  "val": 45,
+  "variante_de": "delightful:source_berry_pie"
  },
  {
   "id": "delightful:source_berry_pie",
@@ -805,71 +804,7 @@
   "fam": "dessert",
   "poste": "fourneau",
   "pal": 3,
-  "val": 50
- },
- {
-  "id": "collectorsreap:strawberry_jam_bun",
-  "nom": "Strawberry Jam Bun",
-  "fam": "dessert",
-  "poste": "fourneau",
-  "pal": 3,
-  "val": 50
- },
- {
-  "id": "farmersdelight:sweet_berry_cheesecake",
-  "nom": "Sweet Berry Cheesecake",
-  "fam": "dessert",
-  "poste": "fourneau",
-  "pal": 3,
-  "val": 50
- },
- {
-  "id": "farmersdelight:sweet_berry_cookie",
-  "nom": "Sweet Berry Cookie",
-  "fam": "dessert",
-  "poste": "planche",
-  "pal": 3,
-  "val": 50
- },
- {
-  "id": "sweetberryfoods:sweet_berry_jam",
-  "nom": "Sweet Berry Jam",
-  "fam": "dessert",
-  "poste": "planche",
-  "pal": 3,
-  "val": 50
- },
- {
-  "id": "sweetberryfoods:sweet_berry_muffin",
-  "nom": "Sweet Berry Muffin",
-  "fam": "dessert",
-  "poste": "fourneau",
-  "pal": 3,
-  "val": 50
- },
- {
-  "id": "sweetberryfoods:sweet_berry_tart",
-  "nom": "Sweet Berry Tart",
-  "fam": "dessert",
-  "poste": "fourneau",
-  "pal": 3,
-  "val": 50
- },
- {
-  "id": "alexsdelight:cooked_bunfungus_drumstick",
-  "nom": "Cooked Bunfungus Drumstick",
-  "fam": "feculent",
-  "poste": "fourneau",
-  "pal": 3,
-  "val": 45
- },
- {
-  "id": "farmersdelight:rice_roll_medley_block",
-  "nom": "Rice Roll Medley",
-  "fam": "feculent",
-  "poste": "fourneau",
-  "pal": 3,
-  "val": 45
+  "val": 55
  },
  {
   "id": "collectorsreap:baked_portobello_cap",
@@ -877,23 +812,7 @@
   "fam": "legume",
   "poste": "poele",
   "pal": 3,
-  "val": 45
- },
- {
-  "id": "alexsdelight:cooked_centipede_leg",
-  "nom": "Cooked Centipede Leg",
-  "fam": "legume",
-  "poste": "planche",
-  "pal": 3,
-  "val": 45
- },
- {
-  "id": "alexsdelight:cooked_kangaroo_shank",
-  "nom": "Cooked Kangaroo Shank",
-  "fam": "legume",
-  "poste": "planche",
-  "pal": 3,
-  "val": 45
+  "val": 50
  },
  {
   "id": "collectorsreap:crimson_carrot_roast",
@@ -901,23 +820,15 @@
   "fam": "legume",
   "poste": "poele",
   "pal": 3,
-  "val": 45
+  "val": 50
  },
  {
-  "id": "collectorsreap:pomegranate_bean_salad",
-  "nom": "Pomegranate Bean Salad",
-  "fam": "legume",
-  "poste": "planche",
-  "pal": 3,
-  "val": 45
- },
- {
-  "id": "aquaculture:fish_fillet_cooked",
-  "nom": "Cooked Fish Fillet",
+  "id": "alexsdelight:lobster_pasta",
+  "nom": "Lobster Pasta",
   "fam": "poisson",
   "poste": "planche",
   "pal": 3,
-  "val": 55
+  "val": 60
  },
  {
   "id": "farmersdelight:squid_ink_pasta",
@@ -925,7 +836,7 @@
   "fam": "poisson",
   "poste": "planche",
   "pal": 3,
-  "val": 55
+  "val": 60
  },
  {
   "id": "alexsdelight:acacia_blossom_soup",
@@ -949,7 +860,7 @@
   "fam": "soupe",
   "poste": "marmite",
   "pal": 3,
-  "val": 50
+  "val": 60
  },
  {
   "id": "farmersdelight:beef_stew",
@@ -957,7 +868,7 @@
   "fam": "soupe",
   "poste": "marmite",
   "pal": 3,
-  "val": 50
+  "val": 60
  },
  {
   "id": "moredelight:carrot_soup",
@@ -965,7 +876,7 @@
   "fam": "soupe",
   "poste": "marmite",
   "pal": 3,
-  "val": 50
+  "val": 60
  },
  {
   "id": "farmersdelight:chicken_soup",
@@ -973,7 +884,7 @@
   "fam": "soupe",
   "poste": "marmite",
   "pal": 3,
-  "val": 50
+  "val": 60
  },
  {
   "id": "delightful:coconut_curry",
@@ -981,7 +892,7 @@
   "fam": "soupe",
   "poste": "marmite",
   "pal": 3,
-  "val": 50
+  "val": 60
  },
  {
   "id": "farmersdelight:fish_stew",
@@ -989,7 +900,7 @@
   "fam": "soupe",
   "poste": "marmite",
   "pal": 3,
-  "val": 50
+  "val": 60
  },
  {
   "id": "aquaculturedelight:frog_leg_soup",
@@ -1005,7 +916,7 @@
   "fam": "soupe",
   "poste": "marmite",
   "pal": 3,
-  "val": 50
+  "val": 60
  },
  {
   "id": "farmersdelight:noodle_soup",
@@ -1013,7 +924,7 @@
   "fam": "soupe",
   "poste": "marmite",
   "pal": 3,
-  "val": 50
+  "val": 60
  },
  {
   "id": "farmersdelight:pumpkin_soup",
@@ -1021,7 +932,7 @@
   "fam": "soupe",
   "poste": "marmite",
   "pal": 3,
-  "val": 50
+  "val": 60
  },
  {
   "id": "aquaculture:turtle_soup",
@@ -1029,7 +940,7 @@
   "fam": "soupe",
   "poste": "marmite",
   "pal": 3,
-  "val": 50
+  "val": 60
  },
  {
   "id": "aquaculturedelight:poor_fisher_chowder",
@@ -1053,7 +964,7 @@
   "fam": "soupe",
   "poste": "marmite",
   "pal": 3,
-  "val": 50
+  "val": 60
  },
  {
   "id": "collectorsreap:portobello_rice_soup",
@@ -1064,20 +975,12 @@
   "val": 60
  },
  {
-  "id": "farmersdelight:cooked_chicken_cuts",
-  "nom": "Cooked Chicken Cuts",
-  "fam": "viande",
-  "poste": "planche",
-  "pal": 3,
-  "val": 55
- },
- {
   "id": "farmersdelight:cooked_mutton_chops",
   "nom": "Cooked Mutton Chops",
   "fam": "viande",
   "poste": "poele",
   "pal": 3,
-  "val": 55
+  "val": 60
  },
  {
   "id": "delightful:cooked_venison_chops",
@@ -1085,7 +988,23 @@
   "fam": "viande",
   "poste": "poele",
   "pal": 3,
-  "val": 55
+  "val": 60
+ },
+ {
+  "id": "collectorsreap:honey_lime_chicken",
+  "nom": "Honey Lime Chicken",
+  "fam": "viande",
+  "poste": "poele",
+  "pal": 3,
+  "val": 60
+ },
+ {
+  "id": "alexsdelight:kangaroo_pasta",
+  "nom": "Kangaroo Pasta",
+  "fam": "viande",
+  "poste": "planche",
+  "pal": 3,
+  "val": 60
  },
  {
   "id": "farmersdelight:roast_chicken",
@@ -1093,7 +1012,15 @@
   "fam": "viande",
   "poste": "poele",
   "pal": 3,
-  "val": 55
+  "val": 60
+ },
+ {
+  "id": "farmersdelight:shepherds_pie",
+  "nom": "Plate of Shepherd's Pie",
+  "fam": "viande",
+  "poste": "fourneau",
+  "pal": 3,
+  "val": 60
  },
  {
   "id": "farmersdelight:roasted_mutton_chops",
@@ -1101,7 +1028,7 @@
   "fam": "viande",
   "poste": "poele",
   "pal": 3,
-  "val": 55
+  "val": 60
  },
  {
   "id": "aquaculturedelight:turtle_meat_dish",
@@ -1109,7 +1036,7 @@
   "fam": "viande",
   "poste": "planche",
   "pal": 3,
-  "val": 55
+  "val": 60
  },
  {
   "id": "farmersdelight:apple_cider",
@@ -1117,15 +1044,7 @@
   "fam": "boisson",
   "poste": "bouilloire",
   "pal": 4,
-  "val": 40
- },
- {
-  "id": "farmersrespite:long_apple_cider",
-  "nom": "Apple Cider",
-  "fam": "boisson",
-  "poste": "bouilloire",
-  "pal": 4,
-  "val": 40
+  "val": 45
  },
  {
   "id": "delightful:azalea_tea",
@@ -1133,15 +1052,7 @@
   "fam": "boisson",
   "poste": "bouilloire",
   "pal": 4,
-  "val": 40
- },
- {
-  "id": "farmersrespite:black_candle_coffee_cake",
-  "nom": "Black Candle Coffee Cake",
-  "fam": "boisson",
-  "poste": "bouilloire",
-  "pal": 4,
-  "val": 60
+  "val": 45
  },
  {
   "id": "farmersrespite:black_tea",
@@ -1149,39 +1060,7 @@
   "fam": "boisson",
   "poste": "bouilloire",
   "pal": 4,
-  "val": 40
- },
- {
-  "id": "collectorsreap:black_tea_gummy",
-  "nom": "Black Tea Gummy",
-  "fam": "boisson",
-  "poste": "bouilloire",
-  "pal": 4,
-  "val": 50
- },
- {
-  "id": "farmersrespite:black_tea_leaves",
-  "nom": "Black Tea Leaves",
-  "fam": "boisson",
-  "poste": "bouilloire",
-  "pal": 4,
-  "val": 30
- },
- {
-  "id": "farmersrespite:black_tea_leaves_sack",
-  "nom": "Black Tea Leaves Sack",
-  "fam": "boisson",
-  "poste": "bouilloire",
-  "pal": 4,
-  "val": 40
- },
- {
-  "id": "farmersrespite:blue_candle_coffee_cake",
-  "nom": "Blue Candle Coffee Cake",
-  "fam": "boisson",
-  "poste": "bouilloire",
-  "pal": 4,
-  "val": 60
+  "val": 45
  },
  {
   "id": "sweetberryfoods:blueberry_juice",
@@ -1189,31 +1068,7 @@
   "fam": "boisson",
   "poste": "bouilloire",
   "pal": 4,
-  "val": 40
- },
- {
-  "id": "berries_and_cherries:blueberry_juice",
-  "nom": "Blueberry Juice",
-  "fam": "boisson",
-  "poste": "bouilloire",
-  "pal": 4,
-  "val": 40
- },
- {
-  "id": "farmersrespite:brown_candle_coffee_cake",
-  "nom": "Brown Candle Coffee Cake",
-  "fam": "boisson",
-  "poste": "bouilloire",
-  "pal": 4,
-  "val": 60
- },
- {
-  "id": "farmersrespite:candle_coffee_cake",
-  "nom": "Candle Coffee Cake",
-  "fam": "boisson",
-  "poste": "bouilloire",
-  "pal": 4,
-  "val": 50
+  "val": 45
  },
  {
   "id": "berries_and_cherries:cherry_juice",
@@ -1221,7 +1076,7 @@
   "fam": "boisson",
   "poste": "bouilloire",
   "pal": 4,
-  "val": 40
+  "val": 45
  },
  {
   "id": "farmersrespite:coffee",
@@ -1229,87 +1084,7 @@
   "fam": "boisson",
   "poste": "bouilloire",
   "pal": 4,
-  "val": 30
- },
- {
-  "id": "farmersrespite:coffee_bush",
-  "nom": "Coffee Beans",
-  "fam": "boisson",
-  "poste": "bouilloire",
-  "pal": 4,
-  "val": 40
- },
- {
-  "id": "farmersrespite:coffee_beans_sack",
-  "nom": "Coffee Beans Sack",
-  "fam": "boisson",
-  "poste": "bouilloire",
-  "pal": 4,
-  "val": 50
- },
- {
-  "id": "farmersrespite:coffee_berries",
-  "nom": "Coffee Berries",
-  "fam": "boisson",
-  "poste": "bouilloire",
-  "pal": 4,
-  "val": 40
- },
- {
-  "id": "farmersrespite:coffee_bush_top",
-  "nom": "Coffee Bush Top",
-  "fam": "boisson",
-  "poste": "bouilloire",
-  "pal": 4,
-  "val": 50
- },
- {
-  "id": "farmersrespite:coffee_cake",
-  "nom": "Coffee Cake",
-  "fam": "boisson",
-  "poste": "bouilloire",
-  "pal": 4,
-  "val": 40
- },
- {
-  "id": "collectorsreap:coffee_gummy",
-  "nom": "Coffee Gummy",
-  "fam": "boisson",
-  "poste": "bouilloire",
-  "pal": 4,
-  "val": 40
- },
- {
-  "id": "farmersrespite:coffee_stem",
-  "nom": "Coffee Stem",
-  "fam": "boisson",
-  "poste": "bouilloire",
-  "pal": 4,
-  "val": 40
- },
- {
-  "id": "farmersrespite:coffee_stem_double",
-  "nom": "Coffee Stem Double",
-  "fam": "boisson",
-  "poste": "bouilloire",
-  "pal": 4,
-  "val": 50
- },
- {
-  "id": "farmersrespite:coffee_stem_middle",
-  "nom": "Coffee Stem Middle",
-  "fam": "boisson",
-  "poste": "bouilloire",
-  "pal": 4,
-  "val": 50
- },
- {
-  "id": "farmersrespite:cyan_candle_coffee_cake",
-  "nom": "Cyan Candle Coffee Cake",
-  "fam": "boisson",
-  "poste": "bouilloire",
-  "pal": 4,
-  "val": 60
+  "val": 45
  },
  {
   "id": "farmersrespite:dandelion_tea",
@@ -1317,7 +1092,7 @@
   "fam": "boisson",
   "poste": "bouilloire",
   "pal": 4,
-  "val": 40
+  "val": 45
  },
  {
   "id": "berries_and_cherries:dark_grape_juice",
@@ -1325,7 +1100,7 @@
   "fam": "boisson",
   "poste": "bouilloire",
   "pal": 4,
-  "val": 50
+  "val": 45
  },
  {
   "id": "farmersrespite:gamblers_tea",
@@ -1333,7 +1108,7 @@
   "fam": "boisson",
   "poste": "bouilloire",
   "pal": 4,
-  "val": 40
+  "val": 45
  },
  {
   "id": "berries_and_cherries:grape_juice",
@@ -1341,23 +1116,7 @@
   "fam": "boisson",
   "poste": "bouilloire",
   "pal": 4,
-  "val": 40
- },
- {
-  "id": "farmersrespite:gray_candle_coffee_cake",
-  "nom": "Gray Candle Coffee Cake",
-  "fam": "boisson",
-  "poste": "bouilloire",
-  "pal": 4,
-  "val": 60
- },
- {
-  "id": "farmersrespite:green_candle_coffee_cake",
-  "nom": "Green Candle Coffee Cake",
-  "fam": "boisson",
-  "poste": "bouilloire",
-  "pal": 4,
-  "val": 60
+  "val": 45
  },
  {
   "id": "farmersrespite:green_tea",
@@ -1365,47 +1124,7 @@
   "fam": "boisson",
   "poste": "bouilloire",
   "pal": 4,
-  "val": 40
- },
- {
-  "id": "farmersrespite:green_tea_cookie",
-  "nom": "Green Tea Cookie",
-  "fam": "boisson",
-  "poste": "bouilloire",
-  "pal": 4,
-  "val": 50
- },
- {
-  "id": "collectorsreap:green_tea_gummy",
-  "nom": "Green Tea Gummy",
-  "fam": "boisson",
-  "poste": "bouilloire",
-  "pal": 4,
-  "val": 50
- },
- {
-  "id": "delightful:green_tea_leaf",
-  "nom": "Green Tea Leaves",
-  "fam": "boisson",
-  "poste": "bouilloire",
-  "pal": 4,
-  "val": 30
- },
- {
-  "id": "farmersrespite:green_tea_leaves",
-  "nom": "Green Tea Leaves",
-  "fam": "boisson",
-  "poste": "bouilloire",
-  "pal": 4,
-  "val": 30
- },
- {
-  "id": "farmersrespite:green_tea_leaves_sack",
-  "nom": "Green Tea Leaves Sack",
-  "fam": "boisson",
-  "poste": "bouilloire",
-  "pal": 4,
-  "val": 40
+  "val": 45
  },
  {
   "id": "delightful:lavender_tea",
@@ -1413,31 +1132,7 @@
   "fam": "boisson",
   "poste": "bouilloire",
   "pal": 4,
-  "val": 40
- },
- {
-  "id": "farmersrespite:light_blue_candle_coffee_cake",
-  "nom": "Light Blue Candle Coffee Cake",
-  "fam": "boisson",
-  "poste": "bouilloire",
-  "pal": 4,
-  "val": 60
- },
- {
-  "id": "farmersrespite:light_gray_candle_coffee_cake",
-  "nom": "Light Gray Candle Coffee Cake",
-  "fam": "boisson",
-  "poste": "bouilloire",
-  "pal": 4,
-  "val": 60
- },
- {
-  "id": "farmersrespite:lime_candle_coffee_cake",
-  "nom": "Lime Candle Coffee Cake",
-  "fam": "boisson",
-  "poste": "bouilloire",
-  "pal": 4,
-  "val": 60
+  "val": 45
  },
  {
   "id": "collectorsreap:lime_green_tea",
@@ -1445,15 +1140,7 @@
   "fam": "boisson",
   "poste": "bouilloire",
   "pal": 4,
-  "val": 50
- },
- {
-  "id": "farmersrespite:magenta_candle_coffee_cake",
-  "nom": "Magenta Candle Coffee Cake",
-  "fam": "boisson",
-  "poste": "bouilloire",
-  "pal": 4,
-  "val": 60
+  "val": 45
  },
  {
   "id": "farmersdelight:melon_juice",
@@ -1461,31 +1148,7 @@
   "fam": "boisson",
   "poste": "bouilloire",
   "pal": 4,
-  "val": 40
- },
- {
-  "id": "farmersrespite:strong_melon_juice",
-  "nom": "Melon Juice",
-  "fam": "boisson",
-  "poste": "bouilloire",
-  "pal": 4,
-  "val": 40
- },
- {
-  "id": "farmersrespite:orange_candle_coffee_cake",
-  "nom": "Orange Candle Coffee Cake",
-  "fam": "boisson",
-  "poste": "bouilloire",
-  "pal": 4,
-  "val": 60
- },
- {
-  "id": "farmersrespite:pink_candle_coffee_cake",
-  "nom": "Pink Candle Coffee Cake",
-  "fam": "boisson",
-  "poste": "bouilloire",
-  "pal": 4,
-  "val": 60
+  "val": 45
  },
  {
   "id": "collectorsreap:pomegranate_black_tea",
@@ -1493,7 +1156,7 @@
   "fam": "boisson",
   "poste": "bouilloire",
   "pal": 4,
-  "val": 50
+  "val": 45
  },
  {
   "id": "delightful:prickly_pear_juice",
@@ -1501,15 +1164,7 @@
   "fam": "boisson",
   "poste": "bouilloire",
   "pal": 4,
-  "val": 50
- },
- {
-  "id": "farmersrespite:purple_candle_coffee_cake",
-  "nom": "Purple Candle Coffee Cake",
-  "fam": "boisson",
-  "poste": "bouilloire",
-  "pal": 4,
-  "val": 60
+  "val": 45
  },
  {
   "id": "farmersrespite:purulent_tea",
@@ -1517,7 +1172,7 @@
   "fam": "boisson",
   "poste": "bouilloire",
   "pal": 4,
-  "val": 40
+  "val": 45
  },
  {
   "id": "berries_and_cherries:raspberry_juice",
@@ -1525,15 +1180,7 @@
   "fam": "boisson",
   "poste": "bouilloire",
   "pal": 4,
-  "val": 40
- },
- {
-  "id": "farmersrespite:red_candle_coffee_cake",
-  "nom": "Red Candle Coffee Cake",
-  "fam": "boisson",
-  "poste": "bouilloire",
-  "pal": 4,
-  "val": 60
+  "val": 45
  },
  {
   "id": "farmersrespite:rose_hip_tea",
@@ -1541,15 +1188,7 @@
   "fam": "boisson",
   "poste": "bouilloire",
   "pal": 4,
-  "val": 50
- },
- {
-  "id": "farmersrespite:coffee_cake_slice",
-  "nom": "Slice of Coffee Cake",
-  "fam": "boisson",
-  "poste": "bouilloire",
-  "pal": 4,
-  "val": 30
+  "val": 45
  },
  {
   "id": "berries_and_cherries:strawberry_juice",
@@ -1557,7 +1196,7 @@
   "fam": "boisson",
   "poste": "bouilloire",
   "pal": 4,
-  "val": 40
+  "val": 45
  },
  {
   "id": "sweetberryfoods:sweet_berry_juice",
@@ -1565,63 +1204,7 @@
   "fam": "boisson",
   "poste": "bouilloire",
   "pal": 4,
-  "val": 50
- },
- {
-  "id": "farmersrespite:tea_bush",
-  "nom": "Tea Bush",
-  "fam": "boisson",
-  "poste": "bouilloire",
-  "pal": 4,
-  "val": 40
- },
- {
-  "id": "farmersrespite:tea_curry",
-  "nom": "Tea Curry",
-  "fam": "boisson",
-  "poste": "bouilloire",
-  "pal": 4,
-  "val": 40
- },
- {
-  "id": "farmersrespite:small_tea_bush",
-  "nom": "Tea Seeds",
-  "fam": "boisson",
-  "poste": "bouilloire",
-  "pal": 4,
-  "val": 30
- },
- {
-  "id": "farmersrespite:white_candle_coffee_cake",
-  "nom": "White Candle Coffee Cake",
-  "fam": "boisson",
-  "poste": "bouilloire",
-  "pal": 4,
-  "val": 60
- },
- {
-  "id": "farmersrespite:wild_coffee_bush",
-  "nom": "Wild Coffee Bush",
-  "fam": "boisson",
-  "poste": "bouilloire",
-  "pal": 4,
-  "val": 50
- },
- {
-  "id": "farmersrespite:wild_tea_bush",
-  "nom": "Wild Tea Bush",
-  "fam": "boisson",
-  "poste": "bouilloire",
-  "pal": 4,
-  "val": 50
- },
- {
-  "id": "farmersrespite:yellow_candle_coffee_cake",
-  "nom": "Yellow Candle Coffee Cake",
-  "fam": "boisson",
-  "poste": "bouilloire",
-  "pal": 4,
-  "val": 60
+  "val": 45
  },
  {
   "id": "farmersrespite:yellow_tea",
@@ -1629,43 +1212,100 @@
   "fam": "boisson",
   "poste": "bouilloire",
   "pal": 4,
-  "val": 40
+  "val": 45
  },
  {
-  "id": "collectorsreap:yellow_tea_gummy",
-  "nom": "Yellow Tea Gummy",
-  "fam": "boisson",
-  "poste": "bouilloire",
+  "id": "collectorsreap:black_tea_gummy",
+  "nom": "Black Tea Gummy",
+  "fam": "dessert",
+  "poste": "fourneau",
   "pal": 4,
-  "val": 50
+  "val": 60
  },
  {
-  "id": "farmersrespite:yellow_tea_leaves",
-  "nom": "Yellow Tea Leaves",
-  "fam": "boisson",
-  "poste": "bouilloire",
+  "id": "farmersrespite:candle_coffee_cake",
+  "nom": "Candle Coffee Cake",
+  "fam": "dessert",
+  "poste": "fourneau",
   "pal": 4,
-  "val": 30
+  "val": 60
  },
  {
-  "id": "farmersrespite:yellow_tea_leaves_sack",
-  "nom": "Yellow Tea Leaves Sack",
-  "fam": "boisson",
-  "poste": "bouilloire",
+  "id": "farmersrespite:coffee_cake",
+  "nom": "Coffee Cake",
+  "fam": "dessert",
+  "poste": "fourneau",
   "pal": 4,
-  "val": 40
+  "val": 60
  },
  {
-  "id": "sweetberryfoods:honey_dipped_sweet_berries",
-  "nom": "Honey Dipped Sweet Berries",
+  "id": "collectorsreap:coffee_gummy",
+  "nom": "Coffee Gummy",
+  "fam": "dessert",
+  "poste": "fourneau",
+  "pal": 4,
+  "val": 60
+ },
+ {
+  "id": "farmersrespite:green_tea_cookie",
+  "nom": "Green Tea Cookie",
   "fam": "dessert",
   "poste": "planche",
   "pal": 4,
   "val": 60
  },
  {
-  "id": "sweetberryfoods:sweet_berry_jam_sandwich",
-  "nom": "Sweet Berry Jam Sandwich",
+  "id": "collectorsreap:green_tea_gummy",
+  "nom": "Green Tea Gummy",
+  "fam": "dessert",
+  "poste": "fourneau",
+  "pal": 4,
+  "val": 60
+ },
+ {
+  "id": "delightful:honey_glazed_walnut",
+  "nom": "Honey Glazed Walnut",
+  "fam": "dessert",
+  "poste": "poele",
+  "pal": 4,
+  "val": 60
+ },
+ {
+  "id": "delightful:nut_butter_and_jelly_sandwich",
+  "nom": "Nut Butter and Jam Sandwich",
+  "fam": "dessert",
+  "poste": "planche",
+  "pal": 4,
+  "val": 60
+ },
+ {
+  "id": "farmersrespite:coffee_cake_slice",
+  "nom": "Slice of Coffee Cake",
+  "fam": "dessert",
+  "poste": "fourneau",
+  "pal": 4,
+  "val": 50,
+  "variante_de": "farmersrespite:coffee_cake"
+ },
+ {
+  "id": "moredelight:toast_with_blueberries",
+  "nom": "Toast with Blueberries",
+  "fam": "dessert",
+  "poste": "planche",
+  "pal": 4,
+  "val": 60
+ },
+ {
+  "id": "moredelight:toast_with_chocolate",
+  "nom": "Toast with Chocolate",
+  "fam": "dessert",
+  "poste": "planche",
+  "pal": 4,
+  "val": 60
+ },
+ {
+  "id": "moredelight:toast_with_glow_berries",
+  "nom": "Toast with Glow Berries",
   "fam": "dessert",
   "poste": "planche",
   "pal": 4,
@@ -1680,24 +1320,24 @@
   "val": 60
  },
  {
-  "id": "moredelight:toast_with_blueberries",
-  "nom": "Toast with Blueberries",
-  "fam": "feculent",
+  "id": "moredelight:toast_with_sweet_berries",
+  "nom": "Toast with Sweet Berries",
+  "fam": "dessert",
   "poste": "planche",
   "pal": 4,
-  "val": 55
+  "val": 60
+ },
+ {
+  "id": "collectorsreap:yellow_tea_gummy",
+  "nom": "Yellow Tea Gummy",
+  "fam": "dessert",
+  "poste": "fourneau",
+  "pal": 4,
+  "val": 60
  },
  {
   "id": "moredelight:toast_with_cheese",
   "nom": "Toast with Cheese",
-  "fam": "feculent",
-  "poste": "planche",
-  "pal": 4,
-  "val": 55
- },
- {
-  "id": "moredelight:toast_with_chocolate",
-  "nom": "Toast with Chocolate",
   "fam": "feculent",
   "poste": "planche",
   "pal": 4,
@@ -1712,10 +1352,18 @@
   "val": 55
  },
  {
-  "id": "alexsdelight:cooked_loose_moose_rib",
-  "nom": "Cooked Loose Moose Rib",
-  "fam": "legume",
+  "id": "moredelight:toast_with_peanut_butter",
+  "nom": "Toast with Peanut Butter",
+  "fam": "feculent",
   "poste": "planche",
+  "pal": 4,
+  "val": 55
+ },
+ {
+  "id": "farmersdelight:stuffed_pumpkin",
+  "nom": "Bowl of Stuffed Pumpkin",
+  "fam": "legume",
+  "poste": "fourneau",
   "pal": 4,
   "val": 55
  },
@@ -1728,22 +1376,6 @@
   "val": 55
  },
  {
-  "id": "collectorsreap:glazed_strider",
-  "nom": "Glazed Strider",
-  "fam": "legume",
-  "poste": "poele",
-  "pal": 4,
-  "val": 55
- },
- {
-  "id": "delightful:cooked_marshmallow_stick",
-  "nom": "Roasted Marshmallow on a Stick",
-  "fam": "legume",
-  "poste": "poele",
-  "pal": 4,
-  "val": 55
- },
- {
   "id": "collectorsreap:stuffed_portobello_cap",
   "nom": "Stuffed Portobello",
   "fam": "legume",
@@ -1752,176 +1384,96 @@
   "val": 55
  },
  {
-  "id": "farmersdelight:stuffed_pumpkin_block",
-  "nom": "Stuffed Pumpkin",
-  "fam": "legume",
-  "poste": "planche",
+  "id": "farmersrespite:tea_curry",
+  "nom": "Tea Curry",
+  "fam": "soupe",
+  "poste": "marmite",
   "pal": 4,
-  "val": 55
+  "val": 65
  },
  {
-  "id": "aquaculturedelight:cooked_small_turtle_meat",
-  "nom": "Cooked Small Turtle Meat",
-  "fam": "poisson",
-  "poste": "planche",
-  "pal": 4,
-  "val": 60
- },
- {
-  "id": "farmersdelight:pasta_with_meatballs",
-  "nom": "Pasta with Meatballs",
+  "id": "moredelight:chicken_sandwich_with_egg_and_tomato",
+  "nom": "Chicken Sandwich with Egg and Tomato",
   "fam": "viande",
   "poste": "planche",
   "pal": 4,
   "val": 65
  },
  {
-  "id": "mynethersdelight:bleeding_tartar",
-  "nom": "Bleeding Tartar",
-  "fam": "dessert",
-  "poste": "nether",
-  "pal": 5,
-  "val": 40
+  "id": "moredelight:cooked_rice_with_beef",
+  "nom": "Cooked Rice with Beef",
+  "fam": "viande",
+  "poste": "planche",
+  "pal": 4,
+  "val": 65
  },
  {
-  "id": "aquaculturedelight:halibut_with_tartar_sauce",
-  "nom": "Halibut with Tartar Sauce",
-  "fam": "dessert",
-  "poste": "fourneau",
-  "pal": 5,
-  "val": 70
+  "id": "moredelight:cooked_rice_with_chicken_cuts",
+  "nom": "Cooked Rice with Chicken Cuts",
+  "fam": "viande",
+  "poste": "planche",
+  "pal": 4,
+  "val": 65
  },
  {
-  "id": "farmersdelight:honey_glazed_ham_block",
-  "nom": "Honey Glazed Ham",
-  "fam": "dessert",
+  "id": "moredelight:cooked_rice_with_porkchop",
+  "nom": "Cooked Rice with Porkchop",
+  "fam": "viande",
   "poste": "poele",
-  "pal": 5,
-  "val": 70
+  "pal": 4,
+  "val": 65
  },
  {
-  "id": "delightful:honey_glazed_walnut",
-  "nom": "Honey Glazed Walnut",
-  "fam": "dessert",
+  "id": "moredelight:egg_with_bacon_sandwich",
+  "nom": "Egg with Bacon Sandwich",
+  "fam": "viande",
+  "poste": "planche",
+  "pal": 4,
+  "val": 65
+ },
+ {
+  "id": "collectorsreap:glazed_strider",
+  "nom": "Glazed Strider",
+  "fam": "viande",
   "poste": "poele",
-  "pal": 5,
-  "val": 70
+  "pal": 4,
+  "val": 65
  },
  {
-  "id": "collectorsreap:black_candle_lime_cake",
-  "nom": "Lime Cake with Black Candle",
-  "fam": "dessert",
-  "poste": "fourneau",
-  "pal": 5,
-  "val": 80
+  "id": "farmersdelight:pasta_with_meatballs",
+  "nom": "Pasta with Meatballs",
+  "fam": "viande",
+  "poste": "poele",
+  "pal": 4,
+  "val": 65
  },
  {
-  "id": "collectorsreap:blue_candle_lime_cake",
-  "nom": "Lime Cake with Blue Candle",
-  "fam": "dessert",
-  "poste": "fourneau",
-  "pal": 5,
-  "val": 80
+  "id": "farmersdelight:pasta_with_mutton_chop",
+  "nom": "Pasta with Mutton Chop",
+  "fam": "viande",
+  "poste": "poele",
+  "pal": 4,
+  "val": 65
  },
  {
-  "id": "collectorsreap:brown_candle_lime_cake",
-  "nom": "Lime Cake with Brown Candle",
-  "fam": "dessert",
-  "poste": "fourneau",
-  "pal": 5,
-  "val": 80
+  "id": "farmersdelight:honey_glazed_ham",
+  "nom": "Plate of Honey Glazed Ham",
+  "fam": "viande",
+  "poste": "poele",
+  "pal": 4,
+  "val": 65
+ },
+ {
+  "id": "moredelight:steak_with_egg_sandwich",
+  "nom": "Steak with Egg Sandwich",
+  "fam": "viande",
+  "poste": "poele",
+  "pal": 4,
+  "val": 65
  },
  {
   "id": "collectorsreap:candle_lime_cake",
   "nom": "Lime Cake with Candle",
-  "fam": "dessert",
-  "poste": "fourneau",
-  "pal": 5,
-  "val": 70
- },
- {
-  "id": "collectorsreap:cyan_candle_lime_cake",
-  "nom": "Lime Cake with Cyan Candle",
-  "fam": "dessert",
-  "poste": "fourneau",
-  "pal": 5,
-  "val": 80
- },
- {
-  "id": "collectorsreap:gray_candle_lime_cake",
-  "nom": "Lime Cake with Gray Candle",
-  "fam": "dessert",
-  "poste": "fourneau",
-  "pal": 5,
-  "val": 80
- },
- {
-  "id": "collectorsreap:green_candle_lime_cake",
-  "nom": "Lime Cake with Green Candle",
-  "fam": "dessert",
-  "poste": "fourneau",
-  "pal": 5,
-  "val": 80
- },
- {
-  "id": "collectorsreap:light_gray_candle_lime_cake",
-  "nom": "Lime Cake with Light Gray Candle",
-  "fam": "dessert",
-  "poste": "fourneau",
-  "pal": 5,
-  "val": 80
- },
- {
-  "id": "collectorsreap:lime_candle_lime_cake",
-  "nom": "Lime Cake with Lime Candle",
-  "fam": "dessert",
-  "poste": "fourneau",
-  "pal": 5,
-  "val": 80
- },
- {
-  "id": "collectorsreap:magenta_candle_lime_cake",
-  "nom": "Lime Cake with Magenta Candle",
-  "fam": "dessert",
-  "poste": "fourneau",
-  "pal": 5,
-  "val": 80
- },
- {
-  "id": "collectorsreap:orange_candle_lime_cake",
-  "nom": "Lime Cake with Orange Candle",
-  "fam": "dessert",
-  "poste": "fourneau",
-  "pal": 5,
-  "val": 80
- },
- {
-  "id": "collectorsreap:pink_candle_lime_cake",
-  "nom": "Lime Cake with Pink Candle",
-  "fam": "dessert",
-  "poste": "fourneau",
-  "pal": 5,
-  "val": 80
- },
- {
-  "id": "collectorsreap:purple_candle_lime_cake",
-  "nom": "Lime Cake with Purple Candle",
-  "fam": "dessert",
-  "poste": "fourneau",
-  "pal": 5,
-  "val": 80
- },
- {
-  "id": "collectorsreap:red_candle_lime_cake",
-  "nom": "Lime Cake with Red Candle",
-  "fam": "dessert",
-  "poste": "fourneau",
-  "pal": 5,
-  "val": 80
- },
- {
-  "id": "collectorsreap:white_candle_lime_cake",
-  "nom": "Lime Cake with White Candle",
   "fam": "dessert",
   "poste": "fourneau",
   "pal": 5,
@@ -1933,7 +1485,7 @@
   "fam": "dessert",
   "poste": "nether",
   "pal": 5,
-  "val": 40
+  "val": 80
  },
  {
   "id": "mynethersdelight:magma_cake_slice",
@@ -1941,47 +1493,8 @@
   "fam": "dessert",
   "poste": "nether",
   "pal": 5,
-  "val": 35
- },
- {
-  "id": "delightful:nut_butter_and_jelly_sandwich",
-  "nom": "Nut Butter and Jam Sandwich",
-  "fam": "dessert",
-  "poste": "planche",
-  "pal": 5,
-  "val": 80
- },
- {
-  "id": "farmersdelight:honey_glazed_ham",
-  "nom": "Plate of Honey Glazed Ham",
-  "fam": "dessert",
-  "poste": "poele",
-  "pal": 5,
-  "val": 80
- },
- {
-  "id": "collectorsreap:black_candle_pomegranate_cake",
-  "nom": "Pomegranate Cake with Black Candle",
-  "fam": "dessert",
-  "poste": "fourneau",
-  "pal": 5,
-  "val": 80
- },
- {
-  "id": "collectorsreap:blue_candle_pomegranate_cake",
-  "nom": "Pomegranate Cake with Blue Candle",
-  "fam": "dessert",
-  "poste": "fourneau",
-  "pal": 5,
-  "val": 80
- },
- {
-  "id": "collectorsreap:brown_candle_pomegranate_cake",
-  "nom": "Pomegranate Cake with Brown Candle",
-  "fam": "dessert",
-  "poste": "fourneau",
-  "pal": 5,
-  "val": 80
+  "val": 70,
+  "variante_de": "mynethersdelight:magma_cake"
  },
  {
   "id": "collectorsreap:candle_pomegranate_cake",
@@ -1989,127 +1502,7 @@
   "fam": "dessert",
   "poste": "fourneau",
   "pal": 5,
-  "val": 70
- },
- {
-  "id": "collectorsreap:cyan_candle_pomegranate_cake",
-  "nom": "Pomegranate Cake with Cyan Candle",
-  "fam": "dessert",
-  "poste": "fourneau",
-  "pal": 5,
   "val": 80
- },
- {
-  "id": "collectorsreap:gray_candle_pomegranate_cake",
-  "nom": "Pomegranate Cake with Gray Candle",
-  "fam": "dessert",
-  "poste": "fourneau",
-  "pal": 5,
-  "val": 80
- },
- {
-  "id": "collectorsreap:green_candle_pomegranate_cake",
-  "nom": "Pomegranate Cake with Green Candle",
-  "fam": "dessert",
-  "poste": "fourneau",
-  "pal": 5,
-  "val": 80
- },
- {
-  "id": "collectorsreap:light_gray_candle_pomegranate_cake",
-  "nom": "Pomegranate Cake with Light Gray Candle",
-  "fam": "dessert",
-  "poste": "fourneau",
-  "pal": 5,
-  "val": 80
- },
- {
-  "id": "collectorsreap:lime_candle_pomegranate_cake",
-  "nom": "Pomegranate Cake with Lime Candle",
-  "fam": "dessert",
-  "poste": "fourneau",
-  "pal": 5,
-  "val": 80
- },
- {
-  "id": "collectorsreap:magenta_candle_pomegranate_cake",
-  "nom": "Pomegranate Cake with Magenta Candle",
-  "fam": "dessert",
-  "poste": "fourneau",
-  "pal": 5,
-  "val": 80
- },
- {
-  "id": "collectorsreap:orange_candle_pomegranate_cake",
-  "nom": "Pomegranate Cake with Orange Candle",
-  "fam": "dessert",
-  "poste": "fourneau",
-  "pal": 5,
-  "val": 80
- },
- {
-  "id": "collectorsreap:pink_candle_pomegranate_cake",
-  "nom": "Pomegranate Cake with Pink Candle",
-  "fam": "dessert",
-  "poste": "fourneau",
-  "pal": 5,
-  "val": 80
- },
- {
-  "id": "collectorsreap:purple_candle_pomegranate_cake",
-  "nom": "Pomegranate Cake with Purple Candle",
-  "fam": "dessert",
-  "poste": "fourneau",
-  "pal": 5,
-  "val": 80
- },
- {
-  "id": "collectorsreap:red_candle_pomegranate_cake",
-  "nom": "Pomegranate Cake with Red Candle",
-  "fam": "dessert",
-  "poste": "fourneau",
-  "pal": 5,
-  "val": 80
- },
- {
-  "id": "collectorsreap:white_candle_pomegranate_cake",
-  "nom": "Pomegranate Cake with White Candle",
-  "fam": "dessert",
-  "poste": "fourneau",
-  "pal": 5,
-  "val": 80
- },
- {
-  "id": "moredelight:toast_with_sweet_berries",
-  "nom": "Toast with Sweet Berries",
-  "fam": "dessert",
-  "poste": "planche",
-  "pal": 5,
-  "val": 70
- },
- {
-  "id": "moredelight:toast_with_glow_berries",
-  "nom": "Toast with Glow Berries",
-  "fam": "feculent",
-  "poste": "planche",
-  "pal": 5,
-  "val": 65
- },
- {
-  "id": "moredelight:toast_with_peanut_butter",
-  "nom": "Toast with Peanut Butter",
-  "fam": "feculent",
-  "poste": "planche",
-  "pal": 5,
-  "val": 65
- },
- {
-  "id": "farmersdelight:stuffed_pumpkin",
-  "nom": "Bowl of Stuffed Pumpkin",
-  "fam": "legume",
-  "poste": "planche",
-  "pal": 5,
-  "val": 65
  },
  {
   "id": "mynethersdelight:ghast_salad",
@@ -2117,7 +1510,7 @@
   "fam": "legume",
   "poste": "nether",
   "pal": 5,
-  "val": 40
+  "val": 75
  },
  {
   "id": "mynethersdelight:roast_ear",
@@ -2125,7 +1518,7 @@
   "fam": "legume",
   "poste": "nether",
   "pal": 5,
-  "val": 40
+  "val": 75
  },
  {
   "id": "aquaculturedelight:baked_pollock_with_carrots",
@@ -2133,7 +1526,15 @@
   "fam": "poisson",
   "poste": "poele",
   "pal": 5,
-  "val": 70
+  "val": 85
+ },
+ {
+  "id": "aquaculturedelight:halibut_with_tartar_sauce",
+  "nom": "Halibut with Tartar Sauce",
+  "fam": "poisson",
+  "poste": "poele",
+  "pal": 5,
+  "val": 85
  },
  {
   "id": "mynethersdelight:rock_soup",
@@ -2141,7 +1542,7 @@
   "fam": "soupe",
   "poste": "nether",
   "pal": 5,
-  "val": 50
+  "val": 85
  },
  {
   "id": "mynethersdelight:spicy_curry",
@@ -2149,7 +1550,7 @@
   "fam": "soupe",
   "poste": "nether",
   "pal": 5,
-  "val": 50
+  "val": 85
  },
  {
   "id": "mynethersdelight:spicy_hoglin_stew",
@@ -2157,7 +1558,7 @@
   "fam": "soupe",
   "poste": "nether",
   "pal": 5,
-  "val": 60
+  "val": 85
  },
  {
   "id": "mynethersdelight:spicy_noodle_soup",
@@ -2165,7 +1566,7 @@
   "fam": "soupe",
   "poste": "nether",
   "pal": 5,
-  "val": 60
+  "val": 85
  },
  {
   "id": "mynethersdelight:strider_stew",
@@ -2173,21 +1574,21 @@
   "fam": "soupe",
   "poste": "nether",
   "pal": 5,
-  "val": 50
+  "val": 85
+ },
+ {
+  "id": "mynethersdelight:bleeding_tartar",
+  "nom": "Bleeding Tartar",
+  "fam": "viande",
+  "poste": "nether",
+  "pal": 5,
+  "val": 85
  },
  {
   "id": "mynethersdelight:blue_tenderloin_steak",
   "nom": "Blue Tenderloin Steak",
   "fam": "viande",
   "poste": "nether",
-  "pal": 5,
-  "val": 55
- },
- {
-  "id": "moredelight:chicken_sandwich_with_egg_and_tomato",
-  "nom": "Chicken Sandwich with Egg and Tomato",
-  "fam": "viande",
-  "poste": "planche",
   "pal": 5,
   "val": 85
  },
@@ -2197,37 +1598,13 @@
   "fam": "viande",
   "poste": "nether",
   "pal": 5,
-  "val": 50
- },
- {
-  "id": "moredelight:cooked_rice_with_beef",
-  "nom": "Cooked Rice with Beef",
-  "fam": "viande",
-  "poste": "planche",
-  "pal": 5,
-  "val": 75
- },
- {
-  "id": "moredelight:cooked_rice_with_chicken_cuts",
-  "nom": "Cooked Rice with Chicken Cuts",
-  "fam": "viande",
-  "poste": "planche",
-  "pal": 5,
   "val": 85
- },
- {
-  "id": "moredelight:cooked_rice_with_porkchop",
-  "nom": "Cooked Rice with Porkchop",
-  "fam": "viande",
-  "poste": "poele",
-  "pal": 5,
-  "val": 75
  },
  {
   "id": "moredelight:creamy_pasta_with_chicken_cuts",
   "nom": "Creamy Pasta with Chicken Cuts",
   "fam": "viande",
-  "poste": "planche",
+  "poste": "poele",
   "pal": 5,
   "val": 85
  },
@@ -2235,17 +1612,9 @@
   "id": "moredelight:creamy_pasta_with_ham",
   "nom": "Creamy Pasta with Ham",
   "fam": "viande",
-  "poste": "planche",
+  "poste": "poele",
   "pal": 5,
-  "val": 75
- },
- {
-  "id": "moredelight:egg_with_bacon_sandwich",
-  "nom": "Egg with Bacon Sandwich",
-  "fam": "viande",
-  "poste": "planche",
-  "pal": 5,
-  "val": 75
+  "val": 85
  },
  {
   "id": "mynethersdelight:fried_hoglin_chop",
@@ -2253,15 +1622,7 @@
   "fam": "viande",
   "poste": "nether",
   "pal": 5,
-  "val": 55
- },
- {
-  "id": "farmersdelight:pasta_with_mutton_chop",
-  "nom": "Pasta with Mutton Chop",
-  "fam": "viande",
-  "poste": "poele",
-  "pal": 5,
-  "val": 75
+  "val": 85
  },
  {
   "id": "mynethersdelight:plate_of_stuffed_hoglin",
@@ -2269,7 +1630,7 @@
   "fam": "viande",
   "poste": "nether",
   "pal": 5,
-  "val": 75
+  "val": 85
  },
  {
   "id": "mynethersdelight:plate_of_stuffed_hoglin_ham",
@@ -2288,20 +1649,12 @@
   "val": 85
  },
  {
-  "id": "mynethersdelight:raw_stuffed_hoglin",
-  "nom": "Raw Stuffed Hoglin",
-  "fam": "viande",
-  "poste": "nether",
-  "pal": 5,
-  "val": 55
- },
- {
   "id": "mynethersdelight:roasted_sausage",
   "nom": "Roasted Sausage",
   "fam": "viande",
   "poste": "nether",
   "pal": 5,
-  "val": 50
+  "val": 85
  },
  {
   "id": "mynethersdelight:spicy_skewer",
@@ -2309,15 +1662,7 @@
   "fam": "viande",
   "poste": "nether",
   "pal": 5,
-  "val": 50
- },
- {
-  "id": "moredelight:steak_with_egg_sandwich",
-  "nom": "Steak with Egg Sandwich",
-  "fam": "viande",
-  "poste": "poele",
-  "pal": 5,
-  "val": 75
+  "val": 85
  },
  {
   "id": "mynethersdelight:stuffed_hoglin",
@@ -2325,6 +1670,6 @@
   "fam": "viande",
   "poste": "nether",
   "pal": 5,
-  "val": 65
+  "val": 85
  }
 ]

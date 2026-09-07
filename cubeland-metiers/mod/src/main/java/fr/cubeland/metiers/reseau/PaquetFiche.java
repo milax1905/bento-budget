@@ -10,56 +10,47 @@ import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.fml.DistExecutor;
 import net.minecraftforge.network.NetworkEvent.Context;
 
+/** La fiche d'un plat : jusqu'à trois façons de le faire, et les plats où il entre. */
 public record PaquetFiche(String plat, List<Recettes.Facon> facons, List<String> utileA) {
-   public static void ecrire(PaquetFiche p, FriendlyByteBuf t) {
-      t.writeUtf(p.plat, 200);
-      t.writeVarInt(p.utileA.size());
-
+   public static void ecrire(PaquetFiche p, FriendlyByteBuf b) {
+      b.writeUtf(p.plat, 200);
+      b.writeVarInt(p.utileA.size());
       for (String u : p.utileA) {
-         t.writeUtf(u, 200);
+         b.writeUtf(u, 200);
       }
-
-      t.writeVarInt(p.facons.size());
-
+      b.writeVarInt(p.facons.size());
       for (Recettes.Facon f : p.facons) {
-         t.writeUtf(f.type(), 200);
-         t.writeVarInt(f.rendement());
-         t.writeVarInt(f.ingredients().size());
-
+         b.writeUtf(f.type(), 200);
+         b.writeVarInt(f.rendement());
+         b.writeVarInt(f.ingredients().size());
          for (int i = 0; i < f.ingredients().size(); i++) {
-            t.writeUtf(f.ingredients().get(i), 200);
-            t.writeVarInt(f.combien().get(i));
+            b.writeUtf(f.ingredients().get(i), 200);
+            b.writeVarInt(f.combien().get(i));
          }
       }
    }
 
-   public static PaquetFiche lire(FriendlyByteBuf t) {
-      String plat = t.readUtf(200);
-      int nu = t.readVarInt();
+   public static PaquetFiche lire(FriendlyByteBuf b) {
+      String plat = b.readUtf(200);
+      int nu = b.readVarInt();
       List<String> utileA = new ArrayList<>(nu);
-
       for (int i = 0; i < nu; i++) {
-         utileA.add(t.readUtf(200));
+         utileA.add(b.readUtf(200));
       }
-
-      int n = t.readVarInt();
+      int n = b.readVarInt();
       List<Recettes.Facon> facons = new ArrayList<>(n);
-
       for (int i = 0; i < n; i++) {
-         String type = t.readUtf(200);
-         int rendement = t.readVarInt();
-         int ni = t.readVarInt();
+         String type = b.readUtf(200);
+         int rendement = b.readVarInt();
+         int ni = b.readVarInt();
          List<String> ing = new ArrayList<>(ni);
          List<Integer> cb = new ArrayList<>(ni);
-
          for (int k = 0; k < ni; k++) {
-            ing.add(t.readUtf(200));
-            cb.add(t.readVarInt());
+            ing.add(b.readUtf(200));
+            cb.add(b.readVarInt());
          }
-
          facons.add(new Recettes.Facon(type, ing, cb, rendement));
       }
-
       return new PaquetFiche(plat, facons, utileA);
    }
 
