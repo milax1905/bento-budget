@@ -1,0 +1,12 @@
+build/
+.gradle/
+run/
+run-data/
+mcmodsrepo/
+*.iml
+.idea/
+.settings/
+.classpath
+.project
+bin/
+eclipse/
