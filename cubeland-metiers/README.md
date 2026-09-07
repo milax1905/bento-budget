@@ -14,7 +14,11 @@ Le mod `cubelandmetiers` (Forge 43, Minecraft 1.19.2) du serveur Cubeland, et ce
 
 - `scripts/plats-1.4.2-origine.json` : le catalogue livré dans le jar 1.4.2, pour référence.
 
-## Compiler le mod
+## Le jar, sans rien installer
+
+À chaque poussée qui touche `mod/`, GitHub compile le mod, lance les tests et dépose le jar dans `releases/` sur la branche (workflow `.github/workflows/cubeland-metiers.yml`). Le jar est aussi dans l'onglet Actions de GitHub, comme artefact de l'exécution.
+
+## Compiler le mod soi-même
 
 Sur une machine avec le JDK 17 et l'accès aux serveurs de Forge et Mojang :
 

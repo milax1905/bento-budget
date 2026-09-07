@@ -1,0 +1,84 @@
+name: Cubeland Métiers
+
+# Compile le mod à chaque poussée qui le touche, lance les tests, et dépose le
+# jar dans cubeland-metiers/releases/ sur la branche. Le jar est aussi
+# téléchargeable comme artefact de l'exécution.
+
+on:
+  push:
+    branches: ['**']
+    paths:
+      - 'cubeland-metiers/mod/**'
+      - '.github/workflows/cubeland-metiers.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cubeland-metiers-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Compiler et tester
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cubeland-metiers/mod
+
+    steps:
+      - name: Récupérer le dépôt
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Gradle (cache)
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Rendre gradlew exécutable
+        run: chmod +x gradlew
+
+      - name: Compiler le mod et le mode démo
+        run: ./gradlew --no-daemon --stacktrace compileJava compileDemoJava
+
+      - name: Tests
+        run: ./gradlew --no-daemon test
+
+      - name: Construire le jar
+        run: ./gradlew --no-daemon build -x test
+
+      - name: Lister le résultat
+        run: ls -la build/libs/
+
+      - name: Artefact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cubeland-metiers-jar
+          path: cubeland-metiers/mod/build/libs/cubeland-metiers-*.jar
+          if-no-files-found: error
+
+      - name: Déposer le jar dans releases/
+        continue-on-error: true
+        run: |
+          set -e
+          cd "$GITHUB_WORKSPACE"
+          mkdir -p cubeland-metiers/releases
+          cp cubeland-metiers/mod/build/libs/cubeland-metiers-*.jar cubeland-metiers/releases/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add cubeland-metiers/releases/
+          if git diff --cached --quiet; then
+            echo "Jar inchangé, rien à déposer."
+            exit 0
+          fi
+          git commit -m "Cubeland Métiers : jar compilé par GitHub Actions [skip ci]"
+          git pull --rebase origin "${GITHUB_REF_NAME}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
