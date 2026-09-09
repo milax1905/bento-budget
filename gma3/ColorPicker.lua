@@ -53,6 +53,19 @@ local MAX_FIXTURE_ROWS = 12   -- limite de lignes en mode "une par machine"
 -- Valeurs proposees par les boutons de fade (secondes).
 local FADE_VALUES = { 0, 0.5, 1, 2, 3, 4 }
 
+-- Rangee SWEEP : effets de balayage via l'objet MAtricks partage "CPFX"
+-- (les recipes des cues le referencent -> change le sweep de tout le board).
+--   from/to = DelayFromX/DelayToX (s), wings = XWings (2 = miroir <>).
+local SWEEPS = {
+    { lbl = "FX Off", from = 0, to = 0,   wings = 1 },
+    { lbl = ">0.5",   from = 0, to = 0.5, wings = 1 },
+    { lbl = ">1",     from = 0, to = 1,   wings = 1 },
+    { lbl = ">2",     from = 0, to = 2,   wings = 1 },
+    { lbl = "<1",     from = 1, to = 0,   wings = 1 },
+    { lbl = "<>1",    from = 0, to = 1,   wings = 2 },
+    { lbl = "<>2",    from = 0, to = 2,   wings = 2 },
+}
+
 -- ------------------------------ utils --------------------------------
 
 local function toNum(value, default, min, max)
@@ -335,7 +348,7 @@ local function main(display_handle)
         for _, gid in ipairs(groupIds) do
             targets[#targets + 1] = {
                 label = groupName(gid), sel = "Group " .. gid,
-                header = "Group " .. gid,
+                header = "Group " .. gid, isGroup = true,
             }
         end
     else
@@ -374,7 +387,11 @@ local function main(display_handle)
     local macFadeC0   = baseId + 4              -- .. baseId + 3 + nV
     local macFadeOHdr = baseId + 4 + nV
     local macFadeO0   = baseId + 5 + nV         -- .. baseId + 4 + 2*nV
-    local macEnd      = baseId + 4 + 2 * nV
+    -- Rangee SWEEP (effets MAtricks) : 1 header + #SWEEPS boutons.
+    local mxItem      = baseId                  -- objet MAtricks partage "CPFX"
+    local macSweepHdr = baseId + 5 + 2 * nV
+    local macSweep0   = baseId + 6 + 2 * nV     -- .. + #SWEEPS - 1
+    local macEnd      = macSweep0 + #SWEEPS - 1
     local function seqNoOf(ti, ci) return baseId + (ti - 1) * nColors + (ci - 1) end
 
     -- Occupation des plages -> confirmation avant d'ecraser.
@@ -394,6 +411,9 @@ local function main(display_handle)
             if objectExists("Appearance " .. no) then occupied = true; break end
         end
     end
+    if detectOk and not occupied and objectExists("MAtricks " .. mxItem) then
+        occupied = true
+    end
 
     if occupied or not detectOk then
         local confirm = MessageBox({ title = "Color Picker LIVE",
@@ -409,6 +429,7 @@ local function main(display_handle)
         Cmd(string.format('Delete Sequence %d Thru %d /NoConfirm', baseId, seqEnd))
         Cmd(string.format('Delete Macro %d Thru %d /NoConfirm', baseId, macEnd))
         Cmd(string.format('Delete Appearance %d Thru %d /NoConfirm', baseId, appEnd))
+        Cmd(string.format('Delete MAtricks %d /NoConfirm', mxItem))
         Cmd(string.format('Delete Layout %d /NoConfirm', layNo))
     end
 
@@ -423,6 +444,14 @@ local function main(display_handle)
     makeAppearance(appGrey, "CP Grey", 66, 72, 84)
     makeAppearance(appAccent, "CP Fade On", 235, 238, 245)
     makeAppearance(appRed, "CP Off Red", 128, 34, 40)
+
+    -- 1c) Objet MAtricks partage "CPFX" (sweep) : les recipes des cues le
+    --     referencent -> les boutons SWEEP changent l'effet de tout le board.
+    Cmd(string.format('Store MAtricks %d /NoConfirm', mxItem))
+    Cmd(string.format('Label MAtricks %d "CPFX"', mxItem))
+    Cmd(string.format('Set MAtricks %d "DelayFromX" "0"', mxItem))
+    Cmd(string.format('Set MAtricks %d "DelayToX" "0"', mxItem))
+    Cmd(string.format('Set MAtricks %d "XWings" "1"', mxItem))
 
     -- 1b) Presets couleur UNIVERSELS (pool Color = 4), Preset 4.<baseId>...
     --     S'ils existent deja -> REUTILISES tels quels (tes modifs de
@@ -465,6 +494,16 @@ local function main(display_handle)
             -- la tuile "se remplit" quand la sequence joue (style MA2).
             Cmd(string.format('Assign Appearance %d At Sequence %d', appDim0 + ci - 1, sq))
             Cmd(string.format('Assign Appearance %d At Sequence %d Cue 1', baseId + ci - 1, sq))
+            -- Recipe (lignes de groupe) : Groupe + Preset + MAtricks CPFX ->
+            -- les boutons SWEEP font balayer la couleur, en restitution.
+            -- Sans effet de bord si la syntaxe est refusee (cue deja stockee).
+            if t.isGroup then
+                Cmd(string.format(
+                    'Set Sequence %d Cue 1 Part 0.1 "Selection" "default.groups.%s"'
+                 .. ' "Values" "showdata.datapools.default.presetpools.color.%d"'
+                 .. ' "MAtricks" "default.matricks.CPFX"',
+                    sq, t.label, baseId + ci - 1))
+            end
             -- Timings (best-effort : commande + handle).
             Cmd(string.format('Set Sequence %d Cue 1 Property "CueInFade" "%s"', sq, tostring(colorFade)))
             Cmd(string.format('Set Sequence %d Property "OffFade" "%s"', sq, tostring(offFade)))
@@ -541,6 +580,24 @@ local function main(display_handle)
             (v == offFade) and appAccent or appGrey, linesO)
     end
 
+    -- Rangee SWEEP : chaque bouton reecrit l'objet MAtricks CPFX (les
+    -- recipes le referencent) + feedback comme les fades.
+    makeMacro(macSweepHdr, "SWEEP effet", appDark, {})
+    for si, s in ipairs(SWEEPS) do
+        local lines = {
+            string.format('Set MAtricks %d "DelayFromX" "%s"', mxItem, tostring(s.from)),
+            string.format('Set MAtricks %d "DelayToX" "%s"',   mxItem, tostring(s.to)),
+            string.format('Set MAtricks %d "XWings" "%d"',     mxItem, s.wings),
+            string.format('Label Macro %d "SWEEP %s"', macSweepHdr, s.lbl),
+        }
+        for sj = 1, #SWEEPS do
+            lines[#lines + 1] = string.format('Assign Appearance %d At Macro %d',
+                (sj == si) and appAccent or appGrey, macSweep0 + sj - 1)
+        end
+        makeMacro(macSweep0 + si - 1, s.lbl,
+            (si == 1) and appAccent or appGrey, lines)
+    end
+
     -- 4) Layout : [machine (x2)] [couleurs...] par ligne + outils en bas.
     Cmd(string.format('Delete Layout %d /NoConfirm', layNo))
     Cmd(string.format('Store Layout %d /NoConfirm', layNo))
@@ -576,6 +633,7 @@ local function main(display_handle)
     local yOff = rowTop + nTargets + 0.3
     local fy1  = yOff + 1.3
     local fy2  = fy1 + 1
+    local fy3  = fy2 + 1
     elements[#elements + 1] = { object = "Macro " .. macOffAll, x = 0, y = yOff, w = fullW }
     elements[#elements + 1] = { object = "Macro " .. macFadeCHdr, x = 0, y = fy1, w = 2 }
     elements[#elements + 1] = { object = "Macro " .. macFadeOHdr, x = 0, y = fy2, w = 2 }
@@ -583,10 +641,15 @@ local function main(display_handle)
         elements[#elements + 1] = { object = "Macro " .. (macFadeC0 + vi - 1), x = 2 + vi - 1, y = fy1 }
         elements[#elements + 1] = { object = "Macro " .. (macFadeO0 + vi - 1), x = 2 + vi - 1, y = fy2 }
     end
+    -- Rangee SWEEP (effets) sous les fades.
+    elements[#elements + 1] = { object = "Macro " .. macSweepHdr, x = 0, y = fy3, w = 2 }
+    for si = 1, #SWEEPS do
+        elements[#elements + 1] = { object = "Macro " .. (macSweep0 + si - 1), x = 2 + si - 1, y = fy3 }
+    end
 
     -- Le layout MA3 rend l'axe Y vers le HAUT : on inverse les Y pour
-    -- afficher le board dans l'ordre concu (titre en haut, fades en bas).
-    for _, e in ipairs(elements) do e.y = fy2 - e.y end
+    -- afficher le board dans l'ordre concu (titre en haut, effets en bas).
+    for _, e in ipairs(elements) do e.y = fy3 - e.y end
 
     local placed, failed = fillLayout(layNo, elements)
     Cmd("ClearAll")
@@ -613,6 +676,8 @@ local function main(display_handle)
      .. "couleur quand elle joue). Retape / autre couleur pour changer.\n"
      .. "Rangees FADE en bas : le bouton ACTIF est surligne en blanc et\n"
      .. "le titre affiche la valeur courante (ex: FADE couleur 2s).\n"
+     .. "Rangee SWEEP : > / < / <> = la couleur BALAIE le groupe\n"
+     .. "(via MAtricks CPFX + recipes ; lignes de groupes uniquement).\n"
      .. "COULEURS PAS A TON GOUT ? Modifie le Preset 4.x (pool Color) ->\n"
      .. "tout le board suit. Regenerer ne touche jamais tes presets.\n"
      .. "AUCUNE action de ce board ne touche le programmer.",

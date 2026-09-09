@@ -27,9 +27,18 @@ standard de grandMA3.
   board les **référencent** → modifie un preset (ton rouge, ton ambre…) et
   **tout le board suit**. S'ils existent déjà, ils sont **réutilisés tels
   quels** — régénérer n'efface jamais tes presets.
+- **Rangée SWEEP (effets)** : `FX Off · >0.5 · >1 · >2 · <1 · <>1 · <>2` —
+  la couleur **balaie le groupe** (gauche→droite `>`, droite→gauche `<`,
+  miroir `<>`) au temps choisi. Mécanique : un objet **MAtricks** partagé
+  (`CPFX`) référencé par les **recipes** des cues ; les boutons le
+  réécrivent (`DelayFromX/DelayToX/XWings`). Lignes de groupes uniquement
+  (la ligne ALL reste sans sweep). Bouton actif surligné.
 - **Outils** : `Off All` (relâche les couleurs, playback). L'intensité reste
   à ton fader de dimmer. **Aucune action de ce board ne touche le
   programmer** — c'est un layout de restitution, pas de construction.
+- **Tuiles « fill-on-active »** (style MA2) : sombres au repos, **pleine
+  couleur quand elles jouent** (appearance sombre sur la séquence, pleine
+  sur la cue).
 - **Rangées FADE** en bas du layout :
   - `FADE couleur` → `0s · 0.5s · 1s · 2s · 3s · 4s` : fondu **entre les
     couleurs** (et au lancement). Taper une valeur la règle pour tout le board.
