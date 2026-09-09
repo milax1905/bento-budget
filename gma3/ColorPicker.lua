@@ -138,7 +138,11 @@ local function groupName(gid)
         local h = ObjectList("Group " .. gid)[1]
         if h then nm = h:Get("Name") end
     end)
-    if nm and tostring(nm) ~= "" then return tostring(nm) end
+    -- Sanitise : un guillemet ou un point casserait les commandes / les
+    -- chemins de recipe ("default.groups.<nom>").
+    if nm and tostring(nm) ~= "" then
+        return (tostring(nm):gsub('["%.]', ""))
+    end
     return "Group " .. gid
 end
 
@@ -355,7 +359,7 @@ local function main(display_handle)
         for _, gid in ipairs(groupIds) do
             targets[#targets + 1] = {
                 label = groupName(gid), sel = "Group " .. gid,
-                header = "Group " .. gid, isGroup = true,
+                header = "Group " .. gid, isGroup = true, gid = gid,
             }
         end
     else
@@ -427,6 +431,7 @@ local function main(display_handle)
             message = string.format(
                 "Des objets existent peut-etre ici :\n"
              .. "Sequence %d -> %d\nMacro %d -> %d\nAppearance %d -> %d\n"
+             .. "MAtricks CPFX\n"
              .. "(et le Layout %d sera (re)cree).\n\n"
              .. "Les PRESETS couleur (pool 4) sont conserves, jamais effaces.\n"
              .. "Tout ecraser et regenerer ?",
@@ -505,11 +510,13 @@ local function main(display_handle)
             -- les boutons SWEEP font balayer la couleur, en restitution.
             -- Sans effet de bord si la syntaxe est refusee (cue deja stockee).
             if t.isGroup then
+                -- References NUMERIQUES (comme l'exemple 'Color.1') : aucun
+                -- souci de caracteres speciaux dans les noms de groupes.
                 Cmd(string.format(
-                    'Set Sequence %d Cue 1 Part 0.1 "Selection" "default.groups.%s"'
+                    'Set Sequence %d Cue 1 Part 0.1 "Selection" "default.groups.%d"'
                  .. ' "Values" "showdata.datapools.default.presetpools.color.%d"'
                  .. ' "MAtricks" "default.matricks.CPFX"',
-                    sq, t.label, baseId + ci - 1))
+                    sq, t.gid, baseId + ci - 1))
             end
             -- Timings (best-effort : commande + handle).
             Cmd(string.format('Set Sequence %d Cue 1 Property "CueInFade" "%s"', sq, tostring(colorFade)))
@@ -589,7 +596,7 @@ local function main(display_handle)
 
     -- Rangee SWEEP : chaque bouton reecrit l'objet MAtricks CPFX (les
     -- recipes le referencent) + feedback comme les fades.
-    makeMacro(macSweepHdr, "SWEEP effet", appDark, {})
+    makeMacro(macSweepHdr, "SWEEP " .. SWEEPS[1].lbl, appDark, {})
     for si, s in ipairs(SWEEPS) do
         local lines = {
             string.format('Set MAtricks %d "DelayFromX" "%s"', mxItem, tostring(s.from)),
