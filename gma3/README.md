@@ -45,6 +45,11 @@ standard de grandMA3.
     ALL coupe toutes les boucles). Sans ça, une boucle Follow ré-affirme
     ses valeurs en LTP à chaque cue et « reprend » la couleur au tap
     suivant — les tuiles semblaient mortes tant qu'un FX tournait.
+  - **Arrêter un FX** : re-taper la tuile `FX` (toggle), taper une couleur
+    de la ligne, ou `Off All`.
+  - ⚠️ Les lignes doivent être des groupes **disjoints** : une machine
+    présente dans deux groupes se fera reprendre par la boucle FX de
+    l'autre ligne (le CMD ne coupe que le FX de SA ligne).
 - **Tuiles néon générées** : le plugin **fabrique lui-même** ses images PNG
   (pur Lua, zéro fichier à copier), les écrit dans la *User Image Library*,
   les importe dans le pool Images et les pose sur les appearances :
@@ -85,7 +90,12 @@ standard de grandMA3.
 | Presets 4.x | couleurs universelles + 2 slots FX (jamais effacés)           |
 
 Les pools 1–100 ne sont pas touchés. Si une plage est occupée, le plugin
-**demande confirmation** avant d'écraser.
+**demande confirmation** avant d'écraser — et le nettoyage couvre des
+**plages larges** (l'empreinte max possible, versions précédentes du
+plugin comprises), pour qu'une régénération plus petite ne laisse jamais
+d'orphelins (labels `#2`, boucles FX fantômes). Les numéros de slots
+(presets FX, images, appearances) sont **stables** quel que soit le
+nombre de couleurs choisi.
 
 ## Fichiers
 
@@ -116,13 +126,13 @@ Les pools 1–100 ne sont pas touchés. Si une plage est occupée, le plugin
 |----------------------|---------|----------------------------------------------------|
 | Groupes              | *(vide)*| `1 Thru 8`, … Vide = **auto-détection** des groupes.|
 | Machines             | *(vide)*| Si aucun groupe : fixtures (vide = auto, max 12).   |
-| Nb couleurs          | `10`    | Couleurs principales (max 12).                      |
+| Nb couleurs          | `12`    | Couleurs principales (max 12).                      |
 | Fade couleur (s)     | `1`     | Fondu au changement de couleur.                     |
 | Fade arrêt (s)       | `2`     | Fondu au relâché.                                   |
 | ID de départ         | `101`   | Début de numérotation (seq / macro / appearance).   |
 | Layout (No)          | `1`     | Numéro du Layout généré.                             |
 
-## Palette (12, 10 utilisées par défaut)
+## Palette (12, toutes utilisées par défaut)
 
 `Red · Orange · Yellow · Green · Cyan · Blue · Violet · Magenta · Pink ·
 White` (+ `Amber · Warm` à 12).
@@ -148,5 +158,6 @@ White` (+ `Amber · Warm` à 12).
 Delete Sequence 101 Thru …    (plages exactes affichées au bilan)
 Delete Macro 101 Thru …
 Delete Appearance 101 Thru …
+Delete Image 3.101 Thru 3.…
 Delete Layout 1
 ```

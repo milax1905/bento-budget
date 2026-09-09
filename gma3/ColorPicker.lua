@@ -56,6 +56,7 @@ local COLORS = {
 }
 
 local MAX_FIXTURE_ROWS = 12   -- limite de lignes en mode "une par machine"
+local MAX_GROUP_ROWS   = 12   -- limite de lignes de groupes (board lisible)
 
 -- Valeurs proposees par les boutons de fade (secondes).
 local FADE_VALUES = { 0, 0.5, 1, 2, 3, 4 }
@@ -158,7 +159,8 @@ end
 -- ------------------------------ utils --------------------------------
 
 local function toNum(value, default, min, max)
-    local n = tonumber(value) or default
+    -- accepte la virgule decimale ("0,5") — pupitre en francais
+    local n = tonumber((tostring(value or ""):gsub(",", "."))) or default
     if min and n < min then n = min end
     if max and n > max then n = max end
     return n
@@ -171,11 +173,18 @@ local function parseRange(str)
         local token = raw:gsub("^%s+", ""):gsub("%s+$", "")
         local a, b = token:lower():match("^(%d+)%s*thru%s*(%d+)$")
         if a then
-            for i = tonumber(a), tonumber(b) do ids[#ids + 1] = i end
+            -- borne : plage remise a l'endroit, largeur et IDs plafonnes
+            -- (sinon "1 Thru 100000000" gele la console).
+            local a2, b2 = tonumber(a), tonumber(b)
+            if a2 > b2 then a2, b2 = b2, a2 end
+            a2 = math.min(a2, 100000)
+            b2 = math.min(b2, a2 + 999, 100000)
+            for i = a2, b2 do ids[#ids + 1] = i end
         else
             local n = token:match("^(%d+)$")
-            if n then ids[#ids + 1] = tonumber(n) end
+            if n then ids[#ids + 1] = math.min(tonumber(n), 100000) end
         end
+        if #ids > 1000 then break end
     end
     return (#ids > 0) and ids or nil
 end
@@ -274,6 +283,18 @@ local function makeMacro(no, name, appNo, lines)
     end)
 end
 
+-- Fade d'entree d'une cue : dans le modele MA3 la propriete vit sur la
+-- PART 0 de la cue -> double ecriture, commande cue-level + handle Part 0
+-- (best-effort, l'une des deux passe selon le build).
+local function setCueFade(sq, cueNo, sec)
+    Cmd(string.format('Set Sequence %d Cue %d Property "CueInFade" "%s"',
+        sq, cueNo, tostring(sec)))
+    pcall(function()
+        local part = ObjectList(string.format("Sequence %d Cue %d Part 0", sq, cueNo))[1]
+        if part then part:Set("CueInFade", tostring(sec)) end
+    end)
+end
+
 -- ------------------------ placement layout ---------------------------
 --  Mecanisme VALIDE sur console : handle du layout recupere UNE fois,
 --  dernier enfant apres chaque Assign, position via posx/posy/positionw/
@@ -347,6 +368,12 @@ local function fillLayout(layoutNo, elements)
                 pcall(function() elem:Set("PlaybackFunction", "Go+") end)
                 pcall(function() elem:Set("Function", "Go+") end)
             end
+            -- Tuile FX : re-taper l'eteint (Toggle). Si "Toggle" n'existe
+            -- pas sur ce build, le Set echoue et le Go+ ci-dessus reste.
+            if e.toggle then
+                pcall(function() elem:Set("PlaybackFunction", "Toggle") end)
+                pcall(function() elem:Set("Function", "Toggle") end)
+            end
             -- Pastilles couleur : RIEN d'autre que l'image (look reference,
             -- la couleur seule parle). Proprietes CONFIRMEES par les fichiers
             -- UI de MA3 (layout_element_editor.uixml) : Visibility* = Hidden.
@@ -379,12 +406,10 @@ end
 -- ------------------------------- main --------------------------------
 
 local function main(display_handle)
-    -- Il faut des fixtures.
-    Cmd("ClearAll"); Cmd("Fixture Thru")
-    local selCount, hasSelApi = 0, false
-    pcall(function() selCount = SelectionCount(); hasSelApi = true end)
-    Cmd("ClearAll")
-    if hasSelApi and selCount == 0 then
+    -- Il faut des fixtures. Detection SANS toucher au programmer :
+    -- annuler le dialogue doit etre un vrai no-op (pas de ClearAll avant
+    -- que l'utilisateur ait dit "Generer").
+    if not scanFixtures(200, 1) then
         MessageBox({ title = "Color Picker LIVE",
             message = "Aucune fixture disponible.\nPatche au moins un projecteur RGB.",
             commands = { { value = 1, name = "OK" } } })
@@ -466,6 +491,10 @@ local function main(display_handle)
     local groupIds = parseRange(grpStr) or autoGroups
     local truncated = false
     if groupIds then
+        if #groupIds > MAX_GROUP_ROWS then
+            truncated = true
+            while #groupIds > MAX_GROUP_ROWS do table.remove(groupIds) end
+        end
         for _, gid in ipairs(groupIds) do
             targets[#targets + 1] = {
                 label = groupName(gid), sel = "Group " .. gid,
@@ -489,6 +518,18 @@ local function main(display_handle)
     end
     local nTargets = #targets
 
+    -- Labels UNIQUES entre lignes : deux groupes au meme nom (ou un groupe
+    -- nomme "ALL") donneraient des labels de sequences identiques -> MA3
+    -- suffixerait "#2". On suffixe par le numero de groupe a la place.
+    local seenLbl = { ALL = true }
+    for ti = 2, nTargets do
+        local t = targets[ti]
+        if seenLbl[t.label] then
+            t.label = t.label .. " " .. tostring(t.gid or ti)
+        end
+        seenLbl[t.label] = true
+    end
+
     -- Cibles de type groupe (les seules a recevoir une sequence FX).
     local groupTis = {}
     for ti, t in ipairs(targets) do
@@ -497,31 +538,38 @@ local function main(display_handle)
     local nFx = #groupTis
 
     -- Numerotation (pools distincts, meme ID de depart -> lisible).
+    -- IMPORTANT : les numeros derives des couleurs utilisent NC = #COLORS
+    -- (capacite MAX), PAS nColors : regenerer avec un autre nombre de
+    -- couleurs ne doit JAMAIS decaler un slot. Sinon les presets slots FX
+    -- (jamais effaces) atterrissent sur les presets couleur de l'ancien
+    -- run et le board les corrompt en silence.
+    local NC        = #COLORS
     local nSeq      = nTargets * nColors
     local seqEnd    = baseId + nSeq - 1         -- derniere sequence couleur
     local seqFx0    = baseId + nSeq             -- sequences FX (1 par groupe)
     local seqLast   = (nFx > 0) and (seqFx0 + nFx - 1) or seqEnd
     -- Appearances : pleine couleur (tuile ACTIVE) puis version sombre
     -- (tuile au repos), puis les utilitaires.
-    local appDim0   = baseId + nColors          -- .. baseId + 2*nColors - 1
-    local appDark   = baseId + 2 * nColors
-    local appGrey   = baseId + 2 * nColors + 1
-    local appAccent = baseId + 2 * nColors + 2  -- bouton actif (fade)
-    local appRed    = baseId + 2 * nColors + 3  -- barre Off All
-    local appFx     = baseId + 2 * nColors + 4  -- tuile FX au repos
-    local appFxOn   = baseId + 2 * nColors + 5  -- tuile FX active (remplie)
-    local appEnd    = appFxOn
+    local appDim0   = baseId + NC               -- .. baseId + 2*NC - 1
+    local appDark   = baseId + 2 * NC
+    local appGrey   = baseId + 2 * NC + 1
+    local appAccent = baseId + 2 * NC + 2       -- bouton actif (fade)
+    local appRed    = baseId + 2 * NC + 3       -- barre Off All
+    local appFx     = baseId + 2 * NC + 4       -- tuile FX au repos
+    local appFxOn   = baseId + 2 * NC + 5       -- tuile FX active (remplie)
     -- Presets slots FX (pool Color) : C1/C2 reecrits par les boutons.
+    -- Adresses STABLES (baseId+NC / +NC+1), au-dela du dernier preset
+    -- couleur possible (baseId+NC-1).
     local PT   = 4
-    local pFx1 = baseId + nColors
-    local pFx2 = baseId + nColors + 1
+    local pFx1 = baseId + NC
+    local pFx2 = baseId + NC + 1
     -- Images (pool Images) : tuiles neon generees par le plugin.
     -- Contour = repos, pave rempli arrondi = actif.
-    local imgC0   = baseId                      -- contours .. + nColors - 1
-    local imgGrey = baseId + nColors
-    local imgF0   = baseId + nColors + 1        -- remplies .. + 2*nColors
-    local imgFxO  = baseId + 2 * nColors + 1    -- contour violet (FX repos)
-    local imgFxF  = baseId + 2 * nColors + 2    -- violet rempli (FX actif)
+    local imgC0   = baseId                      -- contours .. + NC - 1
+    local imgGrey = baseId + NC
+    local imgF0   = baseId + NC + 1             -- remplies .. + 2*NC
+    local imgFxO  = baseId + 2 * NC + 1         -- contour violet (FX repos)
+    local imgFxF  = baseId + 2 * NC + 2         -- violet rempli (FX actif)
     -- Macros : AUCUNE action programmer — Off All, etiquette ALL, banniere.
     local macOffAll, macAllHdr, macTitle = baseId, baseId + 1, baseId + 2
     -- Boutons de fade : 2 rangees (couleur / arret), 1 header + 1 par valeur.
@@ -530,64 +578,81 @@ local function main(display_handle)
     local macFadeC0   = baseId + 4              -- .. baseId + 3 + nV
     local macFadeOHdr = baseId + 4 + nV
     local macFadeO0   = baseId + 5 + nV         -- .. baseId + 4 + 2*nV
-    -- Rangees FX C1 / C2 : 1 header + 1 pastille par couleur, chacune.
+    -- Rangees FX C1 / C2 : 1 header + 1 pastille par couleur (slots NC).
     local macC1Hdr    = baseId + 5 + 2 * nV
-    local macC1_0     = macC1Hdr + 1            -- .. + nColors - 1
-    local macC2Hdr    = macC1_0 + nColors
-    local macC2_0     = macC2Hdr + 1            -- .. + nColors - 1
-    local macEnd      = macC2_0 + nColors - 1
+    local macC1_0     = macC1Hdr + 1            -- .. + NC - 1
+    local macC2Hdr    = macC1_0 + NC
+    local macC2_0     = macC2Hdr + 1            -- .. + NC - 1
+    local macEnd      = macC2_0 + NC - 1
+    -- Plafonds de NETTOYAGE : ils couvrent la PLUS GROSSE empreinte
+    -- possible (nb max de lignes/couleurs, et les versions precedentes du
+    -- plugin), pas seulement la config courante. Sinon une regeneration
+    -- plus petite laisse des orphelins : labels dupliques (#2) et boucles
+    -- FX fantomes que le nouveau Off All ne peut plus eteindre.
+    local MAX_ROWS  = 1 + math.max(MAX_GROUP_ROWS, MAX_FIXTURE_ROWS)
+    local seqDelEnd = baseId + MAX_ROWS * NC + (MAX_ROWS - 1) - 1
+    local macDelEnd = baseId + 60               -- >= empreinte v6.0 (+50)
+    local appDelEnd = baseId + 2 * NC + 5
+    local imgDelEnd = baseId + 2 * NC + 2
     local function seqNoOf(ti, ci) return baseId + (ti - 1) * nColors + (ci - 1) end
     -- Sequence FX de chaque ligne de groupe (nil pour ALL / machines).
     local fxNoOfTi = {}
     for gi, ti in ipairs(groupTis) do fxNoOfTi[ti] = seqFx0 + gi - 1 end
 
-    -- Occupation des plages -> confirmation avant d'ecraser.
+    -- Occupation des plages -> confirmation avant d'ecraser. Les scans
+    -- couvrent les MEMES plages que les Delete (les plafonds), pour que
+    -- l'utilisateur consente exactement a ce qui sera supprime.
     local occupied, detectOk = false, true
-    local function check(fmt, a, b)
+    local function checkUsed(fmt, a, b)
         for no = a, b do
             local used, ok = objectUsed(string.format(fmt, no))
             if not ok then detectOk = false; return end
             if used then occupied = true; return end
         end
     end
-    check("Sequence %d", baseId, seqLast)
-    if detectOk and not occupied then check("Macro %d", baseId, macEnd) end
-    if detectOk and not occupied then
-        -- Les appearances n'ont pas d'enfants -> test d'existence.
-        for no = baseId, appEnd do
-            if objectExists("Appearance " .. no) then occupied = true; break end
+    local function checkExists(fmt, a, b)
+        for no = a, b do
+            if objectExists(string.format(fmt, no)) then occupied = true; return end
         end
     end
+    checkUsed("Sequence %d", baseId, seqDelEnd)
+    -- Macros par EXISTENCE : une macro a 0 ligne mais labellisee est quand
+    -- meme du contenu utilisateur, elle doit declencher la confirmation.
+    if detectOk and not occupied then checkExists("Macro %d", baseId, macDelEnd) end
+    if detectOk and not occupied then checkExists("Appearance %d", baseId, appDelEnd) end
     -- (MAtricks "CPFX" : reliquat des anciennes versions -> nettoye aussi.)
     if detectOk and not occupied and objectExists("MAtricks " .. baseId) then
         occupied = true
     end
-    -- Le Layout aussi : il est supprime/recree, la confirmation doit donc
-    -- le couvrir (un layout NON vide declenche le prompt).
-    if detectOk and not occupied then
-        local usedL = objectUsed("Layout " .. layNo)
-        if usedL then occupied = true end
+    -- Le Layout aussi : il est supprime/recree — un layout existant, meme
+    -- VIDE (prepare/renomme par l'utilisateur), doit etre confirme.
+    if detectOk and not occupied and
+            (objectExists("Layout " .. layNo) or objectUsed("Layout " .. layNo)) then
+        occupied = true
     end
 
     if occupied or not detectOk then
         local confirm = MessageBox({ title = "Color Picker LIVE",
             message = string.format(
-                "Des objets existent peut-etre ici :\n"
+                "Des objets existent peut-etre dans les plages du plugin.\n"
+             .. "Seront SUPPRIMES puis regeneres :\n"
              .. "Sequence %d -> %d\nMacro %d -> %d\nAppearance %d -> %d\n"
-             .. "MAtricks CPFX\n"
-             .. "(et le Layout %d sera (re)cree).\n\n"
+             .. "Image 3.%d -> 3.%d\nMAtricks %d\nLayout %d\n"
+             .. "(plages larges : elles nettoient aussi les restes des\n"
+             .. "generations precedentes, meme plus grosses).\n\n"
              .. "Les PRESETS couleur (pool 4) sont conserves, jamais effaces.\n"
              .. "Tout ecraser et regenerer ?",
-                baseId, seqEnd, baseId, macEnd, baseId, appEnd, layNo),
+                baseId, seqDelEnd, baseId, macDelEnd, baseId, appDelEnd,
+                baseId, imgDelEnd, baseId, layNo),
             commands = { { value = 1, name = "Ecraser" }, { value = 0, name = "Annuler" } } })
         if not confirm or confirm.result ~= 1 then return end
-        Cmd(string.format('Delete Sequence %d Thru %d /NoConfirm', baseId, seqLast))
-        Cmd(string.format('Delete Macro %d Thru %d /NoConfirm', baseId, macEnd))
-        -- Plage MAX (#COLORS) et non nColors : une regeneration avec moins
-        -- de couleurs ne doit pas laisser d'appearances orphelines (doublons
-        -- de noms -> suffixes #2).
-        Cmd(string.format('Delete Appearance %d Thru %d /NoConfirm',
-            baseId, baseId + 2 * #COLORS + 5))
+        Cmd(string.format('Delete Sequence %d Thru %d /NoConfirm', baseId, seqDelEnd))
+        Cmd(string.format('Delete Macro %d Thru %d /NoConfirm', baseId, macDelEnd))
+        Cmd(string.format('Delete Appearance %d Thru %d /NoConfirm', baseId, appDelEnd))
+        -- Le pool Images aussi : sans ce Delete, "Import Image" retombe sur
+        -- un slot occupe (confirmation ou refus silencieux) et le test de
+        -- reussite ne peut pas distinguer un import frais d'un PNG perime.
+        Cmd(string.format('Delete Image 3.%d Thru 3.%d /NoConfirm', baseId, imgDelEnd))
         Cmd(string.format('Delete MAtricks %d /NoConfirm', baseId))
         Cmd(string.format('Delete Layout %d /NoConfirm', layNo))
     end
@@ -731,7 +796,7 @@ local function main(display_handle)
             Cmd(string.format('Assign Appearance %d At Sequence %d', appDim0 + ci - 1, sq))
             Cmd(string.format('Assign Appearance %d At Sequence %d Cue 1', baseId + ci - 1, sq))
             -- Timings (best-effort : commande + handle).
-            Cmd(string.format('Set Sequence %d Cue 1 Property "CueInFade" "%s"', sq, tostring(colorFade)))
+            setCueFade(sq, 1, colorFade)
             Cmd(string.format('Set Sequence %d Property "OffFade" "%s"', sq, tostring(offFade)))
             Cmd(string.format('Set Sequence %d Property "OffWhenOverridden" "Yes"', sq))
             -- CRUCIAL : une boucle FX re-affirme ses valeurs (LTP) a chaque
@@ -785,7 +850,7 @@ local function main(display_handle)
             -- Balayage : delay individuel reparti sur la selection.
             Cmd(string.format("Delay 0 Thru %s", tostring(FX_SWEEP)))
             Cmd(string.format('Store Sequence %d Cue %d /NoConfirm', no, k))
-            Cmd(string.format('Set Sequence %d Cue %d Property "CueInFade" "1"', no, k))
+            setCueFade(no, k, 1)
             -- La propriete du trigger s'appelle TrigType (valeur sensible a
             -- la casse : "Follow") — confirme manuel + forum MA.
             Cmd(string.format('Set Sequence %d Cue %d Property "TrigType" "Follow"', no, k))
@@ -817,6 +882,10 @@ local function main(display_handle)
             Printf("[CP] FX sequence %d (%s) : construction incomplete", no, t.label)
         end
     end
+    -- Le programmer ne doit pas rester charge (selection + couleur +
+    -- delays du dernier groupe) pendant toute la construction des macros
+    -- et du layout — ni si quelque chose echoue entre-temps.
+    Cmd("ClearAll")
 
     -- 3) Macros — aucune action programmer : Off All relache les COULEURS
     --    (playback), ALL est une simple etiquette de ligne.
@@ -939,7 +1008,8 @@ local function main(display_handle)
         if fxNoOfTi[ti] then
             elements[#elements + 1] = {
                 object = "Sequence " .. fxNoOfTi[ti],
-                x = 2 + nColors, y = row, play = true, clean = true, text = "FX",
+                x = 2 + nColors, y = row, play = true, toggle = true,
+                clean = true, text = "FX",
             }
         end
     end
@@ -1004,11 +1074,12 @@ local function main(display_handle)
      .. "FX (bout des lignes de groupes) : tape FX -> boucle C1<->C2 qui\n"
      .. "balaie le groupe (jardin->cour) en restitution. Choisis C1 / C2\n"
      .. "avec les pastilles du bas (meme en cours de boucle). Taper une\n"
-     .. "couleur reprend la main et coupe le FX de la ligne.\n"
-     .. "(%d boucle(s) FX construite(s))\n"
+     .. "couleur reprend la main et coupe le FX de la ligne ; re-taper FX\n"
+     .. "ou Off All l'arrete aussi. (%d boucle(s) FX construite(s))\n"
      .. "COULEURS PAS A TON GOUT ? Modifie le Preset 4.x (pool Color) ->\n"
      .. "tout le board suit. Regenerer ne touche jamais tes presets.\n"
-     .. "AUCUNE action de ce board ne touche le programmer.",
+     .. "Tuiles couleur / FX / FADE / Off All : restitution pure, zero\n"
+     .. "programmer. (Les cases de gauche, elles, SELECTIONNENT la machine.)",
         nTargets, (groupIds and "groupes" or "machines"), nColors,
         baseId, baseId + nColors - 1, presetsCreated, presetsReused,
         baseId, seqLast,
