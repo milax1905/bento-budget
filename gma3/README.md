@@ -8,12 +8,14 @@ standard de grandMA3.
 ```
 ┌────────────────────────────────────────────────────┐
 │           C O L O R   P I C K E R                  │
-│ [ SPOT ] [Red][Orange][Yellow][Cyan]…[White]       │
-│ [ WASH ] [Red][Orange][Yellow][Cyan]…[White]       │
 │ [ ALL  ] [Red][Orange][Yellow][Cyan]…[White]       │
+│ [ SPOT ] [Red][Orange][Yellow][Cyan]…[White] [FX]  │
+│ [ WASH ] [Red][Orange][Yellow][Cyan]…[White] [FX]  │
 │ [═════════ Off All (barre rouge) ═════════]        │
 │ [FADE couleur 1s] [0s][0.5s][1s][2s][3s][4s]       │
 │ [FADE arrêt 2s  ] [0][0.5][1][2][3][4]             │
+│ [FX C1 Red ] [○][○][●][○]… (pastilles couleur)     │
+│ [FX C2 Blue] [○][○][○][●]…                          │
 └────────────────────────────────────────────────────┘
 ```
 
@@ -30,21 +32,25 @@ standard de grandMA3.
 - **Bloc FX (boucle 2 couleurs)** — sur les lignes de groupes, une tuile
   **`FX`** en bout de ligne lance une **boucle C1↔C2 qui balaie le groupe**
   en restitution :
+  - Construction **par commandes** (le chemin fiable sur console) :
+    2 cues stockées `At Preset <slot C1/C2>` avec un **delay individuel
+    réparti sur le groupe** (`Delay 0 Thru 1` → balayage jardin→cour),
+    les deux cues en *Trigger Follow* + *WrapAround* → boucle infinie.
   - **`FX C1` / `FX C2`** : deux rangées de pastilles pour choisir les deux
     couleurs (pastille choisie = remplie). Mécanique : `Copy Preset … /Merge`
-    dans deux presets *slots* référencés par les **recipes** des cues FX →
+    dans deux presets *slots* **référencés par les cues FX** →
     changement instantané, même en cours de boucle.
-  - **Rangée `FX`** : `FX Off · J>C 05 · J>C 1 · J>C 2 · C>J 1 · SYM 1 ·
-    SYM 2` — direction **jardin→cour** / **cour→jardin** / **symétrique**
-    et étalement, via l'objet **MAtricks** partagé `CPFX`
-    (`DelayFromX/DelayToX/XWings`). Bouton actif surligné.
-  - Construction : séquences à 2 cues en *Follow* + *WrapAround* dont les
-    cues sont des **recipes** (API objet, pattern du générateur
-    Jannik-Hm testé en 2.3).
+  - **La couleur reprend toujours la main** : chaque cue couleur porte une
+    commande (colonne CMD) qui **coupe la boucle FX de sa ligne** (la ligne
+    ALL coupe toutes les boucles). Sans ça, une boucle Follow ré-affirme
+    ses valeurs en LTP à chaque cue et « reprend » la couleur au tap
+    suivant — les tuiles semblaient mortes tant qu'un FX tournait.
 - **Tuiles néon générées** : le plugin **fabrique lui-même** ses images PNG
-  (contours arrondis, pur Lua, zéro fichier à copier), les écrit dans la
-  *User Image Library*, les importe dans le pool Images et les pose sur les
-  appearances « repos » → look contour-néon, remplissage plein quand actif.
+  (pur Lua, zéro fichier à copier), les écrit dans la *User Image Library*,
+  les importe dans le pool Images et les pose sur les appearances :
+  **contour arrondi** au repos, **pavé arrondi plein** quand actif (le fond
+  de l'appearance passe en alpha 0 → les coins restent ronds, pas de
+  rectangle brut). Icône, barre-témoin et bordure des tuiles : masquées.
 - **Outils** : `Off All` (relâche les couleurs, playback). L'intensité reste
   à ton fader de dimmer. **Aucune action de ce board ne touche le
   programmer** — c'est un layout de restitution, pas de construction.
@@ -70,11 +76,13 @@ standard de grandMA3.
 
 ## Objets créés (à partir de l'ID de départ, défaut 101)
 
-| Pool        | Contenu                                            |
-|-------------|----------------------------------------------------|
-| Appearances | 1 par couleur + 1 sombre (`CP Red`, `CP Dark`, …)  |
-| Sequences   | 1 par (ligne × couleur), label `<machine> <couleur>` |
-| Macros      | `Off All`, `Highlight`, `Full`, `ALL` (4 en tout)  |
+| Pool        | Contenu                                                       |
+|-------------|---------------------------------------------------------------|
+| Appearances | 2 par couleur (active/repos) + utilitaires (`CP Dark`, …)     |
+| Sequences   | 1 par (ligne × couleur) + 1 FX par groupe                     |
+| Macros      | `Off All`, `ALL`, bannière, rangées FADE, pastilles C1/C2     |
+| Images      | tuiles néon générées (contours + pavés remplis)               |
+| Presets 4.x | couleurs universelles + 2 slots FX (jamais effacés)           |
 
 Les pools 1–100 ne sont pas touchés. Si une plage est occupée, le plugin
 **demande confirmation** avant d'écraser.
