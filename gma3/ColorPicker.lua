@@ -253,12 +253,18 @@ local function fillLayout(layoutNo, elements)
                 pcall(function() elem:Set("PlaybackFunction", "Go+") end)
                 pcall(function() elem:Set("Function", "Go+") end)
             end
-            -- Pastilles couleur : PAS de texte ni de barre (look reference,
-            -- la couleur seule parle) — best-effort, sans risque.
+            -- Pastilles couleur : PAS de texte ni de barres (look reference,
+            -- la couleur seule parle). Proprietes CONFIRMEES par les fichiers
+            -- UI de MA3 (layout_element_editor.uixml) : Visibility* = Hidden.
+            -- On garde VisibilityIndicatorBar (temoin de sequence active).
             if e.clean then
-                pcall(function() elem:Set("ShowName", "No") end)
-                pcall(function() elem:Set("ShowID", "No") end)
-                pcall(function() elem:Set("ShowBar", "No") end)
+                pcall(function()
+                    elem:Set("VisibilityObjectName", "Hidden")
+                    elem:Set("VisibilityID", "Hidden")
+                    elem:Set("VisibilityCID", "Hidden")
+                    elem:Set("VisibilityBar", "Hidden")
+                    elem:Set("VisibilityValue", "Hidden")
+                end)
             end
         end
         if ok then placed = placed + 1 else failed = failed + 1 end
