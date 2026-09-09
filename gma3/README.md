@@ -27,12 +27,24 @@ standard de grandMA3.
   board les **référencent** → modifie un preset (ton rouge, ton ambre…) et
   **tout le board suit**. S'ils existent déjà, ils sont **réutilisés tels
   quels** — régénérer n'efface jamais tes presets.
-- **Rangée SWEEP (effets)** : `FX Off · >0.5 · >1 · >2 · <1 · <>1 · <>2` —
-  la couleur **balaie le groupe** (gauche→droite `>`, droite→gauche `<`,
-  miroir `<>`) au temps choisi. Mécanique : un objet **MAtricks** partagé
-  (`CPFX`) référencé par les **recipes** des cues ; les boutons le
-  réécrivent (`DelayFromX/DelayToX/XWings`). Lignes de groupes uniquement
-  (la ligne ALL reste sans sweep). Bouton actif surligné.
+- **Bloc FX (boucle 2 couleurs)** — sur les lignes de groupes, une tuile
+  **`FX`** en bout de ligne lance une **boucle C1↔C2 qui balaie le groupe**
+  en restitution :
+  - **`FX C1` / `FX C2`** : deux rangées de pastilles pour choisir les deux
+    couleurs (pastille choisie = remplie). Mécanique : `Copy Preset … /Merge`
+    dans deux presets *slots* référencés par les **recipes** des cues FX →
+    changement instantané, même en cours de boucle.
+  - **Rangée `FX`** : `FX Off · J>C 05 · J>C 1 · J>C 2 · C>J 1 · SYM 1 ·
+    SYM 2` — direction **jardin→cour** / **cour→jardin** / **symétrique**
+    et étalement, via l'objet **MAtricks** partagé `CPFX`
+    (`DelayFromX/DelayToX/XWings`). Bouton actif surligné.
+  - Construction : séquences à 2 cues en *Follow* + *WrapAround* dont les
+    cues sont des **recipes** (API objet, pattern du générateur
+    Jannik-Hm testé en 2.3).
+- **Tuiles néon générées** : le plugin **fabrique lui-même** ses images PNG
+  (contours arrondis, pur Lua, zéro fichier à copier), les écrit dans la
+  *User Image Library*, les importe dans le pool Images et les pose sur les
+  appearances « repos » → look contour-néon, remplissage plein quand actif.
 - **Outils** : `Off All` (relâche les couleurs, playback). L'intensité reste
   à ton fader de dimmer. **Aucune action de ce board ne touche le
   programmer** — c'est un layout de restitution, pas de construction.
