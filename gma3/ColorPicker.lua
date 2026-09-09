@@ -31,19 +31,21 @@
 --  NB : apres toute modification de ce fichier -> "ReloadAllPlugins" (RP).
 -- =====================================================================
 
+-- Palette en ordre ARC-EN-CIEL (blanc en dernier). Chaque couleur a deux
+-- appearances : sombre (repos) et pleine (tuile active -> "se remplit").
 local COLORS = {
     { name = "Red",     r = 255, g =   0, b =   0 },
-    { name = "Orange",  r = 255, g =  90, b =   0 },
-    { name = "Yellow",  r = 255, g = 225, b =   0 },
-    { name = "Green",   r =   0, g = 200, b =  40 },
-    { name = "Cyan",    r =   0, g = 200, b = 200 },
-    { name = "Blue",    r =   0, g =  40, b = 255 },
-    { name = "Violet",  r = 120, g =   0, b = 255 },
-    { name = "Magenta", r = 255, g =   0, b = 200 },
-    { name = "Pink",    r = 255, g =  90, b = 150 },
-    { name = "White",   r = 255, g = 255, b = 255 },
+    { name = "Orange",  r = 255, g =  70, b =   0 },
     { name = "Amber",   r = 255, g = 150, b =   0 },
-    { name = "Warm",    r = 255, g = 170, b =  90 },
+    { name = "Yellow",  r = 255, g = 230, b =   0 },
+    { name = "Green",   r =   0, g = 220, b =  40 },
+    { name = "Cyan",    r =   0, g = 210, b = 210 },
+    { name = "Azure",   r =   0, g = 130, b = 255 },
+    { name = "Blue",    r =  20, g =  30, b = 255 },
+    { name = "Violet",  r = 130, g =   0, b = 255 },
+    { name = "Magenta", r = 255, g =   0, b = 210 },
+    { name = "Pink",    r = 255, g =  90, b = 160 },
+    { name = "White",   r = 255, g = 255, b = 255 },
 }
 
 local MAX_FIXTURE_ROWS = 12   -- limite de lignes en mode "une par machine"
@@ -272,7 +274,7 @@ local function main(display_handle)
 
     -- Reglages par defaut (modifiables via "Options").
     local grpStr, fixStr = "", ""
-    local nColors   = 10
+    local nColors   = 12
     local colorFade = 1
     local offFade   = 2
     local baseId    = 101
@@ -297,7 +299,7 @@ local function main(display_handle)
     if first.result == 2 then
         local cfg = MessageBox({
             title    = "Color Picker LIVE - Options",
-            message  = "Laisse vide pour l'auto-detection.",
+            message  = "Laisse vide pour l'auto-detection. (defaut nb couleurs : 12)",
             commands = {
                 { value = 1, name = "Generer" },
                 { value = 0, name = "Annuler" },
@@ -305,7 +307,7 @@ local function main(display_handle)
             inputs = {
                 { name = "Groupes (ex: 1 Thru 8 / vide = auto)",  value = ""    },
                 { name = "Machines (si aucun groupe)",             value = ""    },
-                { name = "Nb couleurs (max 12)",                   value = "10"  },
+                { name = "Nb couleurs (max 12)",                   value = "12"  },
                 { name = "Fade couleur (s)",                       value = "1"   },
                 { name = "Fade arret (s)",                         value = "2"   },
                 { name = "ID de depart (seq/macro/appearance)",    value = "101" },
@@ -315,7 +317,7 @@ local function main(display_handle)
         if not cfg or cfg.result ~= 1 then return end
         grpStr    = cfg.inputs["Groupes (ex: 1 Thru 8 / vide = auto)"]
         fixStr    = cfg.inputs["Machines (si aucun groupe)"]
-        nColors   = math.floor(toNum(cfg.inputs["Nb couleurs (max 12)"], 10, 1, #COLORS))
+        nColors   = math.floor(toNum(cfg.inputs["Nb couleurs (max 12)"], 12, 1, #COLORS))
         colorFade = toNum(cfg.inputs["Fade couleur (s)"], 1, 0, 600)
         offFade   = toNum(cfg.inputs["Fade arret (s)"], 2, 0, 600)
         baseId    = math.floor(toNum(cfg.inputs["ID de depart (seq/macro/appearance)"], 101, 1, 100000))
@@ -356,10 +358,13 @@ local function main(display_handle)
     -- Numerotation (pools distincts, meme ID de depart -> lisible).
     local nSeq     = nTargets * nColors
     local seqEnd    = baseId + nSeq - 1         -- derniere sequence couleur
-    local appDark   = baseId + nColors
-    local appGrey   = baseId + nColors + 1
-    local appAccent = baseId + nColors + 2      -- bouton de fade ACTIF
-    local appRed    = baseId + nColors + 3      -- barre Off All
+    -- Appearances : pleine couleur (tuile ACTIVE) puis version sombre
+    -- (tuile au repos), puis les utilitaires.
+    local appDim0   = baseId + nColors          -- .. baseId + 2*nColors - 1
+    local appDark   = baseId + 2 * nColors
+    local appGrey   = baseId + 2 * nColors + 1
+    local appAccent = baseId + 2 * nColors + 2  -- bouton de fade ACTIF
+    local appRed    = baseId + 2 * nColors + 3  -- barre Off All
     local appEnd    = appRed
     -- Macros : AUCUNE action programmer — Off All, etiquette ALL, banniere.
     local macOffAll, macAllHdr, macTitle = baseId, baseId + 1, baseId + 2
@@ -407,9 +412,12 @@ local function main(display_handle)
         Cmd(string.format('Delete Layout %d /NoConfirm', layNo))
     end
 
-    -- 1) Appearances : une par couleur + une sombre.
+    -- 1) Appearances : pleine couleur (active) + version sombre (repos)
+    --    pour chaque couleur, puis les utilitaires.
     for i, c in ipairs(colors) do
         makeAppearance(baseId + i - 1, "CP " .. c.name, c.r, c.g, c.b)
+        makeAppearance(appDim0 + i - 1, "CP " .. c.name .. " Dim",
+            math.floor(c.r * 0.25), math.floor(c.g * 0.25), math.floor(c.b * 0.25))
     end
     makeAppearance(appDark, "CP Dark", 36, 40, 48)
     makeAppearance(appGrey, "CP Grey", 66, 72, 84)
@@ -453,7 +461,10 @@ local function main(display_handle)
             Cmd(string.format('At Preset %d.%d', PT, baseId + ci - 1))
             Cmd(string.format('Store Sequence %d Cue 1 /NoConfirm', sq))
             Cmd(string.format('Label Sequence %d "%s %s"', sq, t.label, c.name))
-            Cmd(string.format('Assign Appearance %d At Sequence %d', baseId + ci - 1, sq))
+            -- Repos = version sombre ; la CUE porte la pleine couleur ->
+            -- la tuile "se remplit" quand la sequence joue (style MA2).
+            Cmd(string.format('Assign Appearance %d At Sequence %d', appDim0 + ci - 1, sq))
+            Cmd(string.format('Assign Appearance %d At Sequence %d Cue 1', baseId + ci - 1, sq))
             -- Timings (best-effort : commande + handle).
             Cmd(string.format('Set Sequence %d Cue 1 Property "CueInFade" "%s"', sq, tostring(colorFade)))
             Cmd(string.format('Set Sequence %d Property "OffFade" "%s"', sq, tostring(offFade)))
@@ -598,7 +609,8 @@ local function main(display_handle)
      .. "Fade couleur %ss / arret %ss\n"
      .. "Layout %d : %d/%d cases placees%s\n\n"
      .. "EN LIVE : tape une tuile couleur -> la ligne passe a cette couleur\n"
-     .. "en restitution. Retape (ou autre couleur) pour changer/relacher.\n"
+     .. "en restitution, et la tuile SE REMPLIT (sombre au repos, pleine\n"
+     .. "couleur quand elle joue). Retape / autre couleur pour changer.\n"
      .. "Rangees FADE en bas : le bouton ACTIF est surligne en blanc et\n"
      .. "le titre affiche la valeur courante (ex: FADE couleur 2s).\n"
      .. "COULEURS PAS A TON GOUT ? Modifie le Preset 4.x (pool Color) ->\n"
