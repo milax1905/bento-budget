@@ -747,9 +747,10 @@ local function main(display_handle)
             end
             if offFx then
                 Cmd(string.format('Set Sequence %d Cue 1 Property "Command" "%s"', sq, offFx))
+                -- Cote objet, le CMD vit sur la PART 0 de la cue (forum MA).
                 pcall(function()
-                    local cueObj = ObjectList(string.format("Sequence %d Cue 1", sq))[1]
-                    if cueObj then cueObj:Set("Command", offFx) end
+                    local part = ObjectList(string.format("Sequence %d Cue 1 Part 0", sq))[1]
+                    if part then part:Set("Command", offFx) end
                 end)
             end
             pcall(function()
@@ -785,7 +786,9 @@ local function main(display_handle)
             Cmd(string.format("Delay 0 Thru %s", tostring(FX_SWEEP)))
             Cmd(string.format('Store Sequence %d Cue %d /NoConfirm', no, k))
             Cmd(string.format('Set Sequence %d Cue %d Property "CueInFade" "1"', no, k))
-            Cmd(string.format('Set Sequence %d Cue %d Property "Trigger" "Follow"', no, k))
+            -- La propriete du trigger s'appelle TrigType (valeur sensible a
+            -- la casse : "Follow") — confirme manuel + forum MA.
+            Cmd(string.format('Set Sequence %d Cue %d Property "TrigType" "Follow"', no, k))
             -- Tuile FX remplie (violet) tant que la boucle tourne.
             Cmd(string.format('Assign Appearance %d At Sequence %d Cue %d', appFxOn, no, k))
         end
@@ -800,7 +803,7 @@ local function main(display_handle)
                 for _, cueIdx in ipairs({ 1, 2 }) do
                     pcall(function()
                         local cue = ObjectList(string.format("Sequence %d Cue %d", no, cueIdx))[1]
-                        if cue then cue:Set("Trigger", "Follow") end
+                        if cue then cue:Set("TrigType", "Follow") end
                     end)
                 end
                 pcall(function() s:Set("WrapAround", "Yes") end)
