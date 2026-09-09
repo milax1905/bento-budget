@@ -249,6 +249,13 @@ local function fillLayout(layoutNo, elements)
                 pcall(function() elem:Set("PlaybackFunction", "Go+") end)
                 pcall(function() elem:Set("Function", "Go+") end)
             end
+            -- Pastilles couleur : PAS de texte ni de barre (look reference,
+            -- la couleur seule parle) — best-effort, sans risque.
+            if e.clean then
+                pcall(function() elem:Set("ShowName", "No") end)
+                pcall(function() elem:Set("ShowID", "No") end)
+                pcall(function() elem:Set("ShowBar", "No") end)
+            end
         end
         if ok then placed = placed + 1 else failed = failed + 1 end
     end
@@ -438,7 +445,7 @@ local function main(display_handle)
     for i, c in ipairs(colors) do
         makeAppearance(baseId + i - 1, "CP " .. c.name, c.r, c.g, c.b)
         makeAppearance(appDim0 + i - 1, "CP " .. c.name .. " Dim",
-            math.floor(c.r * 0.25), math.floor(c.g * 0.25), math.floor(c.b * 0.25))
+            math.floor(c.r * 0.30), math.floor(c.g * 0.30), math.floor(c.b * 0.30))
     end
     makeAppearance(appDark, "CP Dark", 36, 40, 48)
     makeAppearance(appGrey, "CP Grey", 66, 72, 84)
@@ -623,7 +630,7 @@ local function main(display_handle)
         for ci = 1, nColors do
             elements[#elements + 1] = {
                 object = "Sequence " .. seqNoOf(ti, ci),
-                x = 2 + ci - 1, y = row, play = true,
+                x = 2 + ci - 1, y = row, play = true, clean = true,
             }
         end
     end
