@@ -46,7 +46,7 @@
 -- la console a REELLEMENT chargee (apres un ReloadAllPlugins). Les macros
 -- deja stockees dans le show, elles, datent de la derniere GENERATION —
 -- c'est pour ca qu'un correctif n'agit qu'apres avoir regenere.
-local VERSION = "7.9"
+local VERSION = "7.10"
 
 -- Palette en ordre ARC-EN-CIEL (blanc en dernier). Chaque couleur a deux
 -- appearances : contour (repos) et pleine (tuile active -> "se remplit").
@@ -283,67 +283,142 @@ local function objectExists(addr)
 end
 
 -- ------------------ transition des pas d'un phaser -------------------
--- Adresse d'un PAS de la recette de phaser (celle-la meme ou on assigne
--- deja les presets C1/C2).
-local STEP_ADDR = "Sequence %d Cue 1 Part 0.1.'PhaserRecipeSteps'.%d"
+-- Un phaser n'a pas de "fondu de cue" entre ses deux couleurs : il a une
+-- TRANSITION, en % de la duree du pas (manuel 2.4, Phasers > Step Layers).
+-- Reste a savoir OU elle vit : selon le build, la recette la porte sur le
+-- PAS lui-meme, ou sur la VALEUR du pas (le meme objet ou l'on assigne
+-- deja le preset, en .1.1). On ne devine pas : on cherche l'objet, on
+-- LISTE ses proprietes, et on ne garde une forme de commande que si elle
+-- change vraiment la valeur relue.
 
-local function stepHandle(sq, step)
-    local h
-    pcall(function() h = ObjectList(string.format(STEP_ADDR, sq, step))[1] end)
-    return h
+-- Chemins candidats, du plus probable au moins probable.
+local STEP_PATHS = {
+    "Sequence %d Cue 1 Part 0.1.'PhaserRecipeSteps'.%d",
+    "Sequence %d Cue 1 Part 0.1.'PhaserRecipeSteps'.%d.1",
+}
+
+local function isObj(v)
+    return v ~= nil and type(v) ~= "string" and type(v) ~= "number"
+        and type(v) ~= "boolean"
+end
+
+local function nthChild(o, n)
+    local c
+    pcall(function() c = o:Ptr(n) end)
+    if not isObj(c) then
+        pcall(function()
+            local ch = o:Children()
+            if ch then c = ch[n] end
+        end)
+    end
+    return isObj(c) and c or nil
+end
+
+-- Descente par HANDLES : rien ne garantit que le parseur d'ADRESSES
+-- accepte un chemin imbrique comme ".'PhaserRecipeSteps'.1" — alors qu'on
+-- peut toujours descendre l'arbre objet par objet. C'est le filet.
+local function digSteps(sq)
+    local steps, seen = nil, 0
+    pcall(function()
+        local cue = ObjectList(string.format("Sequence %d Cue 1", sq))[1]
+        if not cue then return end
+        local function dig(o, depth)
+            if steps or depth > 4 or seen > 400 then return end
+            seen = seen + 1
+            local s
+            pcall(function() s = o:Get("PhaserRecipeSteps") end)
+            if isObj(s) then steps = s; return end
+            local ch
+            pcall(function() ch = o:Children() end)
+            if ch then for i = 1, #ch do dig(ch[i], depth + 1) end end
+        end
+        dig(cue, 0)
+    end)
+    return steps
+end
+
+-- Un handle du pas <step> par niveau candidat (adresse directe d'abord,
+-- descente par handles en repli).
+local function stepHandles(sq, step)
+    local out = {}
+    for i, fmt in ipairs(STEP_PATHS) do
+        pcall(function() out[i] = ObjectList(string.format(fmt, sq, step))[1] end)
+    end
+    local steps = digSteps(sq)
+    if steps then
+        local st = nthChild(steps, step)
+        if st then
+            out[1] = out[1] or st
+            out[2] = out[2] or nthChild(st, 1)
+        end
+    end
+    return out, (steps ~= nil)
 end
 
 local function propRead(h, prop)
     local v
     pcall(function() v = h:Get(prop, Enums.Roles.Display) end)
     if v == nil then pcall(function() v = h:Get(prop) end) end
+    if v == nil then return nil end
     return tostring(v)
 end
 
--- On ne DEVINE jamais le nom d'une propriete : une commande invalide sort
--- une notification rouge, et une notification rouge en plein show est
--- exactement ce qu'on ne veut pas. Donc on ouvre l'objet, on LISTE ses
--- proprietes, et on ne retient "Transition" que si :
---   1. l'objet l'expose vraiment (PropertyName), et
---   2. l'ecrire EN LIGNE DE COMMANDE change bien la valeur relue.
--- Le test s'ecrit deux fois avec deux valeurs differentes : comme ca la
--- valeur de depart ne peut pas faire passer le test par hasard. Si l'une
--- des deux etapes echoue, on renvoie nil et la rangee n'est pas construite
--- du tout — mieux vaut un bouton absent qu'un bouton qui gueule.
-local function probeTransition(sq)
-    local h = stepHandle(sq, 1)
-    if not h then return nil end
-    local prop
+local function findProp(h, want)
+    local name, all = nil, {}
     pcall(function()
         for i = 1, h:PropertyCount() do
             local pn = h:PropertyName(i)
-            if pn and string.lower(pn) == "transition" then prop = pn; break end
+            if pn then
+                all[#all + 1] = pn
+                if string.lower(pn) == want then name = pn end
+            end
         end
     end)
-    if not prop then return nil end
-    -- Etape 1, MUETTE : on ecrit par le handle. Si l'objet n'accepte pas
-    -- la propriete, ca rate sans un mot (pas de ligne de commande, donc
-    -- pas de notification) et on s'arrete la.
-    local ok1 = pcall(function() h:Set(prop, "13") end)
-    if not ok1 or propRead(h, prop) == nil then return nil end
-    -- Etape 2 : maintenant qu'on SAIT que l'objet porte bien la propriete,
-    -- on verifie la seule chose qui reste : que la ligne de commande —
-    -- celle que les boutons du board utiliseront — vise le bon objet. On
-    -- compare deux lectures, comme ca la valeur de depart ne peut pas
-    -- faire passer le test par hasard.
-    local a = propRead(h, prop)
-    local ok2 = false
-    pcall(function()
-        Cmd(string.format("Set " .. STEP_ADDR .. " Property '%s' '77'", sq, 1, prop))
-        ok2 = (propRead(h, prop) ~= a)
-    end)
-    if not ok2 then return nil end
-    return prop
+    return name, all
 end
 
-local function setTransCmd(sq, step, prop, pct)
-    return string.format("Set " .. STEP_ADDR .. " Property '%s' '%d'",
-        sq, step, prop, pct)
+-- Renvoie { fmt = <format de commande>, prop = <nom> }, ou nil + un DIAG
+-- lisible. Le diag n'est pas cosmetique : quand la rangee manque, c'est
+-- lui qui dit si la recette de phaser existe, et sinon quelles proprietes
+-- l'objet porte vraiment.
+local function probeTransition(sq)
+    local diag = {}
+    local hs, gotSteps = stepHandles(sq, 1)
+    if not gotSteps and not hs[1] and not hs[2] then
+        diag[#diag + 1] = "aucune recette de phaser trouvee dans la cue"
+    end
+    for i, fmt in ipairs(STEP_PATHS) do
+        local h = hs[i]
+        if not h then
+            diag[#diag + 1] = string.format("niveau %d : objet introuvable", i)
+        else
+            local prop, all = findProp(h, "transition")
+            if not prop then
+                diag[#diag + 1] = string.format("niveau %d : %s", i,
+                    (#all > 0) and table.concat(all, " ") or "aucune propriete listee")
+            else
+                -- Etape MUETTE : ecriture par le handle. Si l'objet
+                -- n'accepte pas la propriete, ca rate sans un mot (pas de
+                -- ligne de commande, donc pas de notification rouge).
+                pcall(function() h:Set(prop, "13") end)
+                local a = propRead(h, prop)
+                local ok = false
+                pcall(function()
+                    Cmd(string.format("Set " .. fmt .. " Property '%s' '77'", sq, 1, prop))
+                    ok = (propRead(h, prop) ~= a)
+                end)
+                if ok then return { fmt = fmt, prop = prop }, diag end
+                diag[#diag + 1] = string.format(
+                    "niveau %d : %s presente, la commande ne prend pas", i, prop)
+            end
+        end
+    end
+    return nil, diag
+end
+
+local function setTransCmd(tr, sq, step, pct)
+    return string.format("Set " .. tr.fmt .. " Property '%s' '%d'",
+        sq, step, tr.prop, pct)
 end
 
 -- Un groupe existant n'expose PAS ses fixtures via Children() -> on teste
@@ -1113,7 +1188,8 @@ local function main(display_handle)
     -- Nom reel de la propriete "transition" d'un pas de phaser, decouvert
     -- sur la premiere recette construite (nil = ce build ne l'expose pas
     -- -> la rangee de reglage ne sera pas construite).
-    local fxTrProp   = nil
+    local fxTrProp   = nil     -- { fmt = ..., prop = ... }
+    local fxTrDiag   = nil     -- pourquoi ca a rate, en clair
     local fxTrProbed = false
     local okBuild, errBuild = pcall(function()
 
@@ -1277,13 +1353,16 @@ local function main(display_handle)
                 -- construit sert de cobaye, les autres suivent.
                 if not fxTrProbed then
                     fxTrProbed = true
-                    fxTrProp   = probeTransition(no)
+                    local d
+                    fxTrProp, d = probeTransition(no)
+                    fxTrDiag = (d and #d > 0) and table.concat(d, " | ") or nil
                     Printf("[CP] transition de pas : %s",
-                        fxTrProp or "non exposee par ce build (rangee masquee)")
+                        fxTrProp and (fxTrProp.prop .. " via " .. fxTrProp.fmt)
+                                 or ("introuvable -> " .. tostring(fxTrDiag)))
                 end
                 if fxTrProp then
                     for st = 1, 2 do
-                        Cmd(setTransCmd(no, st, fxTrProp, FX_TRANS_DEFAULT))
+                        Cmd(setTransCmd(fxTrProp, no, st, FX_TRANS_DEFAULT))
                     end
                 end
                 goto fxCommon
@@ -1626,7 +1705,7 @@ local function main(display_handle)
                         for k = 1, 2 do
                             if fxPhaserRow then
                                 lines[#lines + 1] =
-                                    setTransCmd(seqFx(gi, di), k, fxTrProp, v)
+                                    setTransCmd(fxTrProp, seqFx(gi, di), k, v)
                             else
                                 lines[#lines + 1] = string.format(
                                     'Set Sequence %d Cue %d Property "CueInFade" "%s"',
@@ -1787,10 +1866,12 @@ local function main(display_handle)
         layNo, placed, placed + failed, note,
         (not fxRow) and
             ((fxSpeedM > 0)
-                and "TRANSITION FX : ce build n'expose pas la propriete du\n"
-                 .. "pas de phaser -> la rangee n'a pas ete construite (mieux\n"
-                 .. "vaut pas de bouton qu'un bouton qui sort une erreur en\n"
-                 .. "plein show). Passe en 'Sans master' pour la retrouver.\n"
+                and ("TRANSITION FX : la rangee n'a pas ete construite — la\n"
+                  .. "console n'a pas confirme la propriete, et je prefere pas\n"
+                  .. "de bouton a un bouton qui sort une erreur en plein show.\n"
+                  .. "En attendant : 'Sans master' te rend la rangee FX FONDU.\n"
+                  .. "CE QUE LA SONDE A VU (envoie-moi cette ligne) :\n"
+                  .. "   " .. tostring(fxTrDiag) .. "\n")
                 or "")
          or (fxPhaserRow and
             ("FX TRANSIT (derniere rangee) : le passage d'une couleur FX a\n"

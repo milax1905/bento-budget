@@ -115,17 +115,24 @@ Donc chaque case du board est une macro qui, en une frappe :
       devant l'étalement** (0.1–0.2 s pour un étalement de 1 s).
     - **`25 / 50 / 75 %`** (phaser) = la couleur glisse sur le **début** du
       pas, puis tient jusqu'à la fin. C'est le juste milieu.
-  - **La propriété `Transition` est SONDÉE, jamais devinée.** Sur la
-    première recette construite, le plugin ouvre le pas
-    (`Sequence N Cue 1 Part 0.1.'PhaserRecipeSteps'.1`), **liste** ses
-    propriétés (`PropertyCount` / `PropertyName`), écrit une valeur **par le
-    handle** (muet — pas de ligne de commande, donc pas de notification),
-    puis vérifie qu'une écriture **en ligne de commande** — la forme que les
-    boutons du board utiliseront — change bien la valeur relue. Si l'une des
-    étapes échoue, **la rangée n'est pas construite du tout** : mieux vaut un
-    bouton absent qu'un bouton qui sort une notification rouge en plein show.
-    (C'est ce qui était arrivé avec `Set Sequence 137 Cue 2 …` : un phaser
-    n'a **qu'une** cue.)
+  - **La propriété `Transition` est SONDÉE, jamais devinée.** Selon le
+    build, la recette la porte sur le **pas**
+    (`…'PhaserRecipeSteps'.1`) ou sur la **valeur du pas** (`….1.1`, le même
+    objet que celui où le preset est assigné) — et rien ne garantit que
+    `ObjectList` sache résoudre un chemin imbriqué. La sonde essaie donc les
+    deux niveaux, d'abord par adresse directe, puis **en descendant l'arbre
+    d'objets par handles** (`Children` / `Ptr`, à la recherche du conteneur
+    `PhaserRecipeSteps`). Sur chaque candidat elle **liste** les propriétés
+    (`PropertyCount` / `PropertyName`), écrit **par le handle** (muet — pas
+    de ligne de commande, donc pas de notification), puis vérifie qu'une
+    écriture **en ligne de commande** — la forme que les boutons du board
+    utiliseront — change bien la valeur relue. Le premier niveau qui passe
+    les deux tests gagne ; si aucun ne passe, **la rangée n'est pas
+    construite du tout** et le message de fin affiche **ce que la sonde a
+    vu** (les noms de propriétés réellement présents). Mieux vaut un bouton
+    absent qu'un bouton qui sort une notification rouge en plein show — c'est
+    ce qui était arrivé avec `Set Sequence 137 Cue 2 …` : un phaser n'a
+    **qu'une** cue.
   - Les pastilles copient en **`/Overwrite`** : le slot contient **exactement**
     la couleur choisie. (En `/Merge`, tout attribut déjà dans le slot — canal
     blanc, reste d'une couleur précédente — survivait et se mélangeait :
