@@ -45,7 +45,13 @@ Donc chaque case du board est une macro qui, en une frappe :
   `Off When Overridden` relâche la couleur précédente toute seule.
 - **Presets couleur universels** (pool Color 4, IDs `4.101`+) : les cues les
   **référencent** → modifie un preset (ton rouge, ton ambre…) et **tout le
-  board suit**. S'ils existent déjà ils sont **réutilisés**, jamais effacés.
+  board suit**. S'ils existent déjà ils sont **réutilisés**, jamais effacés —
+  **à une condition** : que leur **label** corresponde à la couleur attendue.
+  Un preset qui s'appelle encore `Yellow` là où le plugin attend `Amber` vient
+  d'une **ancienne palette** : la tuile afficherait une couleur et en jouerait
+  une autre. Ces presets-là sont **remis à la couleur du plugin** (et signalés
+  dans la confirmation). Retoucher la teinte d'un preset en gardant son nom
+  reste parfaitement sûr.
 - **Bloc FX — 5 formes d'effet par ligne de groupe** :
 
   | Tuile | Effet                                                        |

@@ -299,6 +299,18 @@ local function groupName(gid)
     return "Group " .. gid
 end
 
+-- Label d'un preset (nil si illisible / inexistant).
+local function presetName(pt, pNo)
+    local nm
+    pcall(function()
+        local h = ObjectList(string.format("Preset %d.%d", pt, pNo))[1]
+        if h then nm = h:Get("Name") end
+    end)
+    if nm == nil then return nil end
+    nm = tostring(nm)
+    return (nm ~= "") and nm or nil
+end
+
 -- Laisse respirer la console entre deux gros blocs de construction.
 local function breathe()
     pcall(coroutine.yield, 0)
@@ -818,6 +830,20 @@ local function main(display_handle)
     -- Le pool Images est le seul ou le plugin ecrit sans rien demander :
     -- il doit passer par la meme confirmation que le reste.
     if detectOk and not occupied then checkExists("Image 3.%d", baseId, imgDelEnd) end
+
+    -- Presets couleur d'une AUTRE palette : le plugin les reutilise tels
+    -- quels (pour garder tes retouches), mais si le LABEL ne correspond pas
+    -- au nom de la couleur attendue, c'est un reste d'une ancienne version
+    -- et la tuile jouerait une couleur qui n'est pas la sienne.
+    local staleColors = {}
+    for ci, c in ipairs(colors) do
+        local nm = presetName(PT, baseId + ci - 1)
+        if nm and nm ~= c.name then
+            staleColors[#staleColors + 1] = string.format("4.%d %s -> %s",
+                baseId + ci - 1, nm, c.name)
+        end
+    end
+    if #staleColors > 0 then occupied = true end
     -- (MAtricks "CPFX" : reliquat des anciennes versions -> nettoye aussi.)
     if detectOk and not occupied and objectExists("MAtricks " .. baseId) then
         occupied = true
@@ -842,11 +868,17 @@ local function main(display_handle)
              .. "effaces, reutilises tels quels). Seuls les 2 slots du FX,\n"
              .. "4.%d et 4.%d, sont pilotes par le board.\n"
              .. "ATTENTION : la generation fait defiler le rig (elle passe\n"
-             .. "par le programmer). A faire avant le show.\n\n"
+             .. "par le programmer). A faire avant le show.\n"
+             .. "%s\n"
              .. "Tout ecraser et regenerer ?",
                 baseId, seqDelEnd, baseId, macDelEnd, baseId, appDelEnd,
                 baseId, imgDelEnd, baseId, layNo,
-                baseId, baseId + nColors - 1, pFx1, pFx2),
+                baseId, baseId + nColors - 1, pFx1, pFx2,
+                (#staleColors > 0) and string.format(
+                    "\n%d preset(s) viennent d'une AUTRE palette (ancienne\n"
+                 .. "version du plugin) : les tuiles jouent aujourd'hui une\n"
+                 .. "couleur qui n'est pas la leur. Ils seront REMIS a la\n"
+                 .. "couleur du plugin. Ex : %s\n", #staleColors, staleColors[1]) or ""),
             commands = { { value = 1, name = "Ecraser" }, { value = 0, name = "Annuler" } } })
         if not confirm or confirm.result ~= 1 then return end
         -- Relacher AVANT de supprimer : une sequence effacee en cours de
@@ -962,7 +994,7 @@ local function main(display_handle)
     -- Il est sous pcall : quoi qu'il arrive, on repasse par un ClearAll —
     -- un plugin qui meurt en laissant le programmer charge, c'est le rig
     -- bloque sur une couleur en plein show.
-    local presetsCreated, presetsReused = 0, 0
+    local presetsCreated, presetsReused, presetsFixed = 0, 0, 0
     local grpAddrs, grpSet = {}, {}
     local fxBuilt = 0
     local okBuild, errBuild = pcall(function()
@@ -971,8 +1003,15 @@ local function main(display_handle)
     --     S'ils existent deja -> REUTILISES tels quels (tes modifs de
     --     couleur survivent aux regenerations). Sinon -> crees.
     for ci, c in ipairs(colors) do
-        local pNo = baseId + ci - 1
-        if objectExists(string.format("Preset %d.%d", PT, pNo)) then
+        local pNo    = baseId + ci - 1
+        local exists = objectExists(string.format("Preset %d.%d", PT, pNo))
+        local nm     = exists and presetName(PT, pNo) or nil
+        -- Reutilise si c'est BIEN cette couleur (label identique) : tes
+        -- retouches de teinte survivent. Un label different = preset d'une
+        -- autre palette -> on le remet a la couleur du plugin, sinon la
+        -- tuile joue autre chose que ce qu'elle affiche. Label illisible
+        -- -> on ne touche a rien (prudent).
+        if exists and (nm == nil or nm == c.name) then
             presetsReused = presetsReused + 1
         else
             Cmd("ClearAll")
@@ -980,9 +1019,12 @@ local function main(display_handle)
             Cmd(string.format('Attribute "ColorRGB_R" At %d', math.floor(c.r / 255 * 100 + 0.5)))
             Cmd(string.format('Attribute "ColorRGB_G" At %d', math.floor(c.g / 255 * 100 + 0.5)))
             Cmd(string.format('Attribute "ColorRGB_B" At %d', math.floor(c.b / 255 * 100 + 0.5)))
-            Cmd(string.format('Store Preset %d.%d /Merge /NoConfirmation /Universal', PT, pNo))
+            -- /Overwrite : remplacement COMPLET (un /Merge laisserait les
+            -- composantes de l'ancienne couleur qui ne sont pas reecrites).
+            Cmd(string.format('Store Preset %d.%d /Overwrite /NoConfirmation /Universal', PT, pNo))
             Cmd(string.format('Label Preset %d.%d "%s"', PT, pNo, c.name))
-            presetsCreated = presetsCreated + 1
+            if exists then presetsFixed = presetsFixed + 1
+            else presetsCreated = presetsCreated + 1 end
         end
     end
     Cmd("ClearAll")
@@ -992,6 +1034,14 @@ local function main(display_handle)
     --     slots, changent de couleurs instantanement. Crees s'ils manquent
     --     (C1 = Red, C2 = Blue par defaut), jamais effaces.
     if nFx > 0 then
+        -- Palette corrigee -> les slots FX (copies de ces presets) sont
+        -- perimes eux aussi : on les remet aux couleurs par defaut.
+        if presetsFixed > 0 then
+            Cmd(string.format('Copy Preset %d.%d At Preset %d.%d /Overwrite /NoConfirmation /NoOops',
+                PT, baseId, PT, pFx1))
+            Cmd(string.format('Copy Preset %d.%d At Preset %d.%d /Overwrite /NoConfirmation /NoOops',
+                PT, baseId + math.min(7, nColors - 1), PT, pFx2))
+        end
         if not objectExists(string.format("Preset %d.%d", PT, pFx1)) then
             Cmd(string.format('Copy Preset %d.%d At Preset %d.%d /NoConfirmation /NoOops', PT, baseId, PT, pFx1))
         end
@@ -1499,7 +1549,7 @@ local function main(display_handle)
     local msg = string.format(
         "Color Picker LIVE v" .. VERSION .. " pret !\n\n"
      .. "Lignes : %d (ALL + %s)   Couleurs : %d\n"
-     .. "Presets couleur : 4.%d -> 4.%d (%d crees, %d reutilises)\n"
+     .. "Presets couleur : 4.%d -> 4.%d (%d crees, %d reutilises, %d corriges)\n"
      .. "Sequences %d -> %d   Macros %d -> %d   Images : %d\n"
      .. "Fade couleur %ss / arret %ss\n"
      .. "Layout %d : %d/%d cases placees%s\n\n"
@@ -1526,7 +1576,7 @@ local function main(display_handle)
      .. "APRES UN REPATCH ou une modif de groupe : regenere le board, les\n"
      .. "cues gardent les machines telles qu'elles etaient.",
         nTargets, (groupIds and "groupes" or "machines"), nColors,
-        baseId, baseId + nColors - 1, presetsCreated, presetsReused,
+        baseId, baseId + nColors - 1, presetsCreated, presetsReused, presetsFixed,
         baseId, seqLast, baseId, macEnd, imagesOk,
         tostring(colorFade), tostring(offFade),
         layNo, placed, placed + failed, note, fxBuilt)
