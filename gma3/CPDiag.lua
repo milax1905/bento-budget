@@ -16,10 +16,10 @@
 --  137, 4 lignes = 149... d'ou l'auto-detection.) Screenshot le resultat.
 -- =====================================================================
 
-local VERSION = "1.1"
+local VERSION = "1.2"
 
 local MAXDEPTH = 8      -- profondeur d'exploration
-local MAXNODES = 200    -- garde-fou : on n'explore pas un show entier
+local MAXNODES = 500    -- garde-fou : on n'explore pas un show entier
 local MAXPROPS = 60     -- proprietes listees par objet
 local BOXLINES = 34     -- lignes montrees dans la fenetre
 local SCAN_FROM = 101   -- plage balayee pour retrouver le board
@@ -141,6 +141,28 @@ local function main()
     if not seq then
         add("!! la sequence n'existe pas : mauvais numero ?")
     else
+        -- LA question : la recette de phaser a-t-elle ete creee ? Elle
+        -- vivrait comme ENFANT de la Part 0 de la cue 1. Une part sans
+        -- enfant = pas de recette = la cue est vide et le FX ne fait rien.
+        add("--- verdict ---")
+        local cue1 = exists(string.format("Sequence %d Cue 1", sq))
+        if not cue1 then
+            add("pas de cue 1 : la sequence est vide")
+        else
+            local parts = childrenOf(cue1)
+            add("cue 1 : %d part(s)", #parts)
+            for i, pt in ipairs(parts) do
+                local kids = childrenOf(pt)
+                add("  part %d (%s) : %d enfant(s)", i, classOf(pt), #kids)
+                for j, k in ipairs(kids) do
+                    add("    [%d] %s", j, classOf(k))
+                end
+                if #kids == 0 then
+                    add("    -> AUCUNE ligne de recette : le phaser n'a pas ete cree")
+                end
+            end
+        end
+
         add("--- arbre d'objets ---")
         local nodes = 0
         local function dump(o, depth, tag)
@@ -174,8 +196,31 @@ local function main()
         if nodes >= MAXNODES then add("... (coupe a %d objets)", MAXNODES) end
     end
 
-    -- tout part aussi dans la ligne de commande, au cas ou
+    -- tout part dans la ligne de commande...
     for _, l in ipairs(out) do Printf("[CPDiag] %s", l) end
+
+    -- ... et surtout dans un FICHIER : la fenetre centre le texte et le
+    -- tronque, un fichier se lit et se copie en entier.
+    local path
+    pcall(function()
+        local dir = GetPath(Enums.PathType.UserImageLibrary, true)
+        local sep = "/"
+        pcall(function() sep = GetPathSeparator() end)
+        local p = dir .. sep .. string.format("CPDiag_%d.txt", sq)
+        local f = assert(io.open(p, "w"))
+        f:write(table.concat(out, "\n"))
+        f:write("\n")
+        f:close()
+        pcall(function() SyncFS() end)
+        path = p
+    end)
+    if path then
+        table.insert(out, 1, "DUMP COMPLET ECRIT DANS :")
+        table.insert(out, 2, path)
+        table.insert(out, 3, "(ouvre-le dans un editeur de texte)")
+    else
+        table.insert(out, 1, "(fichier non ecrit : lis les pages ci-dessous)")
+    end
 
     -- ... et par paquets a l'ecran, pour pouvoir screenshoter
     local i = 1
