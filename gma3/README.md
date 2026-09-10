@@ -79,19 +79,15 @@ Donc chaque case du board est une macro qui, en une frappe :
     l'ancienne construction — une séquence à **2 cues** en *TrigType Follow*
     + *WrapAround*, dont le balayage vient de **délais individuels** posés
     machine par machine. Vitesse figée à la génération, mais éprouvée.
-  - Les quatre balayages posent un **delay individuel** machine par machine
-    (`Delay <t>` sur chaque fixture, dans l'ordre du groupe) : même couleur
-    pour tout le monde, décalée dans le temps.
-  - Le damier `1/2` ne **balaie** pas : il met directement les deux couleurs
-    dans la **même cue**, une machine sur deux, et la cue suivante les
-    inverse. Les deux moitiés sont donc toujours en couleurs opposées (le
-    vrai déphasage, pas une approximation par le temps). Il porte un délai
-    **uniforme** — même valeur pour tout le monde, donc aucun décalage
-    visible — qui sert seulement à donner une **durée** à la cue.
+  - *(Moteur classique uniquement)* les quatre balayages posent un **delay
+    individuel** machine par machine (`Delay <t>` dans l'ordre du groupe) ;
+    le damier `1/2`, lui, met les deux couleurs dans la **même cue** (une
+    machine sur deux) et la cue suivante les inverse, avec un délai
+    **uniforme** qui sert seulement à donner une durée à la cue.
   - **`FX C1` / `FX C2`** : deux rangées de pastilles pour choisir les deux
-    couleurs de la boucle. `Copy Preset … /Merge` dans deux presets *slots*
-    **référencés par les cues** → la boucle change de couleurs **en direct**,
-    même en cours de route.
+    couleurs de la boucle. `Copy Preset … /Overwrite` dans deux presets
+    *slots* **référencés par les cues** (ou par les pas du phaser) → la
+    boucle change de couleurs **en direct**, même en cours de route.
   - **Dernière rangée — dépend du moteur** :
     - moteur **phaser** → **`FX VITESSE`** : `30 · 60 · 90 · 120 · 180` BPM.
       Chaque bouton règle le **Speed Master**, donc **tous les FX d'un coup**,
@@ -110,13 +106,13 @@ Donc chaque case du board est une macro qui, en une frappe :
       vague se brouille et on ne voit plus qu'un « tout bleu / tout blanc ».
       Garde-le **court devant l'étalement** (0.1–0.2 s pour un étalement
       de 1 s).
-  - Les pastilles `C1`/`C2` copient en **`/Overwrite`** : le slot contient
-    **exactement** la couleur choisie. (En `/Merge`, tout attribut déjà dans
-    le slot — canal blanc, reste d'une couleur précédente — survivait et se
-    mélangeait : c'était une source de couleurs « pas demandées ».)
-  - Le **battement** (la vitesse de la boucle) vient des délais, qui sont
-    figés à la génération : `Options > Vitesse FX / battement (s)`,
-    1 s par défaut.
+  - Les pastilles copient en **`/Overwrite`** : le slot contient **exactement**
+    la couleur choisie. (En `/Merge`, tout attribut déjà dans le slot — canal
+    blanc, reste d'une couleur précédente — survivait et se mélangeait :
+    c'était une source de couleurs « pas demandées ».)
+  - *(Moteur classique)* le **battement** vient des délais, figés à la
+    génération : `Options > Vitesse FX / battement (s)`, 1 s par défaut.
+    *(Moteur phaser)* le battement vient du **Speed Master**, en live.
   - **Arrêter un FX** : taper une couleur de la ligne, taper un autre sens,
     ou `Off All`.
   - **Groupes imbriqués gérés** : le plugin relève les machines de chaque
