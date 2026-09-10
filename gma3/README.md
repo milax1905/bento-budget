@@ -62,8 +62,23 @@ Donc chaque case du board est une macro qui, en une frappe :
   | `I>E` | **intérieur → extérieur** : le centre part, les bords suivent |
   | `1/2` | **damier** : une machine sur deux en C1, l'autre moitié en C2, et elles **échangent** à chaque cue |
 
-  - Chaque forme est une séquence à **2 cues** (`At Preset` slot C1, puis
-    slot C2) en *TrigType Follow* + *WrapAround* → **boucle infinie**.
+  - **Moteur par défaut : phaser piloté par un Speed Master.** Chaque forme
+    est **une cue** contenant une *recette de phaser* : le groupe, deux pas
+    (les presets slots C1/C2) et la **phase répartie le long du groupe**
+    (`PhaseX '0 Thru 360'` = le balayage ; `XWings 2` = symétrique ;
+    `XGroup 2` = une machine sur deux). La vitesse suit le **Speed Master**
+    choisi (`Options > Speed Master FX`, défaut 1) : tu la règles **en live**
+    au fader, à l'encodeur, ou en ligne de commande
+    (`Master 3.1 At BPM 120`, ou `At Hz 2`, ou `At Seconds 0.5`).
+    Cette construction **ne touche pas au programmer**.
+  - ⚠️ **Un Speed Master ne peut pas piloter autre chose qu'un phaser.** La
+    propriété `SpeedMaster` d'une séquence ne s'applique qu'aux phasers
+    contenus dans ses cues : l'assigner à une boucle *Follow* est accepté par
+    la console et **ne fait rien**. C'est pour ça que le moteur a changé.
+  - **Moteur de secours** : `Options > Speed Master FX = 0` rebascule sur
+    l'ancienne construction — une séquence à **2 cues** en *TrigType Follow*
+    + *WrapAround*, dont le balayage vient de **délais individuels** posés
+    machine par machine. Vitesse figée à la génération, mais éprouvée.
   - Les quatre balayages posent un **delay individuel** machine par machine
     (`Delay <t>` sur chaque fixture, dans l'ordre du groupe) : même couleur
     pour tout le monde, décalée dans le temps.
