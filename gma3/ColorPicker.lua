@@ -46,7 +46,7 @@
 -- la console a REELLEMENT chargee (apres un ReloadAllPlugins). Les macros
 -- deja stockees dans le show, elles, datent de la derniere GENERATION —
 -- c'est pour ca qu'un correctif n'agit qu'apres avoir regenere.
-local VERSION = "7.7"
+local VERSION = "7.8"
 
 -- Palette en ordre ARC-EN-CIEL (blanc en dernier). Chaque couleur a deux
 -- appearances : contour (repos) et pleine (tuile active -> "se remplit").
@@ -77,10 +77,6 @@ local FADE_VALUES = { 0, 0.5, 1, 2, 3, 4 }
 -- jamais valoir 0 : une cue de duree nulle ferait tourner la boucle a
 -- l'infini sans respirer.
 local FX_SWEEP_DEFAULT = 1
-
--- Tempos proposes par la rangee FX VITESSE (moteur phaser) : ils reglent
--- le Speed Master, donc TOUS les FX d'un coup, en live.
-local FX_BPMS = { 30, 60, 90, 120, 180 }
 
 -- Transition du FX : fondu d'entree des cues de boucle.
 --   0 = passage SEC. Chaque machine bascule net a son tour -> la vague se
@@ -672,7 +668,6 @@ local function main(display_handle)
                 { name = "Fade arret (s)",                         value = "2"   },
                 { name = "Vitesse FX / battement (s)",              value = "1"   },
                 { name = "Fondu FX (s, 0 = sec)",                   value = "0"   },
-                { name = "Speed Master FX (1-15, 0 = aucun)",       value = "1"   },
                 { name = "ID de depart (seq/macro/appearance)",    value = "101" },
                 { name = "Layout (No)",                            value = "1"   },
             },
@@ -686,9 +681,37 @@ local function main(display_handle)
         -- plancher a 0.1 s : une cue de duree nulle emballerait la boucle
         fxSweep   = toNum(cfg.inputs["Vitesse FX / battement (s)"], FX_SWEEP_DEFAULT, 0.1, 60)
         fxFade    = toNum(cfg.inputs["Fondu FX (s, 0 = sec)"], 0, 0, 60)
-        fxSpeedM  = math.floor(toNum(cfg.inputs["Speed Master FX (1-15, 0 = aucun)"], 1, 0, 15))
         baseId    = math.floor(toNum(cfg.inputs["ID de depart (seq/macro/appearance)"], 101, 1, 100000))
         layNo     = math.floor(toNum(cfg.inputs["Layout (No)"], 1, 1, 100000))
+    end
+
+    -- ------- ecran dedie : quel SPEED MASTER pilote les FX ? -------
+    -- Un seul fader regle la vitesse de TOUS les effets, en direct. C'est
+    -- le seul reglage qui change le MOTEUR des FX, d'ou son propre ecran.
+    local smBox = MessageBox({
+        title    = "Color Picker LIVE  v" .. VERSION .. "  -  Vitesse des FX",
+        message  = "Les FX sont des PHASERS : leur vitesse suit un SPEED MASTER.\n"
+                .. "Un seul fader regle alors TOUS les effets, en direct.\n\n"
+                .. "Numero du Speed Master (pool Master 3) :\n"
+                .. "   1 a 15  ->  Speed1 ... Speed15\n"
+                .. "   16      ->  BPM (suit l'entree son)\n\n"
+                .. "Pour l'avoir sous la main, assigne-le a un executeur :\n"
+                .. "   Assign Master 3.1 At Page 1.201\n"
+                .. "(ou depuis la fenetre Assign, comme sur ton ecran).\n\n"
+                .. "SANS MASTER : les FX repassent sur l'ancien moteur\n"
+                .. "(boucle a 2 cues), vitesse figee a la generation.",
+        commands = {
+            { value = 1, name = "Utiliser ce master" },
+            { value = 2, name = "Sans master" },
+            { value = 0, name = "Annuler" },
+        },
+        inputs = { { name = "Speed Master (1-16)", value = "1" } },
+    })
+    if not smBox or smBox.result == 0 or smBox.result == nil then return end
+    if smBox.result == 2 then
+        fxSpeedM = 0
+    else
+        fxSpeedM = math.floor(toNum(smBox.inputs["Speed Master (1-16)"], 1, 1, 16))
     end
 
     local colors = {}
@@ -1168,7 +1191,8 @@ local function main(display_handle)
                     Cmd(string.format("Set Sequence %d Cue 1 Part 0.1 Property 'XGroup' '%d'",
                         no, dir.groups))
                 end
-                Cmd(string.format("Set Sequence %d 'SpeedMaster' 'Speed%d'", no, fxSpeedM))
+                Cmd(string.format("Set Sequence %d 'SpeedMaster' '%s'", no,
+                    (fxSpeedM == 16) and "BPM" or ("Speed" .. fxSpeedM)))
                 Cmd(string.format("Set Sequence %d 'SpeedScale' 'One'", no))
                 setCueFade(no, 1, fxFade)
                 goto fxCommon
@@ -1472,26 +1496,11 @@ local function main(display_handle)
         makeSlotRow(macC1Hdr, macC1_0, pFx1, "FX C1", "C1", 1)
         makeSlotRow(macC2Hdr, macC2_0, pFx2, "FX C2", "C2", math.min(8, nColors))
 
-        -- 3f) Derniere rangee : elle depend du moteur FX.
-        if fxSpeedM > 0 then
-            -- PHASER : la vitesse vient du Speed Master. On le regle
-            -- directement en BPM (syntaxe documentee : Master 3.1 At BPM 42),
-            -- ce qui pilote TOUS les FX d'un coup. Un fondu de cue n'aurait
-            -- aucun effet sur la transition interne d'un phaser.
-            makeMacro(macFxFHdr, "FX VITESSE", appDark, {})
-            for vi, v in ipairs(FX_BPMS) do
-                local lines = {
-                    string.format('Master 3.%d At BPM %d', fxSpeedM, v),
-                    string.format('Label Macro %d "FX VITESSE %d BPM"', macFxFHdr, v),
-                }
-                for vj = 1, nFV do
-                    lines[#lines + 1] = string.format('Assign Appearance %d At Macro %d',
-                        (vj == vi) and appAccent or appGrey, macFxF0 + vj - 1)
-                end
-                makeMacro(macFxF0 + vi - 1, string.format("FX %d", v),
-                    (v == 120) and appAccent or appGrey, lines)
-            end
-        else
+        -- 3f) Derniere rangee : elle n'existe QUE pour le moteur classique.
+        --     En phaser, la vitesse vient du Speed Master (un fader), pas
+        --     de boutons sur le board, et un fondu de cue ne toucherait pas
+        --     la transition interne du phaser.
+        if fxSpeedM == 0 then
             -- BOUCLE FOLLOW : la rangee regle le fondu entre les deux
             -- couleurs (CueInFade des DEUX cues de la boucle).
             local function fxFadeLabel(v)
@@ -1596,14 +1605,18 @@ local function main(display_handle)
             elements[#elements + 1] = { object = "Macro " .. (macC2_0 + ci - 1),
                 x = 2 + ci - 1, y = fy4, clean = true }
         end
-        local fy5 = fy4 + 1
-        elements[#elements + 1] = { object = "Macro " .. macFxFHdr, x = 0, y = fy5,
-            w = 2, noicon = true }
-        for vi = 1, nFV do
-            elements[#elements + 1] = { object = "Macro " .. (macFxF0 + vi - 1),
-                x = 2 + vi - 1, y = fy5, noicon = true }
+        yBottom = fy4
+        -- La rangee de reglage n'existe qu'avec le moteur classique.
+        if fxSpeedM == 0 then
+            local fy5 = fy4 + 1
+            elements[#elements + 1] = { object = "Macro " .. macFxFHdr, x = 0, y = fy5,
+                w = 2, noicon = true }
+            for vi = 1, nFV do
+                elements[#elements + 1] = { object = "Macro " .. (macFxF0 + vi - 1),
+                    x = 2 + vi - 1, y = fy5, noicon = true }
+            end
+            yBottom = fy5
         end
-        yBottom = fy5
     end
 
     -- Le layout MA3 rend l'axe Y vers le HAUT : on inverse les Y pour
@@ -1660,12 +1673,15 @@ local function main(display_handle)
         tostring(colorFade), tostring(offFade),
         layNo, placed, placed + failed, note,
         (fxSpeedM > 0) and string.format(
-            "VITESSE DES FX : rangee FX VITESSE en bas du board (30 a 180\n"
-         .. "BPM) — elle regle le Speed Master %d, donc TOUS les FX d'un coup.\n"
-         .. "Meme chose au fader / a l'encodeur sur Master 3.%d, ou en\n"
-         .. "ligne de commande : Master 3.%d At BPM 120 (ou At Hz 2).\n"
+            "VITESSE DES FX : Speed Master %s = Master 3.%d.\n"
+         .. "UN SEUL FADER regle tous les effets. Mets-le sous la main :\n"
+         .. "   Assign Master 3.%d At Page 1.201\n"
+         .. "(ou par la fenetre Assign). En ligne de commande :\n"
+         .. "   Master 3.%d At BPM 120   (ou At Hz 2, ou At Seconds 0.5)\n"
          .. "Si les FX ne partent pas : Options > Speed Master FX = 0 pour\n"
-         .. "revenir au moteur precedent (vitesse figee, sans master).\n", fxSpeedM, fxSpeedM, fxSpeedM)
+         .. "Sans master : relance le plugin et choisis 'Sans master'.\n",
+            (fxSpeedM == 16) and "BPM" or ("Speed" .. fxSpeedM),
+            fxSpeedM, fxSpeedM, fxSpeedM)
          or "Battement/etalement : Options > Vitesse FX (a la generation).\n",
         fxBuilt)
 

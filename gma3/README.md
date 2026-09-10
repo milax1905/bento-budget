@@ -15,7 +15,6 @@ macro** qui lance une mini-séquence **en restitution** (LTP) avec un fondu,
 │ [FADE arrêt 2s  ] [0][0.5][1][2][3][4]                       │
 │ [FX C1 Red      ] [○][○][●][○]…  (pastilles couleur)         │
 │ [FX C2 Blue     ] [○][○][○][●]…                              │
-│ [FX VITESSE     ] [FX 30][FX 60][FX 90][FX 120][FX 180] (BPM)│
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -67,7 +66,7 @@ Donc chaque case du board est une macro qui, en une frappe :
     (les presets slots C1/C2) et la **phase répartie le long du groupe**
     (`PhaseX '0 Thru 360'` = le balayage ; `XWings 2` = symétrique ;
     `XGroup 2` = une machine sur deux). La vitesse suit le **Speed Master**
-    choisi (`Options > Speed Master FX`, défaut 1) : tu la règles **en live**
+    choisi à l'écran dédié (défaut 1) : tu la règles **en live**
     au fader, à l'encodeur, ou en ligne de commande
     (`Master 3.1 At BPM 120`, ou `At Hz 2`, ou `At Seconds 0.5`).
     Cette construction **ne touche pas au programmer**.
@@ -75,7 +74,7 @@ Donc chaque case du board est une macro qui, en une frappe :
     propriété `SpeedMaster` d'une séquence ne s'applique qu'aux phasers
     contenus dans ses cues : l'assigner à une boucle *Follow* est accepté par
     la console et **ne fait rien**. C'est pour ça que le moteur a changé.
-  - **Moteur de secours** : `Options > Speed Master FX = 0` rebascule sur
+  - **Moteur de secours** : le bouton *Sans master* de cet écran rebascule sur
     l'ancienne construction — une séquence à **2 cues** en *TrigType Follow*
     + *WrapAround*, dont le balayage vient de **délais individuels** posés
     machine par machine. Vitesse figée à la génération, mais éprouvée.
@@ -88,14 +87,16 @@ Donc chaque case du board est une macro qui, en une frappe :
     couleurs de la boucle. `Copy Preset … /Overwrite` dans deux presets
     *slots* **référencés par les cues** (ou par les pas du phaser) → la
     boucle change de couleurs **en direct**, même en cours de route.
-  - **Dernière rangée — dépend du moteur** :
-    - moteur **phaser** → **`FX VITESSE`** : `30 · 60 · 90 · 120 · 180` BPM.
-      Chaque bouton règle le **Speed Master**, donc **tous les FX d'un coup**,
-      en live (`Master 3.1 At BPM 120`). Même chose au fader/encodeur sur
-      `Master 3.1`. ⚠️ En phaser, un fondu de cue **ne contrôlerait pas** la
-      transition entre les deux couleurs — d'où le remplacement de la rangée.
-    - moteur **classique** (`Speed Master FX = 0`) → **`FX FONDU`** : la
-      transition entre les deux couleurs (`CueInFade` des **deux** cues).
+  - **La vitesse est un FADER, pas des boutons.** Au lancement, un écran
+    dédié demande **quel Speed Master** pilote les FX (`1`–`15` = `Speed1`…
+    `Speed15`, `16` = `BPM` qui suit l'entrée son, ou *Sans master*). Tous
+    les effets suivent ensuite ce seul master. Pour l'avoir sous la main :
+    `Assign Master 3.1 At Page 1.201` (ou via la fenêtre *Assign*). En
+    ligne de commande : `Master 3.1 At BPM 120`, `At Hz 2`, `At Seconds 0.5`.
+    Le board n'a donc **aucune** rangée de vitesse en mode phaser.
+  - Avec le **moteur classique** (*Sans master*), une dernière rangée
+    **`FX FONDU`** apparaît : la transition entre les deux couleurs
+    (`CueInFade` des **deux** cues).
     - **`FX 0` (défaut)** = passage **sec** : chaque machine bascule net à
       son tour → la vague se lit, et **aucune couleur intermédiaire**.
       (Rangée présente uniquement avec le moteur classique.)
@@ -224,7 +225,9 @@ appearances) sont **stables** quel que soit le nombre de couleurs choisi.
 | Fade arrêt (s)       | `2`     | Fondu au relâché.                                   |
 | Vitesse FX (s)       | `1`     | Battement de la boucle FX / étalement du balayage.  |
 | Fondu FX (s)         | `0`     | Transition des boucles (moteur classique).          |
-| Speed Master FX      | `1`     | 1–15 = moteur phaser piloté par ce master ; 0 = moteur classique. |
+
+Le **Speed Master** ne se règle pas ici : il a son **propre écran** au
+lancement (1–15, 16 = BPM, ou *Sans master* pour l'ancien moteur).
 | ID de départ         | `101`   | Début de numérotation (seq / macro / appearance).   |
 | Layout (No)          | `1`     | Numéro du Layout généré.                            |
 
