@@ -117,6 +117,13 @@ Donc chaque case du board est une macro qui, en une frappe :
 | Images      | tuiles néon générées : 1 contour + 1 plein par couleur + 4      |
 | Presets 4.x | couleurs universelles + 2 slots FX (**jamais effacés**)         |
 
+**Une seule confirmation, jamais une par objet** : toutes les commandes du
+plugin portent `/NoConfirmation` (l'option a été **renommée en v1.9** —
+`/NoConfirm` ne suffit plus, et `Import Image` / `Copy Preset` en avaient
+besoin aussi, sinon la console redemandait à chaque image). Les slots
+d'images sont vidés avant import pour la même raison. Le seul dialogue est
+celui du plugin, au début.
+
 Les pools 1–100 ne sont pas touchés. Si une plage est occupée, le plugin
 **demande confirmation** avant d'écraser — et le nettoyage couvre des
 **plages larges** (l'empreinte max possible, versions précédentes du plugin

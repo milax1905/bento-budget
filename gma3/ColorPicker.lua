@@ -350,7 +350,7 @@ end
 -- Appearance pleine couleur (fond). Proprietes BackR/G/B/Alpha en 0-255,
 -- ecrites via la commande "Set ... Property" ET via le handle objet.
 local function makeAppearance(no, name, r, g, b)
-    Cmd(string.format('Store Appearance %d /NoConfirm', no))
+    Cmd(string.format('Store Appearance %d /NoConfirmation', no))
     Cmd(string.format('Label Appearance %d "%s"', no, name))
     Cmd(string.format('Set Appearance %d Property "BackR" "%d"', no, r))
     Cmd(string.format('Set Appearance %d Property "BackG" "%d"', no, g))
@@ -372,7 +372,7 @@ end
 local macroLineFails = 0
 
 local function makeMacro(no, name, appNo, lines)
-    Cmd(string.format('Store Macro %d /NoConfirm', no))
+    Cmd(string.format('Store Macro %d /NoConfirmation', no))
     Cmd(string.format('Label Macro %d "%s"', no, name))
     if appNo then
         Cmd(string.format('Assign Appearance %d At Macro %d', appNo, no))
@@ -792,6 +792,9 @@ local function main(display_handle)
     -- du contenu utilisateur, elle doit declencher la confirmation.
     if detectOk and not occupied then checkExists("Macro %d", baseId, macDelEnd) end
     if detectOk and not occupied then checkExists("Appearance %d", baseId, appDelEnd) end
+    -- Le pool Images est le seul ou le plugin ecrit sans rien demander :
+    -- il doit passer par la meme confirmation que le reste.
+    if detectOk and not occupied then checkExists("Image 3.%d", baseId, imgDelEnd) end
     -- (MAtricks "CPFX" : reliquat des anciennes versions -> nettoye aussi.)
     if detectOk and not occupied and objectExists("MAtricks " .. baseId) then
         occupied = true
@@ -827,15 +830,15 @@ local function main(display_handle)
         -- lecture coupe sa couleur d'un seul coup sur le plateau.
         Cmd(string.format('Off Sequence %d Thru %d Fade %s',
             baseId, seqDelEnd, tostring(offFade)))
-        Cmd(string.format('Delete Sequence %d Thru %d /NoConfirm', baseId, seqDelEnd))
-        Cmd(string.format('Delete Macro %d Thru %d /NoConfirm', baseId, macDelEnd))
-        Cmd(string.format('Delete Appearance %d Thru %d /NoConfirm', baseId, appDelEnd))
+        Cmd(string.format('Delete Sequence %d Thru %d /NoConfirmation', baseId, seqDelEnd))
+        Cmd(string.format('Delete Macro %d Thru %d /NoConfirmation', baseId, macDelEnd))
+        Cmd(string.format('Delete Appearance %d Thru %d /NoConfirmation', baseId, appDelEnd))
         -- Le pool Images aussi : sans ce Delete, "Import Image" retombe sur
         -- un slot occupe et le test de reussite ne peut pas distinguer un
         -- import frais d'un PNG perime.
-        Cmd(string.format('Delete Image 3.%d Thru 3.%d /NoConfirm', baseId, imgDelEnd))
-        Cmd(string.format('Delete MAtricks %d /NoConfirm', baseId))
-        Cmd(string.format('Delete Layout %d /NoConfirm', layNo))
+        Cmd(string.format('Delete Image 3.%d Thru Image 3.%d /NoConfirmation', baseId, imgDelEnd))
+        Cmd(string.format('Delete MAtricks %d /NoConfirmation', baseId))
+        Cmd(string.format('Delete Layout %d /NoConfirmation', layNo))
     end
 
     -- 1) Appearances : pleine couleur (active) + version sombre (repos)
@@ -862,6 +865,11 @@ local function main(display_handle)
     --     on garde le fond uni comme repli visible).
     local imagesOk = 0
     pcall(function()
+        -- Vider les slots AVANT d'importer : un import sur un slot occupe
+        -- ouvre une demande de confirmation... une par image. (Le pool
+        -- Images est couvert par la confirmation unique du debut.)
+        Cmd(string.format('Delete Image 3.%d Thru Image 3.%d /NoConfirmation',
+            baseId, imgDelEnd))
         local dir = GetPath(Enums.PathType.UserImageLibrary, true)
         local sep = "/"
         pcall(function() sep = GetPathSeparator() end)
@@ -872,7 +880,7 @@ local function main(display_handle)
                 f:close()
             end)
             if not okW then return false end
-            Cmd(string.format("Import Image 'Images'.%d /File '%s' /Path '%s' /NoOops",
+            Cmd(string.format("Import Image 'Images'.%d /File '%s' /Path '%s' /NoConfirmation /NoOops",
                 imgNo, fname, dir))
             local h
             pcall(function() h = ShowData().MediaPools.Images[imgNo] end)
@@ -949,7 +957,7 @@ local function main(display_handle)
             Cmd(string.format('Attribute "ColorRGB_R" At %d', math.floor(c.r / 255 * 100 + 0.5)))
             Cmd(string.format('Attribute "ColorRGB_G" At %d', math.floor(c.g / 255 * 100 + 0.5)))
             Cmd(string.format('Attribute "ColorRGB_B" At %d', math.floor(c.b / 255 * 100 + 0.5)))
-            Cmd(string.format('Store Preset %d.%d /Merge /NoConfirm /Universal', PT, pNo))
+            Cmd(string.format('Store Preset %d.%d /Merge /NoConfirmation /Universal', PT, pNo))
             Cmd(string.format('Label Preset %d.%d "%s"', PT, pNo, c.name))
             presetsCreated = presetsCreated + 1
         end
@@ -962,10 +970,10 @@ local function main(display_handle)
     --     (C1 = Red, C2 = Blue par defaut), jamais effaces.
     if nFx > 0 then
         if not objectExists(string.format("Preset %d.%d", PT, pFx1)) then
-            Cmd(string.format('Copy Preset %d.%d At Preset %d.%d /NoOops', PT, baseId, PT, pFx1))
+            Cmd(string.format('Copy Preset %d.%d At Preset %d.%d /NoConfirmation /NoOops', PT, baseId, PT, pFx1))
         end
         if not objectExists(string.format("Preset %d.%d", PT, pFx2)) then
-            Cmd(string.format('Copy Preset %d.%d At Preset %d.%d /NoOops',
+            Cmd(string.format('Copy Preset %d.%d At Preset %d.%d /NoConfirmation /NoOops',
                 PT, baseId + math.min(7, nColors - 1), PT, pFx2))
         end
         Cmd(string.format('Label Preset %d.%d "CP FX C1"', PT, pFx1))
@@ -989,7 +997,7 @@ local function main(display_handle)
             Cmd(string.format('Attribute "ColorRGB_G" At %d', math.floor(c.g / 255 * 100 + 0.5)))
             Cmd(string.format('Attribute "ColorRGB_B" At %d', math.floor(c.b / 255 * 100 + 0.5)))
             Cmd(string.format('At Preset %d.%d', PT, baseId + ci - 1))
-            Cmd(string.format('Store Sequence %d Cue 1 /NoConfirm', sq))
+            Cmd(string.format('Store Sequence %d Cue 1 /NoConfirmation', sq))
             Cmd(string.format('Label Sequence %d "%s %s"', sq, t.label, c.name))
             Cmd(string.format('Assign Appearance %d At Sequence %d', appOn(ci), sq))
             setCueFade(sq, 1, colorFade)
@@ -1064,7 +1072,7 @@ local function main(display_handle)
                         Cmd(string.format(dir.fb, tostring(FX_SWEEP)))
                     end
                 end
-                Cmd(string.format('Store Sequence %d Cue %d /NoConfirm', no, k))
+                Cmd(string.format('Store Sequence %d Cue %d /NoConfirmation', no, k))
                 setCueFade(no, k, 1)
                 -- La propriete du trigger s'appelle TrigType (valeur
                 -- sensible a la casse : "Follow") — manuel + forum MA.
@@ -1313,7 +1321,7 @@ local function main(display_handle)
         local function makeSlotRow(hdrNo, base0, slotNo, hdrName, btnPrefix, defaultCi)
             for ci, c in ipairs(colors) do
                 local lines = {
-                    string.format('Copy Preset %d.%d At Preset %d.%d /Merge /NoOops',
+                    string.format('Copy Preset %d.%d At Preset %d.%d /Merge /NoConfirmation /NoOops',
                         PT, baseId + ci - 1, PT, slotNo),
                     string.format('Label Preset %d.%d "CP %s"', PT, slotNo, hdrName),
                     string.format('Label Macro %d "%s %s"', hdrNo, hdrName, c.name),
@@ -1332,8 +1340,8 @@ local function main(display_handle)
     breathe()
 
     -- ------------------------- 4) le layout --------------------------
-    Cmd(string.format('Delete Layout %d /NoConfirm', layNo))
-    Cmd(string.format('Store Layout %d /NoConfirm', layNo))
+    Cmd(string.format('Delete Layout %d /NoConfirmation', layNo))
+    Cmd(string.format('Store Layout %d /NoConfirmation', layNo))
     Cmd(string.format('Label Layout %d "Color Picker LIVE"', layNo))
 
     local elements = {}
