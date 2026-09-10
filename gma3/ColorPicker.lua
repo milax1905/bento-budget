@@ -42,6 +42,12 @@
 --  NB : apres toute modification de ce fichier -> "ReloadAllPlugins" (RP).
 -- =====================================================================
 
+-- Version affichee dans les dialogues : elle dit quelle version du .lua
+-- la console a REELLEMENT chargee (apres un ReloadAllPlugins). Les macros
+-- deja stockees dans le show, elles, datent de la derniere GENERATION —
+-- c'est pour ca qu'un correctif n'agit qu'apres avoir regenere.
+local VERSION = "7.3"
+
 -- Palette en ordre ARC-EN-CIEL (blanc en dernier). Chaque couleur a deux
 -- appearances : contour (repos) et pleine (tuile active -> "se remplit").
 local COLORS = {
@@ -605,7 +611,7 @@ local function main(display_handle)
     local fxFade    = 1
 
     local first = MessageBox({
-        title    = "Color Picker LIVE",
+        title    = "Color Picker LIVE  v" .. VERSION,
         message  = string.format(
             "Detecte : %s.\n\n"
          .. "Genere : 1 ligne par cible + ALL, %d couleurs,\n"
@@ -613,7 +619,9 @@ local function main(display_handle)
          .. "tout en restitution (fondu %ds), sans programmer.\n"
          .. "Objets ranges a partir du %d, Layout %d.\n"
          .. "NB : la GENERATION, elle, passe par le programmer et prend\n"
-         .. "quelques dizaines de secondes — a faire avant le show.",
+         .. "quelques dizaines de secondes — a faire avant le show.\n"
+         .. "Les boutons du board sont des MACROS stockees dans le show :\n"
+         .. "une correction du plugin ne s'applique qu'apres REGENERATION.",
             found, nColors, colorFade, baseId, layNo),
         commands = {
             { value = 1, name = "Generer" },
@@ -625,7 +633,7 @@ local function main(display_handle)
 
     if first.result == 2 then
         local cfg = MessageBox({
-            title    = "Color Picker LIVE - Options",
+            title    = "Color Picker LIVE  v" .. VERSION .. "  -  Options",
             message  = "Laisse vide pour l'auto-detection. (defaut nb couleurs : 12)",
             commands = {
                 { value = 1, name = "Generer" },
@@ -1279,7 +1287,7 @@ local function main(display_handle)
     resetLines(allRows, offAllLines, nil)
     makeMacro(macOffAll, "Off All", appRed, offAllLines)
     makeMacro(macAllHdr, "ALL", appDark, {})
-    makeMacro(macTitle, "C O L O R  P I C K E R", appDark, {})
+    makeMacro(macTitle, "C O L O R  P I C K E R   -   v" .. VERSION, appDark, {})
 
     -- 3d) Boutons de fade : chaque bouton regle d'un coup tout le board ET
     --     affiche l'etat courant (bouton actif surligne, header relabelle).
@@ -1489,7 +1497,7 @@ local function main(display_handle)
     end
 
     local msg = string.format(
-        "Color Picker LIVE pret !\n\n"
+        "Color Picker LIVE v" .. VERSION .. " pret !\n\n"
      .. "Lignes : %d (ALL + %s)   Couleurs : %d\n"
      .. "Presets couleur : 4.%d -> 4.%d (%d crees, %d reutilises)\n"
      .. "Sequences %d -> %d   Macros %d -> %d   Images : %d\n"
@@ -1525,8 +1533,8 @@ local function main(display_handle)
 
     MessageBox({ title = "Color Picker LIVE", message = msg,
         commands = { { value = 1, name = "Super !" } } })
-    Printf("[ColorPickerLive] %d lignes x %d couleurs, %d FX, layout %d : %d/%d cases.",
-        nTargets, nColors, fxBuilt, layNo, placed, placed + failed)
+    Printf("[ColorPickerLive v%s] %d lignes x %d couleurs, %d FX, layout %d : %d/%d cases.",
+        VERSION, nTargets, nColors, fxBuilt, layNo, placed, placed + failed)
 end
 
 return main

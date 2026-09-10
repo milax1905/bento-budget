@@ -153,6 +153,19 @@ appearances) sont **stables** quel que soit le nombre de couleurs choisi.
 > 💡 **Après chaque modification du `.lua`** : taper **`ReloadAllPlugins`**
 > (raccourci `RP`) dans la ligne de commande grandMA3. La console ne recharge
 > **pas** automatiquement les fichiers Lua externes.
+>
+> **Deux versions à ne pas confondre** — le plugin affiche son numéro à deux
+> endroits, et ils peuvent différer :
+> - le **titre du dialogue** au lancement = la version du `.lua` que la
+>   console vient de charger ;
+> - la **bannière du board** = la version qui a **généré** ce layout.
+>
+> Les boutons sont des **macros stockées dans le show** : corriger le `.lua`
+> ne change rien tant que tu n'as pas **régénéré**. Si le dialogue annonce la
+> bonne version mais que la bannière est en retard → régénère. Si le
+> **dialogue lui-même** est en retard → la console lit encore un ancien
+> fichier : refais `ReloadAllPlugins`, et au besoin supprime l'objet du pool
+> Plugins puis ré-importe.
 
 ## Installation
 
