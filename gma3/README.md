@@ -15,7 +15,7 @@ macro** qui lance une mini-séquence **en restitution** (LTP) avec un fondu,
 │ [FADE arrêt 2s  ] [0][0.5][1][2][3][4]                       │
 │ [FX C1 Red      ] [○][○][●][○]…  (pastilles couleur)         │
 │ [FX C2 Blue     ] [○][○][○][●]…                              │
-│ [FX FONDU 0s    ] [FX 0][FX 0.1][FX 0.2][FX 0.5][FX 1]       │
+│ [FX VITESSE     ] [FX 30][FX 60][FX 90][FX 120][FX 180] (BPM)│
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -92,11 +92,17 @@ Donc chaque case du board est une macro qui, en une frappe :
     couleurs de la boucle. `Copy Preset … /Merge` dans deux presets *slots*
     **référencés par les cues** → la boucle change de couleurs **en direct**,
     même en cours de route.
-  - **`FX FONDU`** (dernière rangée) : la **transition** entre les deux
-    couleurs de la boucle. Ça réécrit le `CueInFade` des cues FX — donc ça
-    marche **en cours de boucle**.
+  - **Dernière rangée — dépend du moteur** :
+    - moteur **phaser** → **`FX VITESSE`** : `30 · 60 · 90 · 120 · 180` BPM.
+      Chaque bouton règle le **Speed Master**, donc **tous les FX d'un coup**,
+      en live (`Master 3.1 At BPM 120`). Même chose au fader/encodeur sur
+      `Master 3.1`. ⚠️ En phaser, un fondu de cue **ne contrôlerait pas** la
+      transition entre les deux couleurs — d'où le remplacement de la rangée.
+    - moteur **classique** (`Speed Master FX = 0`) → **`FX FONDU`** : la
+      transition entre les deux couleurs (`CueInFade` des **deux** cues).
     - **`FX 0` (défaut)** = passage **sec** : chaque machine bascule net à
       son tour → la vague se lit, et **aucune couleur intermédiaire**.
+      (Rangée présente uniquement avec le moteur classique.)
     - **`> 0`** = fondu enchaîné. ⚠️ La console interpole les **composantes
       RVB** : entre deux couleurs opposées (jaune/bleu, rouge/cyan) le point
       milieu est **gris-blanc**. Et si le fondu est long devant l'étalement
@@ -221,7 +227,8 @@ appearances) sont **stables** quel que soit le nombre de couleurs choisi.
 | Fade couleur (s)     | `1`     | Fondu au changement de couleur.                     |
 | Fade arrêt (s)       | `2`     | Fondu au relâché.                                   |
 | Vitesse FX (s)       | `1`     | Battement de la boucle FX / étalement du balayage.  |
-| Fondu FX (s)         | `0`     | Transition des boucles (0 = sec). Réglable en live. |
+| Fondu FX (s)         | `0`     | Transition des boucles (moteur classique).          |
+| Speed Master FX      | `1`     | 1–15 = moteur phaser piloté par ce master ; 0 = moteur classique. |
 | ID de départ         | `101`   | Début de numérotation (seq / macro / appearance).   |
 | Layout (No)          | `1`     | Numéro du Layout généré.                            |
 
