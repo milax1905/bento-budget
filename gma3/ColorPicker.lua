@@ -46,7 +46,7 @@
 -- la console a REELLEMENT chargee (apres un ReloadAllPlugins). Les macros
 -- deja stockees dans le show, elles, datent de la derniere GENERATION —
 -- c'est pour ca qu'un correctif n'agit qu'apres avoir regenere.
-local VERSION = "7.4"
+local VERSION = "7.5"
 
 -- Palette en ordre ARC-EN-CIEL (blanc en dernier). Chaque couleur a deux
 -- appearances : contour (repos) et pleine (tuile active -> "se remplit").
@@ -78,9 +78,15 @@ local FADE_VALUES = { 0, 0.5, 1, 2, 3, 4 }
 -- l'infini sans respirer.
 local FX_SWEEP_DEFAULT = 1
 
--- Transition du FX : fondu d'entree des cues de boucle. 0 = passage sec
--- ("1 1 1 1"), le reste = fondu enchaine entre les deux couleurs.
-local FX_FADES = { 0, 0.2, 0.5, 1, 2 }
+-- Transition du FX : fondu d'entree des cues de boucle.
+--   0 = passage SEC. Chaque machine bascule net a son tour -> la vague se
+--       lit parfaitement et AUCUNE couleur intermediaire n'apparait.
+--   > 0 = fondu enchaine. Attention : la console interpole les composantes
+--       RVB, donc entre deux couleurs opposees (jaune/bleu, rouge/cyan) le
+--       point milieu est gris-blanc. Plus le fondu est long par rapport a
+--       l'etalement du balayage, plus la vague se brouille.
+-- D'ou le defaut a 0, et des valeurs COURTES devant l'etalement (1 s).
+local FX_FADES = { 0, 0.1, 0.2, 0.5, 1 }
 
 -- Sens du balayage : une sequence FX par sens et par groupe.
 --   J = jardin (debut du groupe), C = cour (fin du groupe),
@@ -620,7 +626,7 @@ local function main(display_handle)
     local baseId    = 101
     local layNo     = 1
     local fxSweep   = FX_SWEEP_DEFAULT
-    local fxFade    = 1
+    local fxFade    = 0
 
     local first = MessageBox({
         title    = "Color Picker LIVE  v" .. VERSION,
@@ -658,6 +664,7 @@ local function main(display_handle)
                 { name = "Fade couleur (s)",                       value = "1"   },
                 { name = "Fade arret (s)",                         value = "2"   },
                 { name = "Vitesse FX / battement (s)",              value = "1"   },
+                { name = "Fondu FX (s, 0 = sec)",                   value = "0"   },
                 { name = "ID de depart (seq/macro/appearance)",    value = "101" },
                 { name = "Layout (No)",                            value = "1"   },
             },
@@ -670,6 +677,7 @@ local function main(display_handle)
         offFade   = toNum(cfg.inputs["Fade arret (s)"], 2, 0, 600)
         -- plancher a 0.1 s : une cue de duree nulle emballerait la boucle
         fxSweep   = toNum(cfg.inputs["Vitesse FX / battement (s)"], FX_SWEEP_DEFAULT, 0.1, 60)
+        fxFade    = toNum(cfg.inputs["Fondu FX (s, 0 = sec)"], 0, 0, 60)
         baseId    = math.floor(toNum(cfg.inputs["ID de depart (seq/macro/appearance)"], 101, 1, 100000))
         layNo     = math.floor(toNum(cfg.inputs["Layout (No)"], 1, 1, 100000))
     end
@@ -1043,10 +1051,11 @@ local function main(display_handle)
                 PT, baseId + math.min(7, nColors - 1), PT, pFx2))
         end
         if not objectExists(string.format("Preset %d.%d", PT, pFx1)) then
-            Cmd(string.format('Copy Preset %d.%d At Preset %d.%d /NoConfirmation /NoOops', PT, baseId, PT, pFx1))
+            Cmd(string.format('Copy Preset %d.%d At Preset %d.%d /Overwrite /NoConfirmation /NoOops',
+                PT, baseId, PT, pFx1))
         end
         if not objectExists(string.format("Preset %d.%d", PT, pFx2)) then
-            Cmd(string.format('Copy Preset %d.%d At Preset %d.%d /NoConfirmation /NoOops',
+            Cmd(string.format('Copy Preset %d.%d At Preset %d.%d /Overwrite /NoConfirmation /NoOops',
                 PT, baseId + math.min(7, nColors - 1), PT, pFx2))
         end
         Cmd(string.format('Label Preset %d.%d "CP FX C1"', PT, pFx1))
@@ -1397,7 +1406,7 @@ local function main(display_handle)
         local function makeSlotRow(hdrNo, base0, slotNo, hdrName, btnPrefix, defaultCi)
             for ci, c in ipairs(colors) do
                 local lines = {
-                    string.format('Copy Preset %d.%d At Preset %d.%d /Merge /NoConfirmation /NoOops',
+                    string.format('Copy Preset %d.%d At Preset %d.%d /Overwrite /NoConfirmation /NoOops',
                         PT, baseId + ci - 1, PT, slotNo),
                     string.format('Label Preset %d.%d "CP %s"', PT, slotNo, hdrName),
                     string.format('Label Macro %d "%s %s"', hdrNo, hdrName, c.name),
@@ -1557,10 +1566,12 @@ local function main(display_handle)
      .. "en restitution et la tuile SE REMPLIT (contour au repos, pave\n"
      .. "plein quand elle joue). Autre tuile = changement de couleur.\n"
      .. "FADE : le bouton ACTIF est surligne, le titre affiche la valeur.\n"
-     .. "FX FONDU (derniere rangee) : 0 = passage sec entre les deux\n"
-     .. "couleurs de la boucle (genre 1-1-1-1), le reste = fondu enchaine.\n"
-     .. "Le BATTEMENT de la boucle, lui, se regle a la generation\n"
-     .. "(Options > Vitesse FX).\n"
+     .. "FX FONDU (derniere rangee) : 0 = passage SEC, chaque machine\n"
+     .. "bascule net a son tour -> la vague se lit, et aucune couleur\n"
+     .. "intermediaire n'apparait. Un fondu > 0 fait passer la console par\n"
+     .. "le melange RVB des deux couleurs (jaune+bleu = gris-blanc) et\n"
+     .. "brouille la vague : garde-le COURT devant l'etalement.\n"
+     .. "Battement/etalement : Options > Vitesse FX (a la generation).\n"
      .. "FX (bout des lignes de groupes) : 5 formes —\n"
      .. "J>C jardin>cour, C>J cour>jardin, E>I bords vers centre,\n"
      .. "I>E centre vers bords, 1/2 damier (une machine sur deux en C1,\n"

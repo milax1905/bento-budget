@@ -15,7 +15,7 @@ macro** qui lance une mini-séquence **en restitution** (LTP) avec un fondu,
 │ [FADE arrêt 2s  ] [0][0.5][1][2][3][4]                       │
 │ [FX C1 Red      ] [○][○][●][○]…  (pastilles couleur)         │
 │ [FX C2 Blue     ] [○][○][○][●]…                              │
-│ [FX FONDU 1s    ] [FX 0][FX 0.2][FX 0.5][FX 1][FX 2]         │
+│ [FX FONDU 0s    ] [FX 0][FX 0.1][FX 0.2][FX 0.5][FX 1]       │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -78,9 +78,21 @@ Donc chaque case du board est une macro qui, en une frappe :
     **référencés par les cues** → la boucle change de couleurs **en direct**,
     même en cours de route.
   - **`FX FONDU`** (dernière rangée) : la **transition** entre les deux
-    couleurs de la boucle. `FX 0` = **passage sec**, façon `1 1 1 1` ;
-    les autres valeurs fondent d'une couleur à l'autre. Ça réécrit le
-    `CueInFade` des cues FX — donc ça marche **en cours de boucle**.
+    couleurs de la boucle. Ça réécrit le `CueInFade` des cues FX — donc ça
+    marche **en cours de boucle**.
+    - **`FX 0` (défaut)** = passage **sec** : chaque machine bascule net à
+      son tour → la vague se lit, et **aucune couleur intermédiaire**.
+    - **`> 0`** = fondu enchaîné. ⚠️ La console interpole les **composantes
+      RVB** : entre deux couleurs opposées (jaune/bleu, rouge/cyan) le point
+      milieu est **gris-blanc**. Et si le fondu est long devant l'étalement
+      du balayage, la moitié du groupe est en transition en permanence — la
+      vague se brouille et on ne voit plus qu'un « tout bleu / tout blanc ».
+      Garde-le **court devant l'étalement** (0.1–0.2 s pour un étalement
+      de 1 s).
+  - Les pastilles `C1`/`C2` copient en **`/Overwrite`** : le slot contient
+    **exactement** la couleur choisie. (En `/Merge`, tout attribut déjà dans
+    le slot — canal blanc, reste d'une couleur précédente — survivait et se
+    mélangeait : c'était une source de couleurs « pas demandées ».)
   - Le **battement** (la vitesse de la boucle) vient des délais, qui sont
     figés à la génération : `Options > Vitesse FX / battement (s)`,
     1 s par défaut.
@@ -194,6 +206,7 @@ appearances) sont **stables** quel que soit le nombre de couleurs choisi.
 | Fade couleur (s)     | `1`     | Fondu au changement de couleur.                     |
 | Fade arrêt (s)       | `2`     | Fondu au relâché.                                   |
 | Vitesse FX (s)       | `1`     | Battement de la boucle FX / étalement du balayage.  |
+| Fondu FX (s)         | `0`     | Transition des boucles (0 = sec). Réglable en live. |
 | ID de départ         | `101`   | Début de numérotation (seq / macro / appearance).   |
 | Layout (No)          | `1`     | Numéro du Layout généré.                            |
 
