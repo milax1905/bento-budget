@@ -66,8 +66,15 @@ local MAX_GROUP_ROWS   = 12   -- limite de lignes de groupes (board lisible)
 local FADE_VALUES = { 0, 0.5, 1, 2, 3, 4 }
 
 -- Etalement du balayage FX (secondes) : delay individuel reparti sur le
--- groupe, dans l'ordre des fixtures.
-local FX_SWEEP = 1
+-- groupe, dans l'ordre des fixtures. C'est aussi le BATTEMENT de la boucle
+-- (la duree d'une cue = son plus grand delay + son fondu), donc il ne doit
+-- jamais valoir 0 : une cue de duree nulle ferait tourner la boucle a
+-- l'infini sans respirer.
+local FX_SWEEP_DEFAULT = 1
+
+-- Transition du FX : fondu d'entree des cues de boucle. 0 = passage sec
+-- ("1 1 1 1"), le reste = fondu enchaine entre les deux couleurs.
+local FX_FADES = { 0, 0.2, 0.5, 1, 2 }
 
 -- Sens du balayage : une sequence FX par sens et par groupe.
 --   J = jardin (debut du groupe), C = cour (fin du groupe),
@@ -594,6 +601,8 @@ local function main(display_handle)
     local offFade   = 2
     local baseId    = 101
     local layNo     = 1
+    local fxSweep   = FX_SWEEP_DEFAULT
+    local fxFade    = 1
 
     local first = MessageBox({
         title    = "Color Picker LIVE",
@@ -628,6 +637,7 @@ local function main(display_handle)
                 { name = "Nb couleurs (max 12)",                   value = "12"  },
                 { name = "Fade couleur (s)",                       value = "1"   },
                 { name = "Fade arret (s)",                         value = "2"   },
+                { name = "Vitesse FX / battement (s)",              value = "1"   },
                 { name = "ID de depart (seq/macro/appearance)",    value = "101" },
                 { name = "Layout (No)",                            value = "1"   },
             },
@@ -638,6 +648,8 @@ local function main(display_handle)
         nColors   = math.floor(toNum(cfg.inputs["Nb couleurs (max 12)"], 12, 1, #COLORS))
         colorFade = toNum(cfg.inputs["Fade couleur (s)"], 1, 0, 600)
         offFade   = toNum(cfg.inputs["Fade arret (s)"], 2, 0, 600)
+        -- plancher a 0.1 s : une cue de duree nulle emballerait la boucle
+        fxSweep   = toNum(cfg.inputs["Vitesse FX / battement (s)"], FX_SWEEP_DEFAULT, 0.1, 60)
         baseId    = math.floor(toNum(cfg.inputs["ID de depart (seq/macro/appearance)"], 101, 1, 100000))
         layNo     = math.floor(toNum(cfg.inputs["Layout (No)"], 1, 1, 100000))
     end
@@ -754,7 +766,10 @@ local function main(display_handle)
     local macC1_0     = macC1Hdr + 1                -- .. + NC - 1
     local macC2Hdr    = macC1_0 + NC
     local macC2_0     = macC2Hdr + 1                -- .. + NC - 1
-    local macTile0    = macC2_0 + NC                -- tuiles couleur
+    local nFV         = #FX_FADES
+    local macFxFHdr   = macC2_0 + NC                -- "FX FONDU <v>"
+    local macFxF0     = macFxFHdr + 1               -- .. + nFV - 1
+    local macTile0    = macFxF0 + nFV               -- tuiles couleur
     local macFx0      = macTile0 + nTargets * nColors
     local macEnd      = (nFx > 0) and (macFx0 + nFx * nDir - 1)
                                   or (macTile0 + nTargets * nColors - 1)
@@ -768,7 +783,7 @@ local function main(display_handle)
     -- FX fantomes que le nouveau Off All ne peut plus eteindre.
     local MAX_ROWS  = 1 + math.max(MAX_GROUP_ROWS, MAX_FIXTURE_ROWS)
     local seqDelEnd = baseId + MAX_ROWS * NC + MAX_GROUP_ROWS * nDir - 1
-    local macDelEnd = baseId + 7 + 2 * nV + 2 * NC
+    local macDelEnd = baseId + 8 + 2 * nV + nFV + 2 * NC
                         + MAX_ROWS * NC + MAX_GROUP_ROWS * nDir
     local appDelEnd = baseId + 2 * NC + 5
     local imgDelEnd = baseId + 2 * NC + 3
@@ -1001,12 +1016,14 @@ local function main(display_handle)
             Cmd(string.format('Label Sequence %d "%s %s"', sq, t.label, c.name))
             Cmd(string.format('Assign Appearance %d At Sequence %d', appOn(ci), sq))
             setCueFade(sq, 1, colorFade)
-            Cmd(string.format('Set Sequence %d Property "OffFade" "%s"', sq, tostring(offFade)))
+            -- PAS de 'Set ... Property "OffFade"' : cette propriete n'existe
+            -- pas sur la console (notification "Illegal property" a chaque
+            -- ligne). Le fondu d'arret est porte par le "Fade" de la
+            -- commande Off, qui lui est valide.
             Cmd(string.format('Set Sequence %d Property "OffWhenOverridden" "Yes"', sq))
             pcall(function()
                 local s = ObjectList("Sequence " .. sq)[1]
                 if s then
-                    s:Set("OffFade", tostring(offFade))
                     s:Set("OffWhenOverridden", "Yes")
                 end
             end)
@@ -1061,19 +1078,23 @@ local function main(display_handle)
                         if dir.fan == "alt" and (i % 2 == 0) then
                             pNo = (slot == pFx1) and pFx2 or pFx1
                         end
+                        -- Le damier n'a pas de balayage, mais il lui faut
+                        -- quand meme une DUREE de cue, sinon (fondu a 0) la
+                        -- boucle s'emballe : on donne a tout le monde le
+                        -- meme delay, ce qui ne decale rien visuellement.
+                        local dly = (dir.fan == "alt") and fxSweep
+                                    or (fanFactor(dir.fan, i, n) * fxSweep)
                         Cmd(addr)
                         Cmd(string.format('At Preset %d.%d', PT, pNo))
-                        Cmd("Delay " .. fmtNum(fanFactor(dir.fan, i, n) * FX_SWEEP))
+                        Cmd("Delay " .. fmtNum(dly))
                     end
                 else
                     Cmd(t.sel)
                     Cmd(string.format('At Preset %d.%d', PT, slot))
-                    if dir.fb then
-                        Cmd(string.format(dir.fb, tostring(FX_SWEEP)))
-                    end
+                    Cmd(string.format(dir.fb or "Delay %s", fmtNum(fxSweep)))
                 end
                 Cmd(string.format('Store Sequence %d Cue %d /NoConfirmation', no, k))
-                setCueFade(no, k, 1)
+                setCueFade(no, k, fxFade)
                 -- La propriete du trigger s'appelle TrigType (valeur
                 -- sensible a la casse : "Follow") — manuel + forum MA.
                 Cmd(string.format('Set Sequence %d Cue %d Property "TrigType" "Follow"', no, k))
@@ -1081,7 +1102,6 @@ local function main(display_handle)
             Cmd(string.format('Label Sequence %d "FX %s %s"', no, t.label, dir.lbl))
             Cmd(string.format('Assign Appearance %d At Sequence %d', appFxOn, no))
             Cmd(string.format('Set Sequence %d Property "WrapAround" "Yes"', no))
-            Cmd(string.format('Set Sequence %d Property "OffFade" "%s"', no, tostring(offFade)))
             Cmd(string.format('Set Sequence %d Property "OffWhenOverridden" "Yes"', no))
             pcall(function()
                 local s = ObjectList("Sequence " .. no)[1]
@@ -1098,7 +1118,6 @@ local function main(display_handle)
                     -- si le build nomme la propriete autrement — la boucle a
                     -- 2 cues tourne de toute facon).
                     pcall(function() s:Set("RestartMode", "First Cue") end)
-                    s:Set("OffFade", tostring(offFade))
                     s:Set("OffWhenOverridden", "Yes")
                 end
             end)
@@ -1284,9 +1303,8 @@ local function main(display_handle)
                 linesC[#linesC + 1] = string.format(
                     'Set Macro %d.1 Property "Command" "%s"',
                     macTile(ti2, ci2), gotoCmd(seqColor(ti2, ci2), vs))
-                -- fade arret : relache des sequences.
-                linesO[#linesO + 1] = string.format(
-                    'Set Sequence %d Property "OffFade" "%s"', seqColor(ti2, ci2), vs)
+                -- (rien a poser sur la sequence : le fondu d'arret vit dans
+                --  le "Fade" de la commande Off, reecrite plus bas)
             end
         end
         -- Le vrai fade d'arret : reecrit la ligne 1 du macro Off All.
@@ -1336,6 +1354,37 @@ local function main(display_handle)
         end
         makeSlotRow(macC1Hdr, macC1_0, pFx1, "FX C1", "C1", 1)
         makeSlotRow(macC2Hdr, macC2_0, pFx2, "FX C2", "C2", math.min(8, nColors))
+
+        -- 3f) Rangee FX FONDU : passage sec ("0", genre 1-1-1-1) ou fondu
+        --     enchaine entre les deux couleurs de la boucle. Elle reecrit le
+        --     CueInFade des cues FX (propriete de CUE, valide sur console —
+        --     contrairement au "OffFade" de sequence, qui ne l'est pas).
+        --     Le BATTEMENT, lui, ne bouge pas : il vient des delays.
+        local function fxFadeLabel(v)
+            if v == math.floor(v) then return string.format("FX %d", v) end
+            return "FX " .. tostring(v)
+        end
+        makeMacro(macFxFHdr, "FX FONDU " .. fadeLabel(fxFade), appDark, {})
+        for vi, v in ipairs(FX_FADES) do
+            local lines = {}
+            for gi = 1, nFx do
+                for di = 1, nDir do
+                    for k = 1, 2 do
+                        lines[#lines + 1] = string.format(
+                            'Set Sequence %d Cue %d Property "CueInFade" "%s"',
+                            seqFx(gi, di), k, tostring(v))
+                    end
+                end
+            end
+            lines[#lines + 1] = string.format('Label Macro %d "FX FONDU %s"',
+                macFxFHdr, fadeLabel(v))
+            for vj = 1, nFV do
+                lines[#lines + 1] = string.format('Assign Appearance %d At Macro %d',
+                    (vj == vi) and appAccent or appGrey, macFxF0 + vj - 1)
+            end
+            makeMacro(macFxF0 + vi - 1, fxFadeLabel(v),
+                (v == fxFade) and appAccent or appGrey, lines)
+        end
     end
     breathe()
 
@@ -1412,7 +1461,14 @@ local function main(display_handle)
             elements[#elements + 1] = { object = "Macro " .. (macC2_0 + ci - 1),
                 x = 2 + ci - 1, y = fy4, clean = true }
         end
-        yBottom = fy4
+        local fy5 = fy4 + 1
+        elements[#elements + 1] = { object = "Macro " .. macFxFHdr, x = 0, y = fy5,
+            w = 2, noicon = true }
+        for vi = 1, nFV do
+            elements[#elements + 1] = { object = "Macro " .. (macFxF0 + vi - 1),
+                x = 2 + vi - 1, y = fy5, noicon = true }
+        end
+        yBottom = fy5
     end
 
     -- Le layout MA3 rend l'axe Y vers le HAUT : on inverse les Y pour
@@ -1443,6 +1499,10 @@ local function main(display_handle)
      .. "en restitution et la tuile SE REMPLIT (contour au repos, pave\n"
      .. "plein quand elle joue). Autre tuile = changement de couleur.\n"
      .. "FADE : le bouton ACTIF est surligne, le titre affiche la valeur.\n"
+     .. "FX FONDU (derniere rangee) : 0 = passage sec entre les deux\n"
+     .. "couleurs de la boucle (genre 1-1-1-1), le reste = fondu enchaine.\n"
+     .. "Le BATTEMENT de la boucle, lui, se regle a la generation\n"
+     .. "(Options > Vitesse FX).\n"
      .. "FX (bout des lignes de groupes) : 5 formes —\n"
      .. "J>C jardin>cour, C>J cour>jardin, E>I bords vers centre,\n"
      .. "I>E centre vers bords, 1/2 damier (une machine sur deux en C1,\n"

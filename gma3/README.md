@@ -15,6 +15,7 @@ macro** qui lance une mini-séquence **en restitution** (LTP) avec un fondu,
 │ [FADE arrêt 2s  ] [0][0.5][1][2][3][4]                       │
 │ [FX C1 Red      ] [○][○][●][○]…  (pastilles couleur)         │
 │ [FX C2 Blue     ] [○][○][○][●]…                              │
+│ [FX FONDU 1s    ] [FX 0][FX 0.2][FX 0.5][FX 1][FX 2]         │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -60,14 +61,23 @@ Donc chaque case du board est une macro qui, en une frappe :
   - Les quatre balayages posent un **delay individuel** machine par machine
     (`Delay <t>` sur chaque fixture, dans l'ordre du groupe) : même couleur
     pour tout le monde, décalée dans le temps.
-  - Le damier `1/2` ne pose **aucun delay** : il met directement les deux
-    couleurs dans la **même cue**, une machine sur deux, et la cue suivante
-    les inverse. Les deux moitiés sont donc toujours en couleurs opposées
-    (le vrai déphasage, pas une approximation par le temps).
+  - Le damier `1/2` ne **balaie** pas : il met directement les deux couleurs
+    dans la **même cue**, une machine sur deux, et la cue suivante les
+    inverse. Les deux moitiés sont donc toujours en couleurs opposées (le
+    vrai déphasage, pas une approximation par le temps). Il porte un délai
+    **uniforme** — même valeur pour tout le monde, donc aucun décalage
+    visible — qui sert seulement à donner une **durée** à la cue.
   - **`FX C1` / `FX C2`** : deux rangées de pastilles pour choisir les deux
     couleurs de la boucle. `Copy Preset … /Merge` dans deux presets *slots*
     **référencés par les cues** → la boucle change de couleurs **en direct**,
     même en cours de route.
+  - **`FX FONDU`** (dernière rangée) : la **transition** entre les deux
+    couleurs de la boucle. `FX 0` = **passage sec**, façon `1 1 1 1` ;
+    les autres valeurs fondent d'une couleur à l'autre. Ça réécrit le
+    `CueInFade` des cues FX — donc ça marche **en cours de boucle**.
+  - Le **battement** (la vitesse de la boucle) vient des délais, qui sont
+    figés à la génération : `Options > Vitesse FX / battement (s)`,
+    1 s par défaut.
   - **Arrêter un FX** : taper une couleur de la ligne, taper un autre sens,
     ou `Off All`.
   - **Groupes imbriqués gérés** : le plugin relève les machines de chaque
@@ -86,8 +96,9 @@ Donc chaque case du board est une macro qui, en une frappe :
 - **Rangées FADE** :
   - `FADE couleur` → `0s · 0.5s · 1s · 2s · 3s · 4s` : réécrit la ligne 1
     (le `Goto`) de **toutes** les tuiles couleur.
-  - `FADE arrêt` → réécrit la commande du bouton `Off All` et le `OffFade`
-    de chaque séquence.
+  - `FADE arrêt` → réécrit la commande du bouton `Off All` (`Off … Fade X`).
+    C'est **là** que vit le fondu d'arrêt : `OffFade` n'existe pas comme
+    propriété de séquence (voir Notes techniques).
   - Le bouton actif est **surligné** et le titre affiche la valeur courante.
 - **`Off All`** relâche tout (avec le fondu d'arrêt) **et** remet toutes les
   cases au repos. C'est aussi le **bouton de resynchro** : si l'affichage des
@@ -163,6 +174,7 @@ appearances) sont **stables** quel que soit le nombre de couleurs choisi.
 | Nb couleurs          | `12`    | Couleurs principales (max 12).                      |
 | Fade couleur (s)     | `1`     | Fondu au changement de couleur.                     |
 | Fade arrêt (s)       | `2`     | Fondu au relâché.                                   |
+| Vitesse FX (s)       | `1`     | Battement de la boucle FX / étalement du balayage.  |
 | ID de départ         | `101`   | Début de numérotation (seq / macro / appearance).   |
 | Layout (No)          | `1`     | Numéro du Layout généré.                            |
 
@@ -211,6 +223,13 @@ parce que chacun était un échec silencieux dans les versions précédentes :
 - Cues écrites via `ColorRGB_R/G/B` (%) **puis** `At Preset 4.x` — la cue est
   liée au preset ; la console convertit vers les autres systèmes de couleur
   (RGBW, CMY…).
+- ⚠️ **`OffFade` n'est PAS une propriété de séquence** sur 2.5 : chaque
+  `Set Sequence X Property "OffFade"` produisait une notification rouge
+  *Illegal property* — une par séquence à la génération, et **48 par appui**
+  sur un bouton `FADE arrêt`, en plein show. Supprimé : le fondu d'arrêt est
+  porté par le `Fade` de la commande `Off`, qui lui est valide.
+- Le damier `1/2` porte un **délai uniforme** égal au battement. Sans lui, un
+  `FX FONDU 0` donnerait une cue de durée nulle et la boucle s'emballerait.
 - Trigger de cue : propriété **`TrigType`** (valeur `Follow`, sensible à la
   casse) — pas `Trigger`. Boucle = les 2 cues en `Follow` + `WrapAround`.
   ⚠️ `WrapAround` est **désactivé automatiquement si l'`OffCue` a un
