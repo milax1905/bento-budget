@@ -291,10 +291,12 @@ end
 -- fan "Delay a Thru b").
 local function selectionAddrs(cap)
     local out, seen = {}, {}
+    local hitCap = false
     local ok = pcall(function()
         local idx, gx = SelectionFirst()
         local rank = 0
-        while idx ~= nil and #out < cap do
+        while idx ~= nil do
+            if #out >= cap then hitCap = true; break end
             rank = rank + 1
             local addr
             pcall(function()
@@ -318,6 +320,9 @@ local function selectionAddrs(cap)
             idx, gx = SelectionNext(idx)
         end
     end)
+    -- Groupe enorme : construire le balayage machine par machine couterait
+    -- des milliers de commandes -> on repasse sur le fan par plage.
+    if hitCap then return nil end
     if not ok or #out < 2 then return nil end
     table.sort(out, function(a, b)
         if a.x ~= b.x then return a.x < b.x end
@@ -484,6 +489,12 @@ local function fillLayout(layoutNo, elements)
             -- utilisateur -> on la pose explicitement.
             if e.object:match("^Macro ") then
                 pcall(function() elem:Set("Action", "Go+") end)
+            elseif e.inert then
+                -- En-tete de ligne : c'est le vrai objet Group/Fixture (on
+                -- voit sa couleur live), mais taper dessus ne doit RIEN
+                -- faire — sinon un coup de pouce selectionne le groupe dans
+                -- le programmer en plein show.
+                pcall(function() elem:Set("Action", "None") end)
             end
             -- Toutes les cases du board : pas de decor (icone, barres,
             -- bordure, ID...). L'etat "actif" est montre par l'image.
@@ -765,6 +776,9 @@ local function main(display_handle)
                 baseId, imgDelEnd, baseId, layNo),
             commands = { { value = 1, name = "Ecraser" }, { value = 0, name = "Annuler" } } })
         if not confirm or confirm.result ~= 1 then return end
+        -- Relacher AVANT de supprimer : une sequence effacee en cours de
+        -- lecture coupe sa couleur d'un seul coup sur le plateau.
+        Cmd(string.format('Off Sequence %d Thru %d Fade 0', baseId, seqDelEnd))
         Cmd(string.format('Delete Sequence %d Thru %d /NoConfirm', baseId, seqDelEnd))
         Cmd(string.format('Delete Macro %d Thru %d /NoConfirm', baseId, macDelEnd))
         Cmd(string.format('Delete Appearance %d Thru %d /NoConfirm', baseId, appDelEnd))
@@ -787,8 +801,10 @@ local function main(display_handle)
     makeAppearance(appGrey,   "CP Grey",    66, 72, 84)
     makeAppearance(appAccent, "CP Fade On", 235, 238, 245)
     makeAppearance(appRed,    "CP Off Red", 128, 34, 40)
-    makeAppearance(appFx,     "CP FX",      140, 80, 220)
-    makeAppearance(appFxOn,   "CP FX On",   140, 80, 220)
+    -- Repos VS actif : deux violets bien differents, pour que les tuiles FX
+    -- gardent un etat lisible meme si les images n'ont pas pu etre importees.
+    makeAppearance(appFx,     "CP FX",       52, 30,  80)
+    makeAppearance(appFxOn,   "CP FX On",   150, 90, 235)
     breathe()
 
     -- 1a) Images NEON : tuiles arrondies generees en PNG par le plugin,
@@ -941,17 +957,31 @@ local function main(display_handle)
     --     SYM), les deux cues en TrigType Follow + WrapAround -> boucle.
     --     Les cues referencent les presets slots -> les pastilles C1/C2
     --     re-teintent la boucle meme en cours de route.
+    -- Machines de chaque groupe, dans l'ordre : sert au balayage (construit
+    -- machine par machine) ET a savoir quels groupes SE CHEVAUCHENT, pour
+    -- qu'une couleur coupe toutes les boucles qui touchent ses machines.
+    local grpAddrs, grpSet = {}, {}
+    for gi, ti in ipairs(groupTis) do
+        Cmd("ClearAll")
+        Cmd(targets[ti].sel)
+        local addrs = selectionAddrs(64)
+        grpAddrs[gi] = addrs
+        if addrs then
+            local set = {}
+            for _, a in ipairs(addrs) do set[a] = true end
+            grpSet[gi] = set
+        end
+    end
+    Cmd("ClearAll")
+    breathe()
+
     local fxBuilt = 0
     for gi, ti in ipairs(groupTis) do
         local t = targets[ti]
-        -- Machines du groupe dans l'ordre : le balayage se construit
-        -- machine par machine avec un "Delay <t>" individuel (syntaxe
-        -- documentee), ce qui donne un controle EXACT du sens. Si la
-        -- selection n'est pas enumerable, repli sur le fan "Delay a Thru b".
-        Cmd("ClearAll")
-        Cmd(t.sel)
-        local addrs = selectionAddrs(96)
-        Cmd("ClearAll")
+        -- Balayage machine par machine avec un "Delay <t>" individuel
+        -- (syntaxe documentee) : controle EXACT du sens. Sans enumeration
+        -- possible, repli sur le fan par plage "Delay a Thru b".
+        local addrs = grpAddrs[gi]
         for di, dir in ipairs(FX_DIRS) do
             local no = seqFx(gi, di)
             for k, slot in ipairs({ pFx1, pFx2 }) do
@@ -1017,6 +1047,33 @@ local function main(display_handle)
     -- actif). Chaque tuile : lance sa sequence en restitution, coupe le FX
     -- de sa ligne, et repeint la ligne (feedback radio).
 
+    -- Quels groupes FX touchent les machines de la ligne ti ? (Groupes
+    -- imbriques : "General" contient "Contres" — sans ca, la boucle du
+    -- groupe englobant reprendrait la couleur a sa cue suivante.)
+    -- En cas de doute (enumeration impossible), on repond OUI : mieux vaut
+    -- couper un effet de trop que de perdre la main sur la couleur.
+    local fxGiOfTi0 = {}
+    for gi, ti in ipairs(groupTis) do fxGiOfTi0[ti] = gi end
+    local function overlappingGis(ti)
+        local out = {}
+        if nFx == 0 then return out end
+        local mine = fxGiOfTi0[ti]
+        for gi = 1, nFx do
+            local hit
+            if ti == 1 or gi == mine then                 -- ALL, ou son propre groupe
+                hit = true
+            elseif not mine or not grpSet[gi] or not grpSet[mine] then
+                hit = true                                -- inconnu -> prudent
+            else
+                for addr in pairs(grpSet[mine]) do
+                    if grpSet[gi][addr] then hit = true; break end
+                end
+            end
+            if hit then out[#out + 1] = gi end
+        end
+        return out
+    end
+
     -- Lignes de "remise au repos" d'un ensemble de lignes du board.
     local function resetLines(rows, out, skipMac)
         local isRow = {}
@@ -1045,20 +1102,36 @@ local function main(display_handle)
 
     local allRows = {}
     for ti = 1, nTargets do allRows[ti] = ti end
-    local fxGiOfTi = {}
-    for gi, ti in ipairs(groupTis) do fxGiOfTi[ti] = gi end
+    local fxGiOfTi = fxGiOfTi0
 
-    -- Commande "coupe les FX concernes par cette ligne" :
-    -- une ligne de groupe coupe SES 3 sens ; la ligne ALL les coupe tous.
-    local function killFxLine(ti)
-        if nFx == 0 then return nil end
-        local gi = fxGiOfTi[ti]
-        if gi then
-            return offCmd(seqFx(gi, 1), seqFx(gi, nDir), 0)
-        elseif ti == 1 then
-            return offCmd(seqFx0, seqLast, 0)
+    -- Commandes "coupe les boucles FX qui touchent cette ligne". Le fondu
+    -- vaut celui de la couleur : la boucle se relache pendant que la
+    -- couleur monte -> aucun trou (sinon les machines retombent a leur
+    -- couleur par defaut, gros flash blanc).
+    local function killFxLines(ti, out, fade)
+        local gis = overlappingGis(ti)
+        if #gis == 0 then return end
+        if #gis == nFx then                                -- tout le bloc FX
+            out[#out + 1] = offCmd(seqFx0, seqLast, fade)
+            return
         end
-        return nil
+        for _, gi in ipairs(gis) do
+            out[#out + 1] = offCmd(seqFx(gi, 1), seqFx(gi, nDir), fade)
+        end
+    end
+
+    -- Lignes du board dont les tuiles doivent etre repeintes quand on tape
+    -- la ligne ti : la sienne, la ligne ALL (qui n'a plus la main partout),
+    -- et toute ligne de groupe qui partage des machines.
+    local function affectedRows(ti)
+        if ti == 1 then return allRows end
+        local rows, seen = { ti }, { [ti] = true }
+        if not seen[1] then rows[#rows + 1] = 1; seen[1] = true end
+        for _, gi in ipairs(overlappingGis(ti)) do
+            local tj = groupTis[gi]
+            if tj and not seen[tj] then rows[#rows + 1] = tj; seen[tj] = true end
+        end
+        return rows
     end
 
     -- 3a) Tuiles COULEUR.
@@ -1066,12 +1139,11 @@ local function main(display_handle)
         for ci, c in ipairs(colors) do
             local me    = macTile(ti, ci)
             local lines = { gotoCmd(seqColor(ti, ci), colorFade) }  -- ligne 1 : reecrite par les FADE
-            local kill  = killFxLine(ti)
-            if kill then lines[#lines + 1] = kill end
-            -- Feedback : la ligne ALL repeint TOUT le board (elle prend la
-            -- main partout), une ligne de groupe repeint sa ligne.
-            resetLines((ti == 1) and allRows or { ti }, lines, me)
+            killFxLines(ti, lines, colorFade)
+            -- La tuile tapee s'allume TOUT DE SUITE (juste apres l'action),
+            -- le menage de la ligne suit.
             lines[#lines + 1] = string.format('Assign Appearance %d At Macro %d', appOn(ci), me)
+            resetLines(affectedRows(ti), lines, me)
             makeMacro(me, string.format("%s %s", t.label, c.name), appOff(ci), lines)
         end
         breathe()
@@ -1082,12 +1154,16 @@ local function main(display_handle)
         local t = targets[ti]
         for di, dir in ipairs(FX_DIRS) do
             local me = macFx(gi, di)
+            -- Relache les 3 sens de la ligne AVEC un fondu : sans lui, la
+            -- boucle en cours lache d'un coup et le groupe retombe a sa
+            -- couleur par defaut (flash blanc) avant que la nouvelle
+            -- boucle ne monte. Go+ (et non Goto) enchaine les cues Follow.
             local lines = {
-                offCmd(seqFx(gi, 1), seqFx(gi, nDir), 0),   -- coupe les 3 sens
-                goPlusCmd(seqFx(gi, di)),                   -- puis lance la boucle
+                offCmd(seqFx(gi, 1), seqFx(gi, nDir), colorFade),
+                goPlusCmd(seqFx(gi, di)),
             }
-            resetLines({ ti }, lines, me)
             lines[#lines + 1] = string.format('Assign Appearance %d At Macro %d', appFxOn, me)
+            resetLines(affectedRows(ti), lines, me)
             makeMacro(me, string.format("FX %s %s", t.label, dir.lbl), appFx, lines)
         end
         breathe()
@@ -1197,7 +1273,7 @@ local function main(display_handle)
         local row = rowTop + (ti - 1)
         if t.header then
             elements[#elements + 1] = { object = t.header, x = 0, y = row,
-                w = 2, noicon = true }
+                w = 2, noicon = true, inert = true }
         else
             elements[#elements + 1] = { object = "Macro " .. macAllHdr, x = 0, y = row,
                 w = 2, noicon = true }
@@ -1289,7 +1365,11 @@ local function main(display_handle)
      .. "couleur ou Off All coupe le FX. (%d boucles FX construites)\n"
      .. "COULEURS PAS A TON GOUT ? Modifie le Preset 4.x (pool Color) ->\n"
      .. "tout le board suit. Regenerer ne touche jamais tes presets.\n"
-     .. "Le board est 100%% restitution : zero programmer.",
+     .. "Le board est 100%% restitution : zero programmer (les en-tetes de\n"
+     .. "ligne sont inertes, elles ne selectionnent rien).\n"
+     .. "SI L'AFFICHAGE TE SEMBLE FAUX : Off All remet tout d'aplomb.\n"
+     .. "APRES UN REPATCH ou une modif de groupe : regenere le board, les\n"
+     .. "cues gardent les machines telles qu'elles etaient.",
         nTargets, (groupIds and "groupes" or "machines"), nColors,
         baseId, baseId + nColors - 1, presetsCreated, presetsReused,
         baseId, seqLast, baseId, macEnd, imagesOk,
