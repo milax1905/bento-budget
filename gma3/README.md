@@ -8,8 +8,8 @@ macro** qui lance une mini-séquence **en restitution** (LTP) avec un fondu,
 ┌──────────────────────────────────────────────────────────────┐
 │                  C O L O R   P I C K E R                     │
 │ [ ALL  ] [Red][Orange][Amber][Yellow]…[White]                │
-│ [ SPOT ] [Red][Orange][Amber][Yellow]…[White]  [J>C][C>J][SYM]│
-│ [ WASH ] [Red][Orange][Amber][Yellow]…[White]  [J>C][C>J][SYM]│
+│ [ SPOT ] [Red][Orange]…[White]  [J>C][C>J][E>I][I>E][1/2]    │
+│ [ WASH ] [Red][Orange]…[White]  [J>C][C>J][E>I][I>E][1/2]    │
 │ [════════════ Off All (barre rouge) ════════════]            │
 │ [FADE couleur 1s] [0s][0.5s][1s][2s][3s][4s]                 │
 │ [FADE arrêt 2s  ] [0][0.5][1][2][3][4]                       │
@@ -45,12 +45,25 @@ Donc chaque case du board est une macro qui, en une frappe :
 - **Presets couleur universels** (pool Color 4, IDs `4.101`+) : les cues les
   **référencent** → modifie un preset (ton rouge, ton ambre…) et **tout le
   board suit**. S'ils existent déjà ils sont **réutilisés**, jamais effacés.
-- **Bloc FX — 3 sens de balayage par ligne de groupe** :
-  - `J>C` **jardin → cour**, `C>J` **cour → jardin**, `SYM` **symétrique**.
-  - Chaque sens est une séquence à **2 cues** (`At Preset` slot C1, puis slot
-    C2) en *TrigType Follow* + *WrapAround* → **boucle infinie**, avec un
-    **delay individuel réparti sur le groupe** (`Delay 0 Thru 1`,
-    `Delay 1 Thru 0`, `Delay 0 Thru 1 Thru 0`) qui donne le balayage.
+- **Bloc FX — 5 formes d'effet par ligne de groupe** :
+
+  | Tuile | Effet                                                        |
+  |-------|--------------------------------------------------------------|
+  | `J>C` | balayage **jardin → cour**                                    |
+  | `C>J` | balayage **cour → jardin**                                    |
+  | `E>I` | **extérieur → intérieur** : les bords partent, le centre suit |
+  | `I>E` | **intérieur → extérieur** : le centre part, les bords suivent |
+  | `1/2` | **damier** : une machine sur deux en C1, l'autre moitié en C2, et elles **échangent** à chaque cue |
+
+  - Chaque forme est une séquence à **2 cues** (`At Preset` slot C1, puis
+    slot C2) en *TrigType Follow* + *WrapAround* → **boucle infinie**.
+  - Les quatre balayages posent un **delay individuel** machine par machine
+    (`Delay <t>` sur chaque fixture, dans l'ordre du groupe) : même couleur
+    pour tout le monde, décalée dans le temps.
+  - Le damier `1/2` ne pose **aucun delay** : il met directement les deux
+    couleurs dans la **même cue**, une machine sur deux, et la cue suivante
+    les inverse. Les deux moitiés sont donc toujours en couleurs opposées
+    (le vrai déphasage, pas une approximation par le temps).
   - **`FX C1` / `FX C2`** : deux rangées de pastilles pour choisir les deux
     couleurs de la boucle. `Copy Preset … /Merge` dans deux presets *slots*
     **référencés par les cues** → la boucle change de couleurs **en direct**,
@@ -89,8 +102,9 @@ Donc chaque case du board est une macro qui, en une frappe :
 1. (Il faut de l'intensité pour voir la couleur : ton show, ou `Full`.)
 2. Tape une tuile → la ligne passe à cette couleur (fondu), la tuile se remplit.
 3. Autre tuile de la même ligne → la couleur change, l'ancienne se relâche.
-4. Tape `J>C`, `C>J` ou `SYM` sur une ligne de groupe → boucle 2 couleurs qui
-   balaie le groupe. Change `C1`/`C2` en bas quand tu veux.
+4. Tape une forme de FX sur une ligne de groupe (`J>C`, `C>J`, `E>I`, `I>E`,
+   `1/2`) → boucle 2 couleurs sur le groupe. Change `C1`/`C2` en bas quand
+   tu veux, même en cours de boucle.
 5. `Off All` → tout se relâche. **Zéro programmer.**
 
 ## Objets créés (à partir de l'ID de départ, défaut 101)
@@ -98,7 +112,7 @@ Donc chaque case du board est une macro qui, en une frappe :
 | Pool        | Contenu                                                        |
 |-------------|----------------------------------------------------------------|
 | Appearances | 2 par couleur (active/repos) + 6 utilitaires                   |
-| Sequences   | 1 par (ligne × couleur) + **3 par groupe** (les 3 sens de FX)  |
+| Sequences   | 1 par (ligne × couleur) + **5 par groupe** (les 5 formes de FX)|
 | Macros      | toutes les cases du board : tuiles couleur, tuiles FX, `Off All`, en-têtes, rangées FADE, pastilles C1/C2 |
 | Images      | tuiles néon générées : 1 contour + 1 plein par couleur + 4      |
 | Presets 4.x | couleurs universelles + 2 slots FX (**jamais effacés**)         |
@@ -177,8 +191,10 @@ parce que chacun était un échec silencieux dans les versions précédentes :
   plutôt que `Stretch` (le défaut, qui déformerait les coins arrondis).
 - **Balayage FX** : `Delay <t>` en mot-clé de départ pose un délai
   **individuel** sur la sélection courante, et le programmer **accumule** les
-  machines — d'où la construction machine par machine. `Delay 0 Thru 1 Thru 0`
-  (fan symétrique multi-points) est du **MA2**, invalide en MA3.
+  machines — d'où la construction machine par machine (elle permet aussi de
+  donner une couleur différente à une machine sur deux pour le damier).
+  `Delay 0 Thru 1 Thru 0` (fan symétrique multi-points) est du **MA2**,
+  invalide en MA3 : les formes symétriques sont calculées en Lua.
 - **`SelectionFirst()` / `SelectionNext()`** renvoient un **index de
   subfixture**, pas un numéro de machine : conversion obligatoire par
   `GetSubfixture(idx).FID` (ou l'adresse de cellule).

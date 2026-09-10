@@ -28,11 +28,14 @@
 --    ni barre, ni bordure).
 --  - "Off When Overridden" sur les sequences : la couleur precedente se
 --    relache toute seule -> une seule tuile allumee par ligne.
---  - FX : 3 tuiles par ligne de groupe = 3 SENS de balayage
---    (J>C jardin->cour, C>J cour->jardin, SYM symetrique). Chacune lance
---    une boucle C1<->C2 (2 cues en Follow + WrapAround) dont le delay
---    individuel est reparti sur le groupe. Les pastilles C1/C2 re-teintent
---    la boucle en live (Copy /Merge dans deux presets slots).
+--  - FX : 5 tuiles par ligne de groupe = 5 FORMES d'effet, chacune une
+--    boucle C1<->C2 (2 cues en Follow + WrapAround) :
+--      J>C  balayage jardin -> cour        C>J  cour -> jardin
+--      E>I  des bords vers le centre       I>E  du centre vers les bords
+--      1/2  damier : une machine sur deux en C1, l'autre moitie en C2,
+--           et elles echangent a chaque cue (aucun delay).
+--    Les pastilles C1/C2 re-teintent la boucle en live (Copy /Merge dans
+--    deux presets slots references par les cues).
 --  - AUCUNE action du board ne touche le programmer (seule la GENERATION
 --    l'utilise, apres confirmation, et le rend propre).
 --
@@ -67,24 +70,33 @@ local FADE_VALUES = { 0, 0.5, 1, 2, 3, 4 }
 local FX_SWEEP = 1
 
 -- Sens du balayage : une sequence FX par sens et par groupe.
---   J = jardin (debut du groupe), C = cour (fin du groupe).
+--   J = jardin (debut du groupe), C = cour (fin du groupe),
+--   E = exterieur (les bords), I = interieur (le centre).
 --   fan  = forme du delay individuel le long du groupe.
---   fb   = commande de repli si on ne peut pas enumerer les fixtures.
+--   fb   = commande de repli si on ne peut pas enumerer les fixtures
+--          (nil = pas de delay du tout).
 local FX_DIRS = {
-    { lbl = "J>C", fan = "fwd", fb = "Delay 0 Thru %s" },
-    { lbl = "C>J", fan = "rev", fb = "Delay %s Thru 0" },
-    { lbl = "SYM", fan = "sym", fb = "Delay 0 Thru %s" },
+    { lbl = "J>C", fan = "fwd",    fb = "Delay 0 Thru %s" },
+    { lbl = "C>J", fan = "rev",    fb = "Delay %s Thru 0" },
+    { lbl = "E>I", fan = "sym",    fb = "Delay 0 Thru %s" },
+    { lbl = "I>E", fan = "symOut", fb = "Delay 0 Thru %s" },
+    { lbl = "1/2", fan = "alt",    fb = nil },
 }
 
 -- Position du delay (0..1) de la i-eme machine d'un groupe de n.
 local function fanFactor(fan, i, n)
+    if fan == "alt" then return 0 end   -- damier : aucun delay
     if n < 2 then return 0 end
     if fan == "rev" then return (n - i) / (n - 1) end
-    if fan == "sym" then
-        -- symetrique : les extremites a 0, le centre au maximum.
+    if fan == "sym" or fan == "symOut" then
+        -- distance au bord, ramenee entre 0 (bord) et 1 (centre)
         local d   = math.min(i - 1, n - i)
         local mid = math.floor((n - 1) / 2)
-        return (mid > 0) and (d / mid) or 0
+        local f   = (mid > 0) and (d / mid) or 0
+        -- "sym"    : les bords partent en premier  (exterieur -> interieur)
+        -- "symOut" : le centre part en premier     (interieur -> exterieur)
+        if fan == "symOut" then return 1 - f end
+        return f
     end
     return (i - 1) / (n - 1)             -- "fwd" : jardin -> cour
 end
@@ -1032,14 +1044,25 @@ local function main(display_handle)
                 if addrs then
                     local n = #addrs
                     for i, addr in ipairs(addrs) do
+                        -- "1/2" : damier. Une machine sur deux prend l'autre
+                        -- couleur DANS LA MEME cue -> les deux moities sont
+                        -- toujours en couleurs opposees, et elles echangent
+                        -- a chaque cue. (Les autres sens : meme couleur pour
+                        -- tout le monde, mais decalee dans le temps.)
+                        local pNo = slot
+                        if dir.fan == "alt" and (i % 2 == 0) then
+                            pNo = (slot == pFx1) and pFx2 or pFx1
+                        end
                         Cmd(addr)
-                        Cmd(string.format('At Preset %d.%d', PT, slot))
+                        Cmd(string.format('At Preset %d.%d', PT, pNo))
                         Cmd("Delay " .. fmtNum(fanFactor(dir.fan, i, n) * FX_SWEEP))
                     end
                 else
                     Cmd(t.sel)
                     Cmd(string.format('At Preset %d.%d', PT, slot))
-                    Cmd(string.format(dir.fb, tostring(FX_SWEEP)))
+                    if dir.fb then
+                        Cmd(string.format(dir.fb, tostring(FX_SWEEP)))
+                    end
                 end
                 Cmd(string.format('Store Sequence %d Cue %d /NoConfirm', no, k))
                 setCueFade(no, k, 1)
@@ -1412,9 +1435,11 @@ local function main(display_handle)
      .. "en restitution et la tuile SE REMPLIT (contour au repos, pave\n"
      .. "plein quand elle joue). Autre tuile = changement de couleur.\n"
      .. "FADE : le bouton ACTIF est surligne, le titre affiche la valeur.\n"
-     .. "FX (bout des lignes de groupes) : 3 sens de balayage —\n"
-     .. "J>C (jardin vers cour), C>J (cour vers jardin), SYM (symetrique).\n"
-     .. "Tape un sens -> boucle C1<->C2 sur le groupe. Choisis C1 et C2\n"
+     .. "FX (bout des lignes de groupes) : 5 formes —\n"
+     .. "J>C jardin>cour, C>J cour>jardin, E>I bords vers centre,\n"
+     .. "I>E centre vers bords, 1/2 damier (une machine sur deux en C1,\n"
+     .. "l'autre moitie en C2, elles echangent a chaque cue).\n"
+     .. "Tape une forme -> boucle C1<->C2 sur le groupe. Choisis C1 et C2\n"
      .. "avec les pastilles du bas, meme en cours de boucle. Taper une\n"
      .. "couleur ou Off All coupe le FX. (%d boucles FX construites)\n"
      .. "COULEURS PAS A TON GOUT ? Modifie le Preset 4.x (pool Color) ->\n"
