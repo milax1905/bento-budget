@@ -204,6 +204,20 @@ comprises), pour qu'une régénération plus petite ne laisse jamais d'orphelins
 (labels `#2`, boucles FX fantômes). Les numéros de slots (presets FX, images,
 appearances) sont **stables** quel que soit le nombre de couleurs choisi.
 
+## CPDiag — l'outil de diagnostic
+
+`CPDiag.lua` + `CPDiag.xml` : un second plugin, **en lecture seule**. Il
+n'envoie **aucune** commande et ne modifie rien — il ouvre une séquence FX et
+imprime ce qu'il y a dedans : quelles adresses `ObjectList` sait résoudre,
+puis l'arbre d'objets complet (classe, nom, nombre d'enfants et **noms exacts
+des propriétés**), en suivant aussi les conteneurs qui ne sont pas des enfants
+mais s'atteignent par `Get()` — dont `PhaserRecipeSteps`.
+
+À utiliser quand la rangée **`FX TRANSIT`** n'apparaît pas : le dump dit si la
+recette de phaser existe, à quelle profondeur vivent les pas, et sous quel nom
+la transition est exposée (ou qu'elle ne l'est pas). Lance-le, donne le numéro
+d'une séquence FX (`149` avec les réglages par défaut), et lis les pages.
+
 ## Fichiers
 
 | Fichier            | Rôle                                                   |
