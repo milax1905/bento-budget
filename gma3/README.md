@@ -36,9 +36,10 @@ Donc chaque case du board est une macro qui, en une frappe :
 
 ## Ce que fait le board
 
-- **Case de gauche** = le vrai groupe (ou la machine) : la taper **sélectionne**
-  la machine (seule action du board qui touche le programmer, et elle est
-  volontaire). Icônes et barres masquées : juste le nom.
+- **Case de gauche** = le vrai groupe (ou la machine) : on y voit sa **couleur
+  live**, mais elle est **inerte** (`Action = None`) — la taper ne sélectionne
+  rien, pour qu'un coup de pouce en plein show ne charge pas le programmer.
+  Icônes et barres masquées : juste le nom.
 - **Tuiles couleur** : contour néon au repos, **remplies** quand elles jouent.
   `Off When Overridden` relâche la couleur précédente toute seule.
 - **Presets couleur universels** (pool Color 4, IDs `4.101`+) : les cues les
@@ -56,9 +57,12 @@ Donc chaque case du board est une macro qui, en une frappe :
     même en cours de route.
   - **Arrêter un FX** : taper une couleur de la ligne, taper un autre sens,
     ou `Off All`.
-  - ⚠️ Les lignes doivent être des groupes **disjoints** : une machine
-    présente dans deux groupes se fera reprendre par la boucle de l'autre
-    ligne (chaque tuile ne coupe que le FX de SA ligne).
+  - **Groupes imbriqués gérés** : le plugin relève les machines de chaque
+    groupe à la génération et sait donc qui recouvre qui. Taper une couleur
+    sur `SPOT` coupe aussi la boucle d'un `GENERAL` qui contient les spots —
+    sinon elle reprendrait la couleur à sa cue suivante. Quand il ne peut pas
+    énumérer un groupe, il coupe **toutes** les boucles (prudent plutôt que
+    joli).
 - **Tuiles néon générées** : le plugin **fabrique lui-même** ses images PNG
   (pur Lua, zéro fichier à copier), les écrit dans la *User Image Library*,
   les importe dans le pool Images et les pose sur les appearances : **contour
@@ -73,7 +77,12 @@ Donc chaque case du board est une macro qui, en une frappe :
     de chaque séquence.
   - Le bouton actif est **surligné** et le titre affiche la valeur courante.
 - **`Off All`** relâche tout (avec le fondu d'arrêt) **et** remet toutes les
-  cases au repos.
+  cases au repos. C'est aussi le **bouton de resynchro** : si l'affichage des
+  cases te semble faux (par exemple après avoir rechargé le show — les cases
+  sont des données sauvegardées, les restitutions non), un `Off All` remet
+  tout d'aplomb.
+- **Après un repatch ou une modif de groupe** : régénère le board. Les cues
+  contiennent les machines telles qu'elles étaient à la génération.
 
 ## Le workflow live
 
