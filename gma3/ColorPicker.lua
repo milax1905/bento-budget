@@ -279,21 +279,53 @@ local function breathe()
     pcall(coroutine.yield, 0)
 end
 
--- Machines de la selection courante, DANS L'ORDRE de selection : c'est ce
--- qui definit le sens "jardin -> cour" d'un balayage. Renvoie nil si l'API
--- de selection n'est pas disponible sur ce build (-> repli sur le fan
--- "Delay a Thru b").
-local function selectionIds(cap)
-    local ids = {}
+-- Machines de la selection courante, RANGEES DE JARDIN A COUR : c'est ce
+-- qui definit le sens d'un balayage.
+--   ATTENTION : SelectionFirst()/SelectionNext() renvoient un index de
+--   SUBFIXTURE (index de patch interne), PAS un numero de machine — il
+--   faut passer par GetSubfixture(idx) pour obtenir le FID (ou l'adresse
+--   d'une cellule). Ils renvoient aussi la position dans la grille de
+--   selection (gridX) : c'est l'ordre que MA3 utilise lui-meme pour
+--   etaler une valeur sur une selection, donc on trie dessus.
+-- Renvoie nil si l'API n'est pas disponible sur ce build (-> repli sur le
+-- fan "Delay a Thru b").
+local function selectionAddrs(cap)
+    local out, seen = {}, {}
     local ok = pcall(function()
-        local id = SelectionFirst()
-        while id and #ids < cap do
-            ids[#ids + 1] = id
-            id = SelectionNext(id)
+        local idx, gx = SelectionFirst()
+        local rank = 0
+        while idx ~= nil and #out < cap do
+            rank = rank + 1
+            local addr
+            pcall(function()
+                local sf = GetSubfixture(idx)
+                if not sf then return end
+                local fid = sf.FID or sf.fid
+                if fid and tonumber(fid) then
+                    addr = string.format("Fixture %d", math.floor(tonumber(fid)))
+                elseif sf.ToAddr then
+                    -- cellule (subfixture) : "Fixture 301.1"
+                    local a = tostring(sf:ToAddr() or "")
+                    if a ~= "" then
+                        addr = a:match("^Fixture ") and a or ("Fixture " .. a)
+                    end
+                end
+            end)
+            if addr and not seen[addr] then
+                seen[addr] = true
+                out[#out + 1] = { addr = addr, x = tonumber(gx) or 0, rank = rank }
+            end
+            idx, gx = SelectionNext(idx)
         end
     end)
-    if not ok or #ids == 0 then return nil end
-    return ids
+    if not ok or #out < 2 then return nil end
+    table.sort(out, function(a, b)
+        if a.x ~= b.x then return a.x < b.x end
+        return a.rank < b.rank
+    end)
+    local addrs = {}
+    for i, e in ipairs(out) do addrs[i] = e.addr end
+    return addrs
 end
 
 -- --------------------------- constructeurs ---------------------------
@@ -513,7 +545,8 @@ local function main(display_handle)
          .. "3 tuiles FX par groupe (J>C / C>J / SYM),\n"
          .. "tout en restitution (fondu %ds), sans programmer.\n"
          .. "Objets ranges a partir du %d, Layout %d.\n"
-         .. "NB : la GENERATION, elle, passe par le programmer.",
+         .. "NB : la GENERATION, elle, passe par le programmer et prend\n"
+         .. "quelques dizaines de secondes — a faire avant le show.",
             found, nColors, colorFade, baseId, layNo),
         commands = {
             { value = 1, name = "Generer" },
@@ -901,16 +934,16 @@ local function main(display_handle)
         -- selection n'est pas enumerable, repli sur le fan "Delay a Thru b".
         Cmd("ClearAll")
         Cmd(t.sel)
-        local ids = selectionIds(96)
+        local addrs = selectionAddrs(96)
         Cmd("ClearAll")
         for di, dir in ipairs(FX_DIRS) do
             local no = seqFx(gi, di)
             for k, slot in ipairs({ pFx1, pFx2 }) do
                 Cmd("ClearAll")
-                if ids and #ids >= 2 then
-                    local n = #ids
-                    for i, fid in ipairs(ids) do
-                        Cmd("Fixture " .. tostring(fid))
+                if addrs then
+                    local n = #addrs
+                    for i, addr in ipairs(addrs) do
+                        Cmd(addr)
                         Cmd(string.format('At Preset %d.%d', PT, slot))
                         Cmd("Delay " .. fmtNum(fanFactor(dir.fan, i, n) * FX_SWEEP))
                     end
@@ -933,13 +966,18 @@ local function main(display_handle)
             pcall(function()
                 local s = ObjectList("Sequence " .. no)[1]
                 if s then
-                    for k = 1, 2 do
+                    for ki = 1, 2 do
                         pcall(function()
-                            local cue = ObjectList(string.format("Sequence %d Cue %d", no, k))[1]
+                            local cue = ObjectList(string.format("Sequence %d Cue %d", no, ki))[1]
                             if cue then cue:Set("TrigType", "Follow") end
                         end)
                     end
                     pcall(function() s:Set("WrapAround", "Yes") end)
+                    -- Go+ repart de la cue courante ou de la premiere selon
+                    -- le "Restart Mode" ; on demande la premiere (silencieux
+                    -- si le build nomme la propriete autrement — la boucle a
+                    -- 2 cues tourne de toute facon).
+                    pcall(function() s:Set("RestartMode", "FirstCue") end)
                     s:Set("OffFade", tostring(offFade))
                     s:Set("OffWhenOverridden", "Yes")
                 end
