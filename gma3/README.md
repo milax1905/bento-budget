@@ -145,11 +145,45 @@ Magenta · Pink · White`
 
 ## Notes techniques
 
+Points vérifiés dans le manuel MA3 2.3/2.4 (et sur du vrai code de plugins),
+parce que chacun était un échec silencieux dans les versions précédentes :
+
+- **Tap d'une case de layout** : la propriété s'appelle **`Action`**
+  (`Go+`, `Toggle`, `Select`, `None`…). `PlaybackFunction` / `Function`
+  **n'existent pas** — les poser ne faisait rien. Le défaut est
+  `<Layout Default>`, qui dépend du profil utilisateur : le plugin pose donc
+  `Action = "Go+"` explicitement sur chaque case de macro.
+- **Pourquoi une tuile-séquence ne se remplissait jamais** : un élément de
+  layout affiche l'appearance de la **séquence**, pas celle de la cue active,
+  sauf si le réglage de séquence **`PreferCueAppearance`** est activé (il est
+  **Off** par défaut). D'où le passage à un board 100 % macros, où l'image de
+  l'appearance est réellement rendue.
+- **`Goto` n'enchaîne pas les cues `Follow`** — seul **`Go+`** déclenche les
+  cues suivantes en follow/timed. Les boucles FX partent donc en `Go+` ; les
+  couleurs (une seule cue) partent en `Goto … Fade …`, qui accepte
+  officiellement l'option `Fade`.
+- **`Go+` avance d'une cue** si la séquence tourne déjà → chaque tuile FX fait
+  d'abord un `Off` des 3 sens de sa ligne.
+- **`ImageMode`** de l'appearance : `Bar` (image entière, aspect conservé)
+  plutôt que `Stretch` (le défaut, qui déformerait les coins arrondis).
+- **Balayage FX** : `Delay <t>` en mot-clé de départ pose un délai
+  **individuel** sur la sélection courante, et le programmer **accumule** les
+  machines — d'où la construction machine par machine. `Delay 0 Thru 1 Thru 0`
+  (fan symétrique multi-points) est du **MA2**, invalide en MA3.
+- **`SelectionFirst()` / `SelectionNext()`** renvoient un **index de
+  subfixture**, pas un numéro de machine : conversion obligatoire par
+  `GetSubfixture(idx).FID` (ou l'adresse de cellule).
+- Les délais individuels rallongent la **Duration** de la cue, et un trigger
+  `Follow` attend la Duration complète → le balayage a le temps de finir avant
+  la cue suivante.
 - Cues écrites via `ColorRGB_R/G/B` (%) **puis** `At Preset 4.x` — la cue est
   liée au preset ; la console convertit vers les autres systèmes de couleur
   (RGBW, CMY…).
 - Trigger de cue : propriété **`TrigType`** (valeur `Follow`, sensible à la
   casse) — pas `Trigger`. Boucle = les 2 cues en `Follow` + `WrapAround`.
+  ⚠️ `WrapAround` est **désactivé automatiquement si l'`OffCue` a un
+  trigger** — le plugin n'y touche pas, mais c'est le premier truc à vérifier
+  si une boucle s'arrête après un tour.
 - Fade de cue écrit à la fois en commande cue-level et sur le handle
   **`Part 0`** (le modèle MA3 y range les temps).
 - Placement layout (mécanisme validé sur console) : handle

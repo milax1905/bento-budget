@@ -447,8 +447,9 @@ local function fillLayout(layoutNo, elements)
         return ok
     end
 
-    -- Proprietes CONFIRMEES par les fichiers UI de MA3
-    -- (layout_element_editor.uixml) : Visibility* = "Hidden".
+    -- Decor d'un element de layout : tout est masquable par
+    -- Visibility<X> = "Hidden" (enum LayoutVisibility). On ne touche PAS
+    -- a "VisibilityElement" (ce serait cacher la case elle-meme).
     local HIDE_DECOR = {
         "VisibilityID", "VisibilityCID", "VisibilityBar", "VisibilityValue",
         "VisibilityIcon", "VisibilityIndicatorBar", "VisibilityBorder",
@@ -477,12 +478,22 @@ local function fillLayout(layoutNo, elements)
         local ok = false
         if elem ~= nil then
             ok = place(elem, e)
+            -- Taper une case de macro DOIT lancer la macro. La propriete
+            -- s'appelle "Action" (ni "PlaybackFunction" ni "Function", qui
+            -- n'existent pas) et sa valeur par defaut depend du profil
+            -- utilisateur -> on la pose explicitement.
+            if e.object:match("^Macro ") then
+                pcall(function() elem:Set("Action", "Go+") end)
+            end
             -- Toutes les cases du board : pas de decor (icone, barres,
             -- bordure, ID...). L'etat "actif" est montre par l'image.
             if e.clean or e.noicon then
                 for _, prop in ipairs(HIDE_DECOR) do
                     pcall(function() elem:Set(prop, "Hidden") end)
                 end
+                -- Le voile "selection relevance" a son propre enum
+                -- (Off / Background) : "Hidden" n'y voudrait rien dire.
+                pcall(function() elem:Set("VisibilitySelectionRelevance", "Off") end)
             end
             -- Pastilles couleur : meme pas le nom (la couleur seule parle).
             if e.clean then
@@ -811,6 +822,11 @@ local function main(display_handle)
                 if a then
                     a:Set("Image", ShowData().MediaPools.Images[imgNo])
                     a:Set("BackAlpha", "0")
+                    -- "Bar" = image entiere, aspect conserve (letterbox) :
+                    -- les coins arrondis restent ronds meme si la case
+                    -- n'est pas parfaitement carree. ("Stretch", le defaut,
+                    -- les deformerait.) Silencieux si le build differe.
+                    a:Set("ImageMode", "Bar")
                 end
             end)
         end
