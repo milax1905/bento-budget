@@ -46,7 +46,7 @@
 -- la console a REELLEMENT chargee (apres un ReloadAllPlugins). Les macros
 -- deja stockees dans le show, elles, datent de la derniere GENERATION —
 -- c'est pour ca qu'un correctif n'agit qu'apres avoir regenere.
-local VERSION = "7.8"
+local VERSION = "7.9"
 
 -- Palette en ordre ARC-EN-CIEL (blanc en dernier). Chaque couleur a deux
 -- appearances : contour (repos) et pleine (tuile active -> "se remplit").
@@ -87,6 +87,15 @@ local FX_SWEEP_DEFAULT = 1
 --       l'etalement du balayage, plus la vague se brouille.
 -- D'ou le defaut a 0, et des valeurs COURTES devant l'etalement (1 s).
 local FX_FADES = { 0, 0.1, 0.2, 0.5, 1 }
+
+-- Meme reglage, version PHASER. Un phaser n'a pas de "fondu de cue" entre
+-- ses deux couleurs : il a une TRANSITION, exprimee en % de la duree du
+-- pas (manuel 2.4, Phasers > Step Layers).
+--   0 %   = la couleur tient tout le pas puis BASCULE NET  -> "1 1 1 1"
+--   100 % = elle glisse vers la suivante pendant tout le pas -> smooth
+-- (entre les deux : elle glisse sur le debut du pas, puis tient.)
+local FX_TRANS = { 0, 25, 50, 75, 100 }
+local FX_TRANS_DEFAULT = 0
 
 -- Sens du balayage : une sequence FX par sens et par groupe.
 --   J = jardin (debut du groupe), C = cour (fin du groupe),
@@ -271,6 +280,70 @@ local function objectExists(addr)
         if ObjectList(addr)[1] then exists = true end
     end)
     return exists
+end
+
+-- ------------------ transition des pas d'un phaser -------------------
+-- Adresse d'un PAS de la recette de phaser (celle-la meme ou on assigne
+-- deja les presets C1/C2).
+local STEP_ADDR = "Sequence %d Cue 1 Part 0.1.'PhaserRecipeSteps'.%d"
+
+local function stepHandle(sq, step)
+    local h
+    pcall(function() h = ObjectList(string.format(STEP_ADDR, sq, step))[1] end)
+    return h
+end
+
+local function propRead(h, prop)
+    local v
+    pcall(function() v = h:Get(prop, Enums.Roles.Display) end)
+    if v == nil then pcall(function() v = h:Get(prop) end) end
+    return tostring(v)
+end
+
+-- On ne DEVINE jamais le nom d'une propriete : une commande invalide sort
+-- une notification rouge, et une notification rouge en plein show est
+-- exactement ce qu'on ne veut pas. Donc on ouvre l'objet, on LISTE ses
+-- proprietes, et on ne retient "Transition" que si :
+--   1. l'objet l'expose vraiment (PropertyName), et
+--   2. l'ecrire EN LIGNE DE COMMANDE change bien la valeur relue.
+-- Le test s'ecrit deux fois avec deux valeurs differentes : comme ca la
+-- valeur de depart ne peut pas faire passer le test par hasard. Si l'une
+-- des deux etapes echoue, on renvoie nil et la rangee n'est pas construite
+-- du tout — mieux vaut un bouton absent qu'un bouton qui gueule.
+local function probeTransition(sq)
+    local h = stepHandle(sq, 1)
+    if not h then return nil end
+    local prop
+    pcall(function()
+        for i = 1, h:PropertyCount() do
+            local pn = h:PropertyName(i)
+            if pn and string.lower(pn) == "transition" then prop = pn; break end
+        end
+    end)
+    if not prop then return nil end
+    -- Etape 1, MUETTE : on ecrit par le handle. Si l'objet n'accepte pas
+    -- la propriete, ca rate sans un mot (pas de ligne de commande, donc
+    -- pas de notification) et on s'arrete la.
+    local ok1 = pcall(function() h:Set(prop, "13") end)
+    if not ok1 or propRead(h, prop) == nil then return nil end
+    -- Etape 2 : maintenant qu'on SAIT que l'objet porte bien la propriete,
+    -- on verifie la seule chose qui reste : que la ligne de commande —
+    -- celle que les boutons du board utiliseront — vise le bon objet. On
+    -- compare deux lectures, comme ca la valeur de depart ne peut pas
+    -- faire passer le test par hasard.
+    local a = propRead(h, prop)
+    local ok2 = false
+    pcall(function()
+        Cmd(string.format("Set " .. STEP_ADDR .. " Property '%s' '77'", sq, 1, prop))
+        ok2 = (propRead(h, prop) ~= a)
+    end)
+    if not ok2 then return nil end
+    return prop
+end
+
+local function setTransCmd(sq, step, prop, pct)
+    return string.format("Set " .. STEP_ADDR .. " Property '%s' '%d'",
+        sq, step, prop, pct)
 end
 
 -- Un groupe existant n'expose PAS ses fixtures via Children() -> on teste
@@ -636,7 +709,7 @@ local function main(display_handle)
         message  = string.format(
             "Detecte : %s.\n\n"
          .. "Genere : 1 ligne par cible + ALL, %d couleurs,\n"
-         .. "3 tuiles FX par groupe (J>C / C>J / SYM),\n"
+         .. "5 tuiles FX par groupe (J>C / C>J / E>I / I>E / 1/2),\n"
          .. "tout en restitution (fondu %ds), sans programmer.\n"
          .. "Objets ranges a partir du %d, Layout %d.\n"
          .. "NB : la GENERATION, elle, passe par le programmer et prend\n"
@@ -826,7 +899,7 @@ local function main(display_handle)
     local macC1_0     = macC1Hdr + 1                -- .. + NC - 1
     local macC2Hdr    = macC1_0 + NC
     local macC2_0     = macC2Hdr + 1                -- .. + NC - 1
-    local nFV         = #FX_FADES
+    local nFV         = math.max(#FX_FADES, #FX_TRANS)
     local macFxFHdr   = macC2_0 + NC                -- "FX FONDU <v>"
     local macFxF0     = macFxFHdr + 1               -- .. + nFV - 1
     local macTile0    = macFxF0 + nFV               -- tuiles couleur
@@ -1037,6 +1110,11 @@ local function main(display_handle)
     local presetsCreated, presetsReused, presetsFixed = 0, 0, 0
     local grpAddrs, grpSet = {}, {}
     local fxBuilt = 0
+    -- Nom reel de la propriete "transition" d'un pas de phaser, decouvert
+    -- sur la premiere recette construite (nil = ce build ne l'expose pas
+    -- -> la rangee de reglage ne sera pas construite).
+    local fxTrProp   = nil
+    local fxTrProbed = false
     local okBuild, errBuild = pcall(function()
 
     -- 1b) Presets couleur UNIVERSELS (pool Color = 4), Preset 4.<baseId>...
@@ -1195,6 +1273,19 @@ local function main(display_handle)
                     (fxSpeedM == 16) and "BPM" or ("Speed" .. fxSpeedM)))
                 Cmd(string.format("Set Sequence %d 'SpeedScale' 'One'", no))
                 setCueFade(no, 1, fxFade)
+                -- Une seule sonde pour tout le board : le premier phaser
+                -- construit sert de cobaye, les autres suivent.
+                if not fxTrProbed then
+                    fxTrProbed = true
+                    fxTrProp   = probeTransition(no)
+                    Printf("[CP] transition de pas : %s",
+                        fxTrProp or "non exposee par ce build (rangee masquee)")
+                end
+                if fxTrProp then
+                    for st = 1, 2 do
+                        Cmd(setTransCmd(no, st, fxTrProp, FX_TRANS_DEFAULT))
+                    end
+                end
                 goto fxCommon
             end
 
@@ -1284,6 +1375,13 @@ local function main(display_handle)
             commands = { { value = 1, name = "OK" } } })
         return
     end
+
+    -- Quel reglage la derniere rangee pilote-t-elle ? Ca depend du moteur
+    -- ET, en phaser, de ce que la console expose vraiment.
+    local fxPhaserRow = (fxSpeedM > 0) and (fxTrProp ~= nil)
+    local fxRow       = (nFx > 0) and (fxSpeedM == 0 or fxPhaserRow)
+    local fxRowVals   = fxPhaserRow and FX_TRANS or FX_FADES
+    local fxRowDefault = fxPhaserRow and FX_TRANS_DEFAULT or fxFade
 
     -- ------------------------- 3) les macros -------------------------
     -- TOUT le board est fait de macros : c'est le seul mecanisme ou la
@@ -1496,37 +1594,55 @@ local function main(display_handle)
         makeSlotRow(macC1Hdr, macC1_0, pFx1, "FX C1", "C1", 1)
         makeSlotRow(macC2Hdr, macC2_0, pFx2, "FX C2", "C2", math.min(8, nColors))
 
-        -- 3f) Derniere rangee : elle n'existe QUE pour le moteur classique.
-        --     En phaser, la vitesse vient du Speed Master (un fader), pas
-        --     de boutons sur le board, et un fondu de cue ne toucherait pas
-        --     la transition interne du phaser.
-        if fxSpeedM == 0 then
-            -- BOUCLE FOLLOW : la rangee regle le fondu entre les deux
-            -- couleurs (CueInFade des DEUX cues de la boucle).
-            local function fxFadeLabel(v)
+        -- 3f) Derniere rangee : le passage d'une couleur FX a l'autre,
+        --     de SEC ("1 1 1 1") a SMOOTH. Meme rangee, meme place, mais
+        --     chaque moteur a son propre reglage :
+        --       classique -> CueInFade des DEUX cues de la boucle,
+        --       phaser    -> TRANSITION des DEUX pas, en % de la duree du
+        --                    pas (un fondu de cue ne toucherait pas la
+        --                    transition interne d'un phaser).
+        --     En phaser, la rangee n'apparait que si la sonde a confirme
+        --     la propriete sur la console : pas de bouton qui gueule.
+        if fxRow then
+            local function trLabel(pct)
+                if pct == 0   then return "NET"    end
+                if pct == 100 then return "SMOOTH" end
+                return pct .. "%"
+            end
+            local function hdrLabel(v)
+                if fxPhaserRow then return "FX TRANSIT " .. trLabel(v) end
+                return "FX FONDU " .. fadeLabel(v)
+            end
+            local function btnLabel(v)
+                if fxPhaserRow then return trLabel(v) end
                 if v == math.floor(v) then return string.format("FX %d", v) end
                 return "FX " .. tostring(v)
             end
-            makeMacro(macFxFHdr, "FX FONDU " .. fadeLabel(fxFade), appDark, {})
-            for vi, v in ipairs(FX_FADES) do
+            makeMacro(macFxFHdr, hdrLabel(fxRowDefault), appDark, {})
+            for vi, v in ipairs(fxRowVals) do
                 local lines = {}
                 for gi = 1, nFx do
                     for di = 1, nDir do
                         for k = 1, 2 do
-                            lines[#lines + 1] = string.format(
-                                'Set Sequence %d Cue %d Property "CueInFade" "%s"',
-                                seqFx(gi, di), k, tostring(v))
+                            if fxPhaserRow then
+                                lines[#lines + 1] =
+                                    setTransCmd(seqFx(gi, di), k, fxTrProp, v)
+                            else
+                                lines[#lines + 1] = string.format(
+                                    'Set Sequence %d Cue %d Property "CueInFade" "%s"',
+                                    seqFx(gi, di), k, tostring(v))
+                            end
                         end
                     end
                 end
-                lines[#lines + 1] = string.format('Label Macro %d "FX FONDU %s"',
-                    macFxFHdr, fadeLabel(v))
-                for vj = 1, nFV do
+                lines[#lines + 1] = string.format('Label Macro %d "%s"',
+                    macFxFHdr, hdrLabel(v))
+                for vj = 1, #fxRowVals do
                     lines[#lines + 1] = string.format('Assign Appearance %d At Macro %d',
                         (vj == vi) and appAccent or appGrey, macFxF0 + vj - 1)
                 end
-                makeMacro(macFxF0 + vi - 1, fxFadeLabel(v),
-                    (v == fxFade) and appAccent or appGrey, lines)
+                makeMacro(macFxF0 + vi - 1, btnLabel(v),
+                    (v == fxRowDefault) and appAccent or appGrey, lines)
             end
         end
     end
@@ -1606,12 +1722,13 @@ local function main(display_handle)
                 x = 2 + ci - 1, y = fy4, clean = true }
         end
         yBottom = fy4
-        -- La rangee de reglage n'existe qu'avec le moteur classique.
-        if fxSpeedM == 0 then
+        -- Rangee de transition : presente dans les deux moteurs, sauf si
+        -- la console n'expose pas la propriete cote phaser.
+        if fxRow then
             local fy5 = fy4 + 1
             elements[#elements + 1] = { object = "Macro " .. macFxFHdr, x = 0, y = fy5,
                 w = 2, noicon = true }
-            for vi = 1, nFV do
+            for vi = 1, #fxRowVals do
                 elements[#elements + 1] = { object = "Macro " .. (macFxF0 + vi - 1),
                     x = 2 + vi - 1, y = fy5, noicon = true }
             end
@@ -1647,11 +1764,7 @@ local function main(display_handle)
      .. "en restitution et la tuile SE REMPLIT (contour au repos, pave\n"
      .. "plein quand elle joue). Autre tuile = changement de couleur.\n"
      .. "FADE : le bouton ACTIF est surligne, le titre affiche la valeur.\n"
-     .. "FX FONDU (derniere rangee) : 0 = passage SEC, chaque machine\n"
-     .. "bascule net a son tour -> la vague se lit, et aucune couleur\n"
-     .. "intermediaire n'apparait. Un fondu > 0 fait passer la console par\n"
-     .. "le melange RVB des deux couleurs (jaune+bleu = gris-blanc) et\n"
-     .. "brouille la vague : garde-le COURT devant l'etalement.\n"
+     .. "%s"
      .. "%s"
      .. "FX (bout des lignes de groupes) : 5 formes —\n"
      .. "J>C jardin>cour, C>J cour>jardin, E>I bords vers centre,\n"
@@ -1672,6 +1785,26 @@ local function main(display_handle)
         baseId, seqLast, baseId, macEnd, imagesOk,
         tostring(colorFade), tostring(offFade),
         layNo, placed, placed + failed, note,
+        (not fxRow) and
+            ((fxSpeedM > 0)
+                and "TRANSITION FX : ce build n'expose pas la propriete du\n"
+                 .. "pas de phaser -> la rangee n'a pas ete construite (mieux\n"
+                 .. "vaut pas de bouton qu'un bouton qui sort une erreur en\n"
+                 .. "plein show). Passe en 'Sans master' pour la retrouver.\n"
+                or "")
+         or (fxPhaserRow and
+            ("FX TRANSIT (derniere rangee) : le passage d'une couleur FX a\n"
+          .. "l'autre, en %% de la duree du pas. NET = la couleur tient tout\n"
+          .. "le pas puis BASCULE (le 1 1 1 1) -> la vague se lit et aucune\n"
+          .. "couleur intermediaire n'apparait. SMOOTH = elle glisse pendant\n"
+          .. "tout le pas, mais la console interpole le RVB : entre deux\n"
+          .. "couleurs opposees (jaune/bleu) le milieu vire gris-blanc.\n"
+          .. "25/50/75 %% = elle glisse sur le debut du pas, puis tient.\n")
+         or ("FX FONDU (derniere rangee) : 0 = passage SEC, chaque machine\n"
+          .. "bascule net a son tour -> la vague se lit, et aucune couleur\n"
+          .. "intermediaire n'apparait. Un fondu > 0 fait passer la console\n"
+          .. "par le melange RVB des deux couleurs (jaune+bleu = gris-blanc)\n"
+          .. "et brouille la vague : garde-le COURT devant l'etalement.\n")),
         (fxSpeedM > 0) and string.format(
             "VITESSE DES FX : Speed Master %s = Master 3.%d.\n"
          .. "UN SEUL FADER regle tous les effets. Mets-le sous la main :\n"

@@ -94,19 +94,38 @@ Donc chaque case du board est une macro qui, en une frappe :
     `Assign Master 3.1 At Page 1.201` (ou via la fenêtre *Assign*). En
     ligne de commande : `Master 3.1 At BPM 120`, `At Hz 2`, `At Seconds 0.5`.
     Le board n'a donc **aucune** rangée de vitesse en mode phaser.
-  - Avec le **moteur classique** (*Sans master*), une dernière rangée
-    **`FX FONDU`** apparaît : la transition entre les deux couleurs
-    (`CueInFade` des **deux** cues).
-    - **`FX 0` (défaut)** = passage **sec** : chaque machine bascule net à
-      son tour → la vague se lit, et **aucune couleur intermédiaire**.
-      (Rangée présente uniquement avec le moteur classique.)
-    - **`> 0`** = fondu enchaîné. ⚠️ La console interpole les **composantes
-      RVB** : entre deux couleurs opposées (jaune/bleu, rouge/cyan) le point
-      milieu est **gris-blanc**. Et si le fondu est long devant l'étalement
-      du balayage, la moitié du groupe est en transition en permanence — la
-      vague se brouille et on ne voit plus qu'un « tout bleu / tout blanc ».
-      Garde-le **court devant l'étalement** (0.1–0.2 s pour un étalement
-      de 1 s).
+  - **Dernière rangée : le passage d'une couleur FX à l'autre**, de *sec* à
+    *smooth*. Même rangée, même place, mais chaque moteur a son propre
+    réglage — un phaser n'a pas de « fondu de cue » entre ses deux couleurs.
+
+    | Moteur | Rangée | Ce qu'elle écrit |
+    | --- | --- | --- |
+    | phaser (Speed Master) | **`FX TRANSIT`** — `NET` `25%` `50%` `75%` `SMOOTH` | `Transition` des **deux pas**, en % de la durée du pas |
+    | classique (*Sans master*) | **`FX FONDU`** — `FX 0` … `FX 1` | `CueInFade` des **deux cues** de la boucle |
+
+    - **`NET` / `FX 0` (défaut)** = la couleur tient tout le pas puis
+      **bascule** — le « 1 1 1 1 ». La vague se lit et **aucune couleur
+      intermédiaire** n'apparaît.
+    - **`SMOOTH` / `> 0`** = fondu enchaîné. ⚠️ La console interpole les
+      **composantes RVB** : entre deux couleurs opposées (jaune/bleu,
+      rouge/cyan) le point milieu est **gris-blanc**. Et si le fondu est
+      long devant l'étalement du balayage, la moitié du groupe est en
+      transition en permanence — la vague se brouille et on ne voit plus
+      qu'un « tout bleu / tout blanc ». En classique, garde-le **court
+      devant l'étalement** (0.1–0.2 s pour un étalement de 1 s).
+    - **`25 / 50 / 75 %`** (phaser) = la couleur glisse sur le **début** du
+      pas, puis tient jusqu'à la fin. C'est le juste milieu.
+  - **La propriété `Transition` est SONDÉE, jamais devinée.** Sur la
+    première recette construite, le plugin ouvre le pas
+    (`Sequence N Cue 1 Part 0.1.'PhaserRecipeSteps'.1`), **liste** ses
+    propriétés (`PropertyCount` / `PropertyName`), écrit une valeur **par le
+    handle** (muet — pas de ligne de commande, donc pas de notification),
+    puis vérifie qu'une écriture **en ligne de commande** — la forme que les
+    boutons du board utiliseront — change bien la valeur relue. Si l'une des
+    étapes échoue, **la rangée n'est pas construite du tout** : mieux vaut un
+    bouton absent qu'un bouton qui sort une notification rouge en plein show.
+    (C'est ce qui était arrivé avec `Set Sequence 137 Cue 2 …` : un phaser
+    n'a **qu'une** cue.)
   - Les pastilles copient en **`/Overwrite`** : le slot contient **exactement**
     la couleur choisie. (En `/Merge`, tout attribut déjà dans le slot — canal
     blanc, reste d'une couleur précédente — survivait et se mélangeait :
@@ -225,13 +244,14 @@ appearances) sont **stables** quel que soit le nombre de couleurs choisi.
 | Fade arrêt (s)       | `2`     | Fondu au relâché.                                   |
 | Vitesse FX (s)       | `1`     | Battement de la boucle FX / étalement du balayage.  |
 | Fondu FX (s)         | `0`     | Transition des boucles (moteur classique).          |
-
-Le **Speed Master** ne se règle pas ici : il a son **propre écran** au
-lancement (1–15, 16 = BPM, ou *Sans master* pour l'ancien moteur).
 | ID de départ         | `101`   | Début de numérotation (seq / macro / appearance).   |
 | Layout (No)          | `1`     | Numéro du Layout généré.                            |
 
 La virgule décimale est acceptée (`0,5` = `0.5`).
+
+Le **Speed Master** ne se règle pas ici : il a son **propre écran** au
+lancement (1–15, 16 = BPM, ou *Sans master* pour l'ancien moteur). La
+**transition** des FX, elle, se règle sur le board, en live.
 
 ## Palette (12, toutes utilisées par défaut)
 
@@ -276,6 +296,14 @@ parce que chacun était un échec silencieux dans les versions précédentes :
 - Cues écrites via `ColorRGB_R/G/B` (%) **puis** `At Preset 4.x` — la cue est
   liée au preset ; la console convertit vers les autres systèmes de couleur
   (RGBW, CMY…).
+- **Transition d'un pas de phaser** : c'est une *Step Layer* documentée
+  (manuel 2.4, *Phasers*), exprimée en **% de la durée du pas** — 0 % = la
+  valeur bascule net, 100 % = elle glisse pendant tout le pas. Le plugin ne
+  **suppose** pas son nom : il liste les propriétés de l'objet
+  (`PropertyCount` / `PropertyName`) et ne construit la rangée que si
+  l'écriture par handle **et** l'écriture en ligne de commande passent
+  toutes les deux. Une propriété devinée, c'est soit un no-op silencieux,
+  soit une notification rouge en plein show.
 - ⚠️ **`OffFade` n'est PAS une propriété de séquence** sur 2.5 : chaque
   `Set Sequence X Property "OffFade"` produisait une notification rouge
   *Illegal property* — une par séquence à la génération, et **48 par appui**
