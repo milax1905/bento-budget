@@ -10,16 +10,20 @@
 --  le plugin a pu confirmer, sur TA console, ou vit la transition d'un
 --  pas de phaser. Chez toi il ne la trouve pas. Ce dump dit pourquoi.
 --
---  Usage : lance-le, donne le numero d'une sequence FX (149 par
---  defaut = la premiere), screenshot le resultat.
+--  Usage : lance-le et laisse "auto" — il BALAIE le pool, liste les
+--  sequences du board et choisit tout seul la premiere FX. (Leur numero
+--  depend du nombre de lignes : 3 lignes x 12 couleurs = FX a partir de
+--  137, 4 lignes = 149... d'ou l'auto-detection.) Screenshot le resultat.
 -- =====================================================================
 
-local VERSION = "1.0"
+local VERSION = "1.1"
 
 local MAXDEPTH = 8      -- profondeur d'exploration
 local MAXNODES = 200    -- garde-fou : on n'explore pas un show entier
 local MAXPROPS = 60     -- proprietes listees par objet
 local BOXLINES = 34     -- lignes montrees dans la fenetre
+local SCAN_FROM = 101   -- plage balayee pour retrouver le board
+local SCAN_TO   = 320
 
 local function safe(f, dflt)
     local ok, v = pcall(f)
@@ -67,19 +71,53 @@ local function main()
         title   = "CPDiag  v" .. VERSION .. "  -  diagnostic Color Picker",
         message = "Outil de LECTURE SEULE : aucune commande n'est envoyee,\n"
                .. "rien n'est modifie dans le show.\n\n"
-               .. "Donne le numero d'une sequence FX du board (la premiere\n"
-               .. "est 149 avec les reglages par defaut), puis screenshot le\n"
-               .. "resultat : il dit ou vit la transition des pas de phaser.",
+               .. "Laisse 'auto' : il balaie le pool, liste les sequences du\n"
+               .. "board et prend la premiere FX tout seul (leur numero depend\n"
+               .. "du nombre de lignes, autant ne pas le deviner).\n\n"
+               .. "Puis screenshot chaque page (bouton Suite).",
         commands = { { value = 1, name = "Analyser" }, { value = 0, name = "Annuler" } },
-        inputs   = { { name = "Sequence FX (No)", value = "149" } },
+        inputs   = { { name = "Sequence (No, ou 'auto')", value = "auto" } },
     })
     if not box or box.result ~= 1 then return end
-    local sq = math.floor(tonumber(box.inputs["Sequence FX (No)"]) or 149)
+    local typed = tostring(box.inputs["Sequence (No, ou 'auto')"] or "auto")
+    local sq = tonumber(typed)
+    if sq then sq = math.floor(sq) end
 
     local out = {}
     local function add(fmt, ...)
         local ok, s = pcall(string.format, fmt, ...)
         out[#out + 1] = ok and s or tostring(fmt)
+    end
+
+    -- 0) inventaire : quelles sequences le board a-t-il vraiment creees ?
+    --    Leur numero depend du nombre de lignes, donc on ne le devine pas.
+    add("--- sequences trouvees (%d..%d) ---", SCAN_FROM, SCAN_TO)
+    local found, firstFx = {}, nil
+    for n = SCAN_FROM, SCAN_TO do
+        local h = exists(string.format("Sequence %d", n))
+        if h then
+            local nm = tostring(nameOf(h) or "")
+            found[#found + 1] = { no = n, name = nm }
+            if not firstFx and nm:sub(1, 2) == "FX" then firstFx = n end
+        end
+    end
+    if #found == 0 then
+        add("aucune sequence dans cette plage — le board a-t-il ete genere ?")
+    else
+        add("%d sequences, de %d a %d", #found, found[1].no, found[#found].no)
+        -- on n'imprime pas les 60 couleurs : seulement les FX et les bornes
+        for _, f in ipairs(found) do
+            if f.name:sub(1, 2) == "FX" then add("  %d  %s", f.no, f.name) end
+        end
+        if not firstFx then
+            add("  (aucune nommee 'FX ...' : premiere = %d '%s')",
+                found[1].no, found[1].name)
+        end
+    end
+
+    if not sq then
+        sq = firstFx or (found[1] and found[1].no) or 101
+        add("auto -> sequence %d", sq)
     end
 
     add("CPDiag v%s  -  Sequence %d", VERSION, sq)
