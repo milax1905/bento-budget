@@ -303,7 +303,7 @@ local function selectionAddrs(cap)
                 local sf = GetSubfixture(idx)
                 if not sf then return end
                 local fid = sf.FID or sf.fid
-                if fid and tonumber(fid) then
+                if fid and tonumber(fid) and tonumber(fid) >= 1 then
                     addr = string.format("Fixture %d", math.floor(tonumber(fid)))
                 elseif sf.ToAddr then
                     -- cellule (subfixture) : "Fixture 301.1"
@@ -355,21 +355,39 @@ local function makeAppearance(no, name, r, g, b)
     end)
 end
 
+-- Nombre de macros dont les LIGNES n'ont pas pu etre ecrites : une macro
+-- vide a l'air parfaite sur le layout et ne fait rien -> on le signale.
+local macroLineFails = 0
+
 local function makeMacro(no, name, appNo, lines)
     Cmd(string.format('Store Macro %d /NoConfirm', no))
     Cmd(string.format('Label Macro %d "%s"', no, name))
     if appNo then
         Cmd(string.format('Assign Appearance %d At Macro %d', appNo, no))
     end
-    pcall(function()
-        local m = ObjectList("Macro " .. no)[1]
-        if m then
-            for _, cmd in ipairs(lines) do
-                local ml = m:Append()
-                ml:Set("Command", cmd)
+    if #lines == 0 then return end
+    -- Cmd() poste sur la ligne de commande : l'objet n'existe pas
+    -- forcement a l'instruction Lua suivante. On retente en laissant la
+    -- console respirer plutot que de fabriquer une tuile morte.
+    local written = false
+    for attempt = 1, 3 do
+        pcall(function()
+            local m = ObjectList("Macro " .. no)[1]
+            if m then
+                for _, cmd in ipairs(lines) do
+                    local ml = m:Append()
+                    ml:Set("Command", cmd)
+                end
+                written = true
             end
-        end
-    end)
+        end)
+        if written then break end
+        pcall(coroutine.yield, 0.05)
+    end
+    if not written then
+        macroLineFails = macroLineFails + 1
+        Printf("[CP] Macro %d (%s) : lignes non ecrites", no, name)
+    end
 end
 
 -- Fade d'entree d'une cue : dans le modele MA3 la propriete vit sur la
@@ -441,15 +459,17 @@ local function fillLayout(layoutNo, elements)
         local py = math.max(0, math.floor((e.y or 0) * stepY))
         local pw = math.max(1, math.floor(w * pitchX + (w - 1) * pitchX * GAP))
         local ph = math.max(1, math.floor(h * pitchY + (h - 1) * pitchY * GAP))
-        local ok = pcall(function()
+        -- Deux chemins possibles selon le build : il suffit que l'UN des
+        -- deux passe pour que la case soit posee.
+        local okA = pcall(function()
             elem.posx = px; elem.posy = py
             elem.positionw = pw; elem.positionh = ph
         end)
-        pcall(function()
+        local okB = pcall(function()
             elem:Set("PositionX", px);  elem:Set("PositionY", py)
             elem:Set("DimensionW", pw); elem:Set("DimensionH", ph)
         end)
-        return ok
+        return okA or okB
     end
 
     -- Decor d'un element de layout : tout est masquable par
@@ -520,6 +540,9 @@ local function fillLayout(layoutNo, elements)
             end
         end
         if ok then placed = placed + 1 else failed = failed + 1 end
+        -- Laisse respirer la console : une centaine de cases, chacune avec
+        -- une dizaine d'ecritures de proprietes.
+        if idx % 16 == 0 then pcall(coroutine.yield, 0) end
     end
 
     return placed, failed
@@ -529,8 +552,9 @@ end
 
 local function main(display_handle)
     -- Il faut des fixtures. Detection SANS toucher au programmer :
-    -- annuler le dialogue doit etre un vrai no-op.
-    if not scanFixtures(200, 1) then
+    -- annuler le dialogue doit etre un vrai no-op. On balaie large (les
+    -- rigs numerotes en 1001+ existent) : la boucle s'arrete au 1er trouve.
+    if not scanFixtures(2000, 1) then
         MessageBox({ title = "Color Picker LIVE",
             message = "Aucune fixture disponible.\nPatche au moins un projecteur RGB.",
             commands = { { value = 1, name = "OK" } } })
@@ -538,8 +562,8 @@ local function main(display_handle)
     end
 
     -- Detection AUTOMATIQUE : groupes d'abord, sinon machines une a une.
-    local autoGroups = scanGroups(100)
-    local autoFix    = (not autoGroups) and scanFixtures(200, MAX_FIXTURE_ROWS + 1) or nil
+    local autoGroups = scanGroups(200)
+    local autoFix    = (not autoGroups) and scanFixtures(2000, MAX_FIXTURE_ROWS + 1) or nil
 
     local found
     if autoGroups then
@@ -625,7 +649,7 @@ local function main(display_handle)
             }
         end
     else
-        local fixIds = parseRange(fixStr) or autoFix or scanFixtures(200, MAX_FIXTURE_ROWS + 1)
+        local fixIds = parseRange(fixStr) or autoFix or scanFixtures(2000, MAX_FIXTURE_ROWS + 1)
         if fixIds and #fixIds > MAX_FIXTURE_ROWS then
             truncated = true
             while #fixIds > MAX_FIXTURE_ROWS do table.remove(fixIds) end
@@ -648,7 +672,13 @@ local function main(display_handle)
     for ti = 2, nTargets do
         local t = targets[ti]
         if seenLbl[t.label] then
-            t.label = t.label .. " " .. tostring(t.gid or ti)
+            -- on suffixe jusqu'a obtenir un nom vraiment libre (un groupe
+            -- peut deja s'appeler "SPOT 2")
+            local base, n = t.label, t.gid or ti
+            repeat
+                t.label = base .. " " .. tostring(n)
+                n = n + 1
+            until not seenLbl[t.label]
         end
         seenLbl[t.label] = true
     end
@@ -770,15 +800,21 @@ local function main(display_handle)
              .. "Image 3.%d -> 3.%d\nMAtricks %d\nLayout %d\n"
              .. "(plages larges : elles nettoient aussi les restes des\n"
              .. "generations precedentes, meme plus grosses).\n\n"
-             .. "Les PRESETS couleur (pool 4) sont conserves, jamais effaces.\n"
+             .. "Tes PRESETS couleur 4.%d -> 4.%d sont CONSERVES (jamais\n"
+             .. "effaces, reutilises tels quels). Seuls les 2 slots du FX,\n"
+             .. "4.%d et 4.%d, sont pilotes par le board.\n"
+             .. "ATTENTION : la generation fait defiler le rig (elle passe\n"
+             .. "par le programmer). A faire avant le show.\n\n"
              .. "Tout ecraser et regenerer ?",
                 baseId, seqDelEnd, baseId, macDelEnd, baseId, appDelEnd,
-                baseId, imgDelEnd, baseId, layNo),
+                baseId, imgDelEnd, baseId, layNo,
+                baseId, baseId + nColors - 1, pFx1, pFx2),
             commands = { { value = 1, name = "Ecraser" }, { value = 0, name = "Annuler" } } })
         if not confirm or confirm.result ~= 1 then return end
         -- Relacher AVANT de supprimer : une sequence effacee en cours de
         -- lecture coupe sa couleur d'un seul coup sur le plateau.
-        Cmd(string.format('Off Sequence %d Thru %d Fade 0', baseId, seqDelEnd))
+        Cmd(string.format('Off Sequence %d Thru %d Fade %s',
+            baseId, seqDelEnd, tostring(offFade)))
         Cmd(string.format('Delete Sequence %d Thru %d /NoConfirm', baseId, seqDelEnd))
         Cmd(string.format('Delete Macro %d Thru %d /NoConfirm', baseId, macDelEnd))
         Cmd(string.format('Delete Appearance %d Thru %d /NoConfirm', baseId, appDelEnd))
@@ -878,10 +914,19 @@ local function main(display_handle)
     end)
     breathe()
 
+    -- ================= PHASE QUI UTILISE LE PROGRAMMER =================
+    -- Tout ce bloc (presets, cues couleur, boucles FX) charge le programmer.
+    -- Il est sous pcall : quoi qu'il arrive, on repasse par un ClearAll —
+    -- un plugin qui meurt en laissant le programmer charge, c'est le rig
+    -- bloque sur une couleur en plein show.
+    local presetsCreated, presetsReused = 0, 0
+    local grpAddrs, grpSet = {}, {}
+    local fxBuilt = 0
+    local okBuild, errBuild = pcall(function()
+
     -- 1b) Presets couleur UNIVERSELS (pool Color = 4), Preset 4.<baseId>...
     --     S'ils existent deja -> REUTILISES tels quels (tes modifs de
     --     couleur survivent aux regenerations). Sinon -> crees.
-    local presetsCreated, presetsReused = 0, 0
     for ci, c in ipairs(colors) do
         local pNo = baseId + ci - 1
         if objectExists(string.format("Preset %d.%d", PT, pNo)) then
@@ -960,7 +1005,6 @@ local function main(display_handle)
     -- Machines de chaque groupe, dans l'ordre : sert au balayage (construit
     -- machine par machine) ET a savoir quels groupes SE CHEVAUCHENT, pour
     -- qu'une couleur coupe toutes les boucles qui touchent ses machines.
-    local grpAddrs, grpSet = {}, {}
     for gi, ti in ipairs(groupTis) do
         Cmd("ClearAll")
         Cmd(targets[ti].sel)
@@ -975,7 +1019,6 @@ local function main(display_handle)
     Cmd("ClearAll")
     breathe()
 
-    local fxBuilt = 0
     for gi, ti in ipairs(groupTis) do
         local t = targets[ti]
         -- Balayage machine par machine avec un "Delay <t>" individuel
@@ -1023,7 +1066,7 @@ local function main(display_handle)
                     -- le "Restart Mode" ; on demande la premiere (silencieux
                     -- si le build nomme la propriete autrement — la boucle a
                     -- 2 cues tourne de toute facon).
-                    pcall(function() s:Set("RestartMode", "FirstCue") end)
+                    pcall(function() s:Set("RestartMode", "First Cue") end)
                     s:Set("OffFade", tostring(offFade))
                     s:Set("OffWhenOverridden", "Yes")
                 end
@@ -1037,9 +1080,20 @@ local function main(display_handle)
         end
         breathe()
     end
-    -- Le programmer ne doit pas rester charge pendant la construction des
-    -- macros et du layout — ni si quelque chose echoue entre-temps.
+    end)   -- ============ fin de la phase "programmer" ============
+    -- Dans TOUS les cas, on rend le programmer propre.
     Cmd("ClearAll")
+    if not okBuild then
+        Printf("[CP] echec pendant la construction : %s", tostring(errBuild))
+        MessageBox({ title = "Color Picker LIVE",
+            message = "La construction s'est interrompue.\n\n"
+                   .. "Le programmer a ete vide (rien ne reste allume par\n"
+                   .. "le plugin). Le board est incomplet : relance la\n"
+                   .. "generation, ou nettoie les plages affichees.\n\n"
+                   .. "Detail : " .. tostring(errBuild),
+            commands = { { value = 1, name = "OK" } } })
+        return
+    end
 
     -- ------------------------- 3) les macros -------------------------
     -- TOUT le board est fait de macros : c'est le seul mecanisme ou la
