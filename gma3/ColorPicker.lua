@@ -5,13 +5,14 @@
 --
 --      LIGNE            COULEURS (tuiles tappables) ->            FX ->
 --    [ ALL        ]   [Red][Orange][Amber] ... [White]
---    [ SPOT       ]   [Red][Orange][Amber] ... [White]   [J>C][C>J][SYM]
---    [ WASH       ]   [Red][Orange][Amber] ... [White]   [J>C][C>J][SYM]
+--    [ SPOT       ]   [Red][Orange][Amber] ... [White]   [J>C][C>J][E>I][I>E][1/2]
+--    [ WASH       ]   [Red][Orange][Amber] ... [White]   [J>C][C>J][E>I][I>E][1/2]
 --    [============== Off All (barre rouge) ===============]
 --    [FADE couleur] [0s][0.5s][1s][2s][3s][4s]   (bouton actif surligne)
 --    [FADE arret  ] [0][0.5][1][2][3][4]
 --    [FX C1 <col> ] [pastilles couleur]   -> couleur 1 de la boucle
 --    [FX C2 <col> ] [pastilles couleur]   -> couleur 2 de la boucle
+--    [FX FONDU    ] [FX 0][FX 0.1][FX 0.2][FX 0.5][FX 1]  (sec <-> fondu)
 --    + banniere titre en haut (l'axe Y du layout est inverse a la fin).
 --
 --  MECANIQUE (v7) — tout le board est fait de MACROS :
@@ -29,7 +30,8 @@
 --  - "Off When Overridden" sur les sequences : la couleur precedente se
 --    relache toute seule -> une seule tuile allumee par ligne.
 --  - FX : 5 tuiles par ligne de groupe = 5 FORMES d'effet, chacune une
---    boucle C1<->C2 (2 cues en Follow + WrapAround) :
+--    boucle C1<->C2 (2 cues en Follow + WrapAround, balayage par delais
+--    individuels — le SEUL moteur valide sur console 2.5) :
 --      J>C  balayage jardin -> cour        C>J  cour -> jardin
 --      E>I  des bords vers le centre       I>E  du centre vers les bords
 --      1/2  damier : une machine sur deux en C1, l'autre moitie en C2,
@@ -46,7 +48,7 @@
 -- la console a REELLEMENT chargee (apres un ReloadAllPlugins). Les macros
 -- deja stockees dans le show, elles, datent de la derniere GENERATION —
 -- c'est pour ca qu'un correctif n'agit qu'apres avoir regenere.
-local VERSION = "7.10"
+local VERSION = "8.0"
 
 -- Palette en ordre ARC-EN-CIEL (blanc en dernier). Chaque couleur a deux
 -- appearances : contour (repos) et pleine (tuile active -> "se remplit").
@@ -88,29 +90,18 @@ local FX_SWEEP_DEFAULT = 1
 -- D'ou le defaut a 0, et des valeurs COURTES devant l'etalement (1 s).
 local FX_FADES = { 0, 0.1, 0.2, 0.5, 1 }
 
--- Meme reglage, version PHASER. Un phaser n'a pas de "fondu de cue" entre
--- ses deux couleurs : il a une TRANSITION, exprimee en % de la duree du
--- pas (manuel 2.4, Phasers > Step Layers).
---   0 %   = la couleur tient tout le pas puis BASCULE NET  -> "1 1 1 1"
---   100 % = elle glisse vers la suivante pendant tout le pas -> smooth
--- (entre les deux : elle glisse sur le debut du pas, puis tient.)
-local FX_TRANS = { 0, 25, 50, 75, 100 }
-local FX_TRANS_DEFAULT = 0
-
 -- Sens du balayage : une sequence FX par sens et par groupe.
 --   J = jardin (debut du groupe), C = cour (fin du groupe),
 --   E = exterieur (les bords), I = interieur (le centre).
 --   fan  = forme du delay individuel le long du groupe.
 --   fb   = commande de repli si on ne peut pas enumerer les fixtures
 --          (nil = pas de delay du tout).
---   phase/wings/group = la MEME forme, exprimee pour le moteur PHASER
---   (la phase remplace le delay : 0..360 le long du groupe).
 local FX_DIRS = {
-    { lbl = "J>C", fan = "fwd",    fb = "Delay 0 Thru %s", phase = "0 Thru 360" },
-    { lbl = "C>J", fan = "rev",    fb = "Delay %s Thru 0", phase = "360 Thru 0" },
-    { lbl = "E>I", fan = "sym",    fb = "Delay 0 Thru %s", phase = "0 Thru 360", wings = 2 },
-    { lbl = "I>E", fan = "symOut", fb = "Delay 0 Thru %s", phase = "360 Thru 0", wings = 2 },
-    { lbl = "1/2", fan = "alt",    fb = nil,               phase = "0 Thru 360", groups = 2 },
+    { lbl = "J>C", fan = "fwd",    fb = "Delay 0 Thru %s" },
+    { lbl = "C>J", fan = "rev",    fb = "Delay %s Thru 0" },
+    { lbl = "E>I", fan = "sym",    fb = "Delay 0 Thru %s" },
+    { lbl = "I>E", fan = "symOut", fb = "Delay 0 Thru %s" },
+    { lbl = "1/2", fan = "alt",    fb = nil },
 }
 
 -- Position du delay (0..1) de la i-eme machine d'un groupe de n.
@@ -280,145 +271,6 @@ local function objectExists(addr)
         if ObjectList(addr)[1] then exists = true end
     end)
     return exists
-end
-
--- ------------------ transition des pas d'un phaser -------------------
--- Un phaser n'a pas de "fondu de cue" entre ses deux couleurs : il a une
--- TRANSITION, en % de la duree du pas (manuel 2.4, Phasers > Step Layers).
--- Reste a savoir OU elle vit : selon le build, la recette la porte sur le
--- PAS lui-meme, ou sur la VALEUR du pas (le meme objet ou l'on assigne
--- deja le preset, en .1.1). On ne devine pas : on cherche l'objet, on
--- LISTE ses proprietes, et on ne garde une forme de commande que si elle
--- change vraiment la valeur relue.
-
--- Chemins candidats, du plus probable au moins probable.
-local STEP_PATHS = {
-    "Sequence %d Cue 1 Part 0.1.'PhaserRecipeSteps'.%d",
-    "Sequence %d Cue 1 Part 0.1.'PhaserRecipeSteps'.%d.1",
-}
-
-local function isObj(v)
-    return v ~= nil and type(v) ~= "string" and type(v) ~= "number"
-        and type(v) ~= "boolean"
-end
-
-local function nthChild(o, n)
-    local c
-    pcall(function() c = o:Ptr(n) end)
-    if not isObj(c) then
-        pcall(function()
-            local ch = o:Children()
-            if ch then c = ch[n] end
-        end)
-    end
-    return isObj(c) and c or nil
-end
-
--- Descente par HANDLES : rien ne garantit que le parseur d'ADRESSES
--- accepte un chemin imbrique comme ".'PhaserRecipeSteps'.1" — alors qu'on
--- peut toujours descendre l'arbre objet par objet. C'est le filet.
-local function digSteps(sq)
-    local steps, seen = nil, 0
-    pcall(function()
-        local cue = ObjectList(string.format("Sequence %d Cue 1", sq))[1]
-        if not cue then return end
-        local function dig(o, depth)
-            if steps or depth > 4 or seen > 400 then return end
-            seen = seen + 1
-            local s
-            pcall(function() s = o:Get("PhaserRecipeSteps") end)
-            if isObj(s) then steps = s; return end
-            local ch
-            pcall(function() ch = o:Children() end)
-            if ch then for i = 1, #ch do dig(ch[i], depth + 1) end end
-        end
-        dig(cue, 0)
-    end)
-    return steps
-end
-
--- Un handle du pas <step> par niveau candidat (adresse directe d'abord,
--- descente par handles en repli).
-local function stepHandles(sq, step)
-    local out = {}
-    for i, fmt in ipairs(STEP_PATHS) do
-        pcall(function() out[i] = ObjectList(string.format(fmt, sq, step))[1] end)
-    end
-    local steps = digSteps(sq)
-    if steps then
-        local st = nthChild(steps, step)
-        if st then
-            out[1] = out[1] or st
-            out[2] = out[2] or nthChild(st, 1)
-        end
-    end
-    return out, (steps ~= nil)
-end
-
-local function propRead(h, prop)
-    local v
-    pcall(function() v = h:Get(prop, Enums.Roles.Display) end)
-    if v == nil then pcall(function() v = h:Get(prop) end) end
-    if v == nil then return nil end
-    return tostring(v)
-end
-
-local function findProp(h, want)
-    local name, all = nil, {}
-    pcall(function()
-        for i = 1, h:PropertyCount() do
-            local pn = h:PropertyName(i)
-            if pn then
-                all[#all + 1] = pn
-                if string.lower(pn) == want then name = pn end
-            end
-        end
-    end)
-    return name, all
-end
-
--- Renvoie { fmt = <format de commande>, prop = <nom> }, ou nil + un DIAG
--- lisible. Le diag n'est pas cosmetique : quand la rangee manque, c'est
--- lui qui dit si la recette de phaser existe, et sinon quelles proprietes
--- l'objet porte vraiment.
-local function probeTransition(sq)
-    local diag = {}
-    local hs, gotSteps = stepHandles(sq, 1)
-    if not gotSteps and not hs[1] and not hs[2] then
-        diag[#diag + 1] = "aucune recette de phaser trouvee dans la cue"
-    end
-    for i, fmt in ipairs(STEP_PATHS) do
-        local h = hs[i]
-        if not h then
-            diag[#diag + 1] = string.format("niveau %d : objet introuvable", i)
-        else
-            local prop, all = findProp(h, "transition")
-            if not prop then
-                diag[#diag + 1] = string.format("niveau %d : %s", i,
-                    (#all > 0) and table.concat(all, " ") or "aucune propriete listee")
-            else
-                -- Etape MUETTE : ecriture par le handle. Si l'objet
-                -- n'accepte pas la propriete, ca rate sans un mot (pas de
-                -- ligne de commande, donc pas de notification rouge).
-                pcall(function() h:Set(prop, "13") end)
-                local a = propRead(h, prop)
-                local ok = false
-                pcall(function()
-                    Cmd(string.format("Set " .. fmt .. " Property '%s' '77'", sq, 1, prop))
-                    ok = (propRead(h, prop) ~= a)
-                end)
-                if ok then return { fmt = fmt, prop = prop }, diag end
-                diag[#diag + 1] = string.format(
-                    "niveau %d : %s presente, la commande ne prend pas", i, prop)
-            end
-        end
-    end
-    return nil, diag
-end
-
-local function setTransCmd(tr, sq, step, pct)
-    return string.format("Set " .. tr.fmt .. " Property '%s' '%d'",
-        sq, step, tr.prop, pct)
 end
 
 -- Un groupe existant n'expose PAS ses fixtures via Children() -> on teste
@@ -777,7 +629,6 @@ local function main(display_handle)
     local layNo     = 1
     local fxSweep   = FX_SWEEP_DEFAULT
     local fxFade    = 0
-    local fxSpeedM  = 1
 
     local first = MessageBox({
         title    = "Color Picker LIVE  v" .. VERSION,
@@ -831,35 +682,6 @@ local function main(display_handle)
         fxFade    = toNum(cfg.inputs["Fondu FX (s, 0 = sec)"], 0, 0, 60)
         baseId    = math.floor(toNum(cfg.inputs["ID de depart (seq/macro/appearance)"], 101, 1, 100000))
         layNo     = math.floor(toNum(cfg.inputs["Layout (No)"], 1, 1, 100000))
-    end
-
-    -- ------- ecran dedie : quel SPEED MASTER pilote les FX ? -------
-    -- Un seul fader regle la vitesse de TOUS les effets, en direct. C'est
-    -- le seul reglage qui change le MOTEUR des FX, d'ou son propre ecran.
-    local smBox = MessageBox({
-        title    = "Color Picker LIVE  v" .. VERSION .. "  -  Vitesse des FX",
-        message  = "Les FX sont des PHASERS : leur vitesse suit un SPEED MASTER.\n"
-                .. "Un seul fader regle alors TOUS les effets, en direct.\n\n"
-                .. "Numero du Speed Master (pool Master 3) :\n"
-                .. "   1 a 15  ->  Speed1 ... Speed15\n"
-                .. "   16      ->  BPM (suit l'entree son)\n\n"
-                .. "Pour l'avoir sous la main, assigne-le a un executeur :\n"
-                .. "   Assign Master 3.1 At Page 1.201\n"
-                .. "(ou depuis la fenetre Assign, comme sur ton ecran).\n\n"
-                .. "SANS MASTER : les FX repassent sur l'ancien moteur\n"
-                .. "(boucle a 2 cues), vitesse figee a la generation.",
-        commands = {
-            { value = 1, name = "Utiliser ce master" },
-            { value = 2, name = "Sans master" },
-            { value = 0, name = "Annuler" },
-        },
-        inputs = { { name = "Speed Master (1-16)", value = "1" } },
-    })
-    if not smBox or smBox.result == 0 or smBox.result == nil then return end
-    if smBox.result == 2 then
-        fxSpeedM = 0
-    else
-        fxSpeedM = math.floor(toNum(smBox.inputs["Speed Master (1-16)"], 1, 1, 16))
     end
 
     local colors = {}
@@ -974,7 +796,7 @@ local function main(display_handle)
     local macC1_0     = macC1Hdr + 1                -- .. + NC - 1
     local macC2Hdr    = macC1_0 + NC
     local macC2_0     = macC2Hdr + 1                -- .. + NC - 1
-    local nFV         = math.max(#FX_FADES, #FX_TRANS)
+    local nFV         = #FX_FADES
     local macFxFHdr   = macC2_0 + NC                -- "FX FONDU <v>"
     local macFxF0     = macFxFHdr + 1               -- .. + nFV - 1
     local macTile0    = macFxF0 + nFV               -- tuiles couleur
@@ -1185,12 +1007,6 @@ local function main(display_handle)
     local presetsCreated, presetsReused, presetsFixed = 0, 0, 0
     local grpAddrs, grpSet = {}, {}
     local fxBuilt = 0
-    -- Nom reel de la propriete "transition" d'un pas de phaser, decouvert
-    -- sur la premiere recette construite (nil = ce build ne l'expose pas
-    -- -> la rangee de reglage ne sera pas construite).
-    local fxTrProp   = nil     -- { fmt = ..., prop = ... }
-    local fxTrDiag   = nil     -- pourquoi ca a rate, en clair
-    local fxTrProbed = false
     local okBuild, errBuild = pcall(function()
 
     -- 1b) Presets couleur UNIVERSELS (pool Color = 4), Preset 4.<baseId>...
@@ -1285,11 +1101,11 @@ local function main(display_handle)
     end
     Cmd("ClearAll")
 
-    -- 2b) Sequences FX : 3 par groupe (un SENS de balayage chacune).
+    -- 2b) Sequences FX : 5 par groupe (une FORME de balayage chacune).
     --     Construites par COMMANDES (le seul chemin fiable de bout en
     --     bout) : cue 1 = groupe At Preset SLOT C1, cue 2 = SLOT C2, avec
     --     un delay individuel reparti sur le groupe (sens = J>C, C>J ou
-    --     SYM), les deux cues en TrigType Follow + WrapAround -> boucle.
+    --     E>I, I>E ou 1/2), les deux cues en TrigType Follow + WrapAround.
     --     Les cues referencent les presets slots -> les pastilles C1/C2
     --     re-teintent la boucle meme en cours de route.
     -- Machines de chaque groupe, dans l'ordre : sert au balayage (construit
@@ -1317,56 +1133,6 @@ local function main(display_handle)
         local addrs = grpAddrs[gi]
         for di, dir in ipairs(FX_DIRS) do
             local no = seqFx(gi, di)
-
-            -- ---------------- moteur PHASER (Speed Master) ---------------
-            -- Une seule cue qui contient une RECETTE DE PHASER : le groupe,
-            -- deux pas (les presets slots C1/C2) et la PHASE repartie le
-            -- long du groupe (0->360 = le balayage). C'est la seule forme
-            -- que la propriete "SpeedMaster" d'une sequence pilote vraiment
-            -- — sur une boucle Follow, l'assignation passe... et ne fait
-            -- rien. Bonus : cette construction ne touche PAS au programmer.
-            if fxSpeedM > 0 then
-                Cmd(string.format('Store Sequence %d Cue 1 /Overwrite /NoConfirmation', no))
-                Cmd(string.format("Store Type 'PhaserRecipe' Sequence %d Cue 1 Part 0.1", no))
-                Cmd(string.format('Assign Group %d At Sequence %d Cue 1 Part 0.1', t.gid, no))
-                Cmd(string.format("Assign Preset %d.%d At Sequence %d Cue 1 Part 0.1.'PhaserRecipeSteps'.1.1",
-                    PT, pFx1, no))
-                Cmd(string.format("Assign Preset %d.%d At Sequence %d Cue 1 Part 0.1.'PhaserRecipeSteps'.2.1",
-                    PT, pFx2, no))
-                Cmd(string.format("Set Sequence %d Cue 1 Part 0.1 Property 'PhaseX' '%s'",
-                    no, dir.phase))
-                -- meme forme que les balayages : ailes = symetrique,
-                -- groupes = une machine sur deux.
-                if dir.wings then
-                    Cmd(string.format("Set Sequence %d Cue 1 Part 0.1 Property 'XWings' '%d'",
-                        no, dir.wings))
-                end
-                if dir.groups then
-                    Cmd(string.format("Set Sequence %d Cue 1 Part 0.1 Property 'XGroup' '%d'",
-                        no, dir.groups))
-                end
-                Cmd(string.format("Set Sequence %d 'SpeedMaster' '%s'", no,
-                    (fxSpeedM == 16) and "BPM" or ("Speed" .. fxSpeedM)))
-                Cmd(string.format("Set Sequence %d 'SpeedScale' 'One'", no))
-                setCueFade(no, 1, fxFade)
-                -- Une seule sonde pour tout le board : le premier phaser
-                -- construit sert de cobaye, les autres suivent.
-                if not fxTrProbed then
-                    fxTrProbed = true
-                    local d
-                    fxTrProp, d = probeTransition(no)
-                    fxTrDiag = (d and #d > 0) and table.concat(d, " | ") or nil
-                    Printf("[CP] transition de pas : %s",
-                        fxTrProp and (fxTrProp.prop .. " via " .. fxTrProp.fmt)
-                                 or ("introuvable -> " .. tostring(fxTrDiag)))
-                end
-                if fxTrProp then
-                    for st = 1, 2 do
-                        Cmd(setTransCmd(fxTrProp, no, st, FX_TRANS_DEFAULT))
-                    end
-                end
-                goto fxCommon
-            end
 
             for k, slot in ipairs({ pFx1, pFx2 }) do
                 Cmd("ClearAll")
@@ -1403,25 +1169,20 @@ local function main(display_handle)
                 -- sensible a la casse : "Follow") — manuel + forum MA.
                 Cmd(string.format('Set Sequence %d Cue %d Property "TrigType" "Follow"', no, k))
             end
-            ::fxCommon::
             Cmd(string.format('Label Sequence %d "FX %s %s"', no, t.label, dir.lbl))
             Cmd(string.format('Assign Appearance %d At Sequence %d', appFxOn, no))
-            if fxSpeedM == 0 then
-                Cmd(string.format('Set Sequence %d Property "WrapAround" "Yes"', no))
-            end
+            Cmd(string.format('Set Sequence %d Property "WrapAround" "Yes"', no))
             Cmd(string.format('Set Sequence %d Property "OffWhenOverridden" "Yes"', no))
             pcall(function()
                 local s = ObjectList("Sequence " .. no)[1]
                 if s then
-                    if fxSpeedM == 0 then
-                        for ki = 1, 2 do
-                            pcall(function()
-                                local cue = ObjectList(string.format("Sequence %d Cue %d", no, ki))[1]
-                                if cue then cue:Set("TrigType", "Follow") end
-                            end)
-                        end
-                        pcall(function() s:Set("WrapAround", "Yes") end)
+                    for ki = 1, 2 do
+                        pcall(function()
+                            local cue = ObjectList(string.format("Sequence %d Cue %d", no, ki))[1]
+                            if cue then cue:Set("TrigType", "Follow") end
+                        end)
                     end
+                    pcall(function() s:Set("WrapAround", "Yes") end)
                     -- Go+ repart de la cue courante ou de la premiere selon
                     -- le "Restart Mode" ; on demande la premiere (silencieux
                     -- si le build nomme la propriete autrement — la boucle a
@@ -1430,8 +1191,7 @@ local function main(display_handle)
                     s:Set("OffWhenOverridden", "Yes")
                 end
             end)
-            if objectExists(string.format("Sequence %d Cue %d", no,
-                    (fxSpeedM > 0) and 1 or 2)) then
+            if objectExists(string.format("Sequence %d Cue 2", no)) then
                 fxBuilt = fxBuilt + 1
             else
                 Printf("[CP] FX sequence %d (%s %s) : construction incomplete",
@@ -1454,13 +1214,6 @@ local function main(display_handle)
             commands = { { value = 1, name = "OK" } } })
         return
     end
-
-    -- Quel reglage la derniere rangee pilote-t-elle ? Ca depend du moteur
-    -- ET, en phaser, de ce que la console expose vraiment.
-    local fxPhaserRow = (fxSpeedM > 0) and (fxTrProp ~= nil)
-    local fxRow       = (nFx > 0) and (fxSpeedM == 0 or fxPhaserRow)
-    local fxRowVals   = fxPhaserRow and FX_TRANS or FX_FADES
-    local fxRowDefault = fxPhaserRow and FX_TRANS_DEFAULT or fxFade
 
     -- ------------------------- 3) les macros -------------------------
     -- TOUT le board est fait de macros : c'est le seul mecanisme ou la
@@ -1570,19 +1323,18 @@ local function main(display_handle)
         breathe()
     end
 
-    -- 3b) Tuiles FX (3 sens par ligne de groupe).
+    -- 3b) Tuiles FX (5 formes par ligne de groupe).
     for gi, ti in ipairs(groupTis) do
         local t = targets[ti]
         for di, dir in ipairs(FX_DIRS) do
             local me = macFx(gi, di)
-            -- Relache les 3 sens de la ligne AVEC un fondu : sans lui, la
+            -- Relache les 5 formes de la ligne AVEC un fondu : sans lui, la
             -- boucle en cours lache d'un coup et le groupe retombe a sa
             -- couleur par defaut (flash blanc) avant que la nouvelle
             -- boucle ne monte. Go+ (et non Goto) enchaine les cues Follow.
             local lines = {
                 offCmd(seqFx(gi, 1), seqFx(gi, nDir), colorFade),
-                (fxSpeedM > 0) and gotoCmd(seqFx(gi, di), 0)
-                                or goPlusCmd(seqFx(gi, di)),
+                goPlusCmd(seqFx(gi, di)),
             }
             lines[#lines + 1] = string.format('Assign Appearance %d At Macro %d', appFxOn, me)
             resetLines(affectedRows(ti), lines, me)
@@ -1673,56 +1425,34 @@ local function main(display_handle)
         makeSlotRow(macC1Hdr, macC1_0, pFx1, "FX C1", "C1", 1)
         makeSlotRow(macC2Hdr, macC2_0, pFx2, "FX C2", "C2", math.min(8, nColors))
 
-        -- 3f) Derniere rangee : le passage d'une couleur FX a l'autre,
-        --     de SEC ("1 1 1 1") a SMOOTH. Meme rangee, meme place, mais
-        --     chaque moteur a son propre reglage :
-        --       classique -> CueInFade des DEUX cues de la boucle,
-        --       phaser    -> TRANSITION des DEUX pas, en % de la duree du
-        --                    pas (un fondu de cue ne toucherait pas la
-        --                    transition interne d'un phaser).
-        --     En phaser, la rangee n'apparait que si la sonde a confirme
-        --     la propriete sur la console : pas de bouton qui gueule.
-        if fxRow then
-            local function trLabel(pct)
-                if pct == 0   then return "NET"    end
-                if pct == 100 then return "SMOOTH" end
-                return pct .. "%"
-            end
-            local function hdrLabel(v)
-                if fxPhaserRow then return "FX TRANSIT " .. trLabel(v) end
-                return "FX FONDU " .. fadeLabel(v)
-            end
-            local function btnLabel(v)
-                if fxPhaserRow then return trLabel(v) end
-                if v == math.floor(v) then return string.format("FX %d", v) end
-                return "FX " .. tostring(v)
-            end
-            makeMacro(macFxFHdr, hdrLabel(fxRowDefault), appDark, {})
-            for vi, v in ipairs(fxRowVals) do
-                local lines = {}
-                for gi = 1, nFx do
-                    for di = 1, nDir do
-                        for k = 1, 2 do
-                            if fxPhaserRow then
-                                lines[#lines + 1] =
-                                    setTransCmd(fxTrProp, seqFx(gi, di), k, v)
-                            else
-                                lines[#lines + 1] = string.format(
-                                    'Set Sequence %d Cue %d Property "CueInFade" "%s"',
-                                    seqFx(gi, di), k, tostring(v))
-                            end
-                        end
+        -- 3f) Derniere rangee : FX FONDU = le passage d'une couleur FX a
+        --     l'autre, de SEC ("1 1 1 1") a fondu. Elle reecrit le CueInFade
+        --     des DEUX cues de chaque boucle, et s'affiche comme les rangees
+        --     FADE (bouton actif surligne, en-tete relabellee).
+        local function fxFadeLabel(v)
+            if v == math.floor(v) then return string.format("FX %d", v) end
+            return "FX " .. tostring(v)
+        end
+        makeMacro(macFxFHdr, "FX FONDU " .. fadeLabel(fxFade), appDark, {})
+        for vi, v in ipairs(FX_FADES) do
+            local lines = {}
+            for gi = 1, nFx do
+                for di = 1, nDir do
+                    for k = 1, 2 do
+                        lines[#lines + 1] = string.format(
+                            'Set Sequence %d Cue %d Property "CueInFade" "%s"',
+                            seqFx(gi, di), k, tostring(v))
                     end
                 end
-                lines[#lines + 1] = string.format('Label Macro %d "%s"',
-                    macFxFHdr, hdrLabel(v))
-                for vj = 1, #fxRowVals do
-                    lines[#lines + 1] = string.format('Assign Appearance %d At Macro %d',
-                        (vj == vi) and appAccent or appGrey, macFxF0 + vj - 1)
-                end
-                makeMacro(macFxF0 + vi - 1, btnLabel(v),
-                    (v == fxRowDefault) and appAccent or appGrey, lines)
             end
+            lines[#lines + 1] = string.format('Label Macro %d "FX FONDU %s"',
+                macFxFHdr, fadeLabel(v))
+            for vj = 1, nFV do
+                lines[#lines + 1] = string.format('Assign Appearance %d At Macro %d',
+                    (vj == vi) and appAccent or appGrey, macFxF0 + vj - 1)
+            end
+            makeMacro(macFxF0 + vi - 1, fxFadeLabel(v),
+                (v == fxFade) and appAccent or appGrey, lines)
         end
     end
     breathe()
@@ -1740,7 +1470,7 @@ local function main(display_handle)
         w = fullW, noicon = true }
 
     -- Lignes : ALL puis groupes/machines. Colonnes FX en bout de ligne
-    -- pour les groupes (3 sens de balayage).
+    -- pour les groupes (5 formes de balayage).
     local rowTop = 1.3
     for ti, t in ipairs(targets) do
         local row = rowTop + (ti - 1)
@@ -1800,19 +1530,14 @@ local function main(display_handle)
             elements[#elements + 1] = { object = "Macro " .. (macC2_0 + ci - 1),
                 x = 2 + ci - 1, y = fy4, clean = true }
         end
-        yBottom = fy4
-        -- Rangee de transition : presente dans les deux moteurs, sauf si
-        -- la console n'expose pas la propriete cote phaser.
-        if fxRow then
-            local fy5 = fy4 + 1
-            elements[#elements + 1] = { object = "Macro " .. macFxFHdr, x = 0, y = fy5,
-                w = 2, noicon = true }
-            for vi = 1, #fxRowVals do
-                elements[#elements + 1] = { object = "Macro " .. (macFxF0 + vi - 1),
-                    x = 2 + vi - 1, y = fy5, noicon = true }
-            end
-            yBottom = fy5
+        local fy5 = fy4 + 1
+        elements[#elements + 1] = { object = "Macro " .. macFxFHdr, x = 0, y = fy5,
+            w = 2, noicon = true }
+        for vi = 1, nFV do
+            elements[#elements + 1] = { object = "Macro " .. (macFxF0 + vi - 1),
+                x = 2 + vi - 1, y = fy5, noicon = true }
         end
+        yBottom = fy5
     end
 
     -- Le layout MA3 rend l'axe Y vers le HAUT : on inverse les Y pour
@@ -1864,39 +1589,15 @@ local function main(display_handle)
         baseId, seqLast, baseId, macEnd, imagesOk,
         tostring(colorFade), tostring(offFade),
         layNo, placed, placed + failed, note,
-        (not fxRow) and
-            ((fxSpeedM > 0)
-                and ("TRANSITION FX : la rangee n'a pas ete construite — la\n"
-                  .. "console n'a pas confirme la propriete, et je prefere pas\n"
-                  .. "de bouton a un bouton qui sort une erreur en plein show.\n"
-                  .. "En attendant : 'Sans master' te rend la rangee FX FONDU.\n"
-                  .. "CE QUE LA SONDE A VU (envoie-moi cette ligne) :\n"
-                  .. "   " .. tostring(fxTrDiag) .. "\n")
-                or "")
-         or (fxPhaserRow and
-            ("FX TRANSIT (derniere rangee) : le passage d'une couleur FX a\n"
-          .. "l'autre, en %% de la duree du pas. NET = la couleur tient tout\n"
-          .. "le pas puis BASCULE (le 1 1 1 1) -> la vague se lit et aucune\n"
-          .. "couleur intermediaire n'apparait. SMOOTH = elle glisse pendant\n"
-          .. "tout le pas, mais la console interpole le RVB : entre deux\n"
-          .. "couleurs opposees (jaune/bleu) le milieu vire gris-blanc.\n"
-          .. "25/50/75 %% = elle glisse sur le debut du pas, puis tient.\n")
-         or ("FX FONDU (derniere rangee) : 0 = passage SEC, chaque machine\n"
-          .. "bascule net a son tour -> la vague se lit, et aucune couleur\n"
-          .. "intermediaire n'apparait. Un fondu > 0 fait passer la console\n"
-          .. "par le melange RVB des deux couleurs (jaune+bleu = gris-blanc)\n"
-          .. "et brouille la vague : garde-le COURT devant l'etalement.\n")),
-        (fxSpeedM > 0) and string.format(
-            "VITESSE DES FX : Speed Master %s = Master 3.%d.\n"
-         .. "UN SEUL FADER regle tous les effets. Mets-le sous la main :\n"
-         .. "   Assign Master 3.%d At Page 1.201\n"
-         .. "(ou par la fenetre Assign). En ligne de commande :\n"
-         .. "   Master 3.%d At BPM 120   (ou At Hz 2, ou At Seconds 0.5)\n"
-         .. "Si les FX ne partent pas : Options > Speed Master FX = 0 pour\n"
-         .. "Sans master : relance le plugin et choisis 'Sans master'.\n",
-            (fxSpeedM == 16) and "BPM" or ("Speed" .. fxSpeedM),
-            fxSpeedM, fxSpeedM, fxSpeedM)
-         or "Battement/etalement : Options > Vitesse FX (a la generation).\n",
+        "FX FONDU (derniere rangee) : 0 = passage SEC, chaque machine\n"
+     .. "bascule net a son tour -> la vague se lit, et aucune couleur\n"
+     .. "intermediaire n'apparait. Un fondu > 0 fait passer la console\n"
+     .. "par le melange RVB des deux couleurs (jaune+bleu = gris-blanc)\n"
+     .. "et brouille la vague : garde-le COURT devant l'etalement.\n",
+        string.format(
+        "VITESSE DES FX : battement / etalement du balayage = Options >\n"
+     .. "Vitesse FX (a la generation, %ss ici). Pour la changer : regenere.\n",
+            tostring(fxSweep)),
         fxBuilt)
 
     MessageBox({ title = "Color Picker LIVE", message = msg,
