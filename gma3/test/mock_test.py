@@ -5,11 +5,15 @@ La console factice (Lua, via lupa) modelise ce que le plugin observe :
   - Cmd() renvoie "Ok" ou une ERREUR ("Illegal object", "Illegal property",
     "Syntax Error", "Popup" pour une commande qui ouvrirait un popup) ;
   - les sequences, cues, LIGNES DE RECIPE (Selection / Values / timings
-    MAtricks), leur cuisson (Cook /Overwrite), leurs proprietes ;
+    MAtricks), leur cuisson (Cook /Overwrite, /Remove, /MergeLowPriority,
+    par plage ou non), leurs proprietes, relisibles par handle ;
   - "Assign ... Part 0.L" cree la ligne L (configurable pour la ligne 2+,
     afin d'exercer le repli Lua part:Acquire) ;
-  - Go+ execute la colonne CMD de la cue (SetUserVar -> GetVar) ;
-  - les groupes exposent leurs membres (selectiondata) ;
+  - Go+ execute la colonne CMD de la cue (SetGlobalVariable -> GetVar) ;
+  - les groupes exposent leurs membres (selectiondata), un groupe VIDE ne
+    cuit jamais ;
+  - le handle objet accepte EN SILENCE une propriete inconnue (comme la
+    console 2.5.1) : seule la relecture peut l'attraper ;
   - macros, appearances, images, layout comme avant.
 
 Toute commande que le modele ne connait pas renvoie "Syntax Error" : une
@@ -35,14 +39,14 @@ IMGDIR = os.path.join(HERE, "_imglib")
 MOCK = r'''
 local cmds   = {}          -- toutes les commandes, dans l'ordre
 local macs   = {}          -- [no] = { lignes de la macro }
-local macStored = {}
+local macStored, macNames = {}, {}
 local layout = {}          -- elements du Layout
 local images = {}          -- [no] = true quand "Import Image" l'a cree
 local presets = PRESETS_PLACEHOLDER   -- [no] = label (presets 4.x deja la)
 local apps   = {}          -- [no] = { props }
 local seqs   = {}          -- [no] = { name, props, app, cues = { [k] = { props, app, lines, cooked } } }
 local running = {}         -- [no] = true quand la sequence joue
-local vars   = {}          -- variables utilisateur
+local vars   = {}          -- variables (globales et utilisateur confondues)
 local selection = {}       -- machines dans le programmer
 local progValues = false   -- le programmer porte des valeurs
 
@@ -51,7 +55,15 @@ _G.ASSIGN_CREATES_LINE2 = true    -- "Assign ... Part 0.2" cree la ligne 2
 _G.ACQUIRE_OK           = true    -- part:Acquire("StandardRecipe") marche
 _G.SELDATA_OK           = true    -- Group.selectiondata disponible
 _G.RANGED_SET_OK        = true    -- "Set Sequence a Thru b Cue 1 Property" accepte
+_G.RANGED_FX_OK         = true    -- "Set Sequence a Thru b Cue k Part 0.1 Property" accepte
+_G.RANGE_COOK_OK        = true    -- "Cook Sequence a Thru b /opt" accepte
+_G.OFF_FADE_OK          = true    -- "Off Sequence ... Fade x" accepte
 _G.CMD_EXEC_OK          = true    -- Go+ execute la colonne CMD
+_G.CMD_RETURNS_NIL      = false   -- Cmd() ne renvoie rien (build muet)
+_G.HANDLE_SET_SILENT    = true    -- handle:Set d'une propriete inconnue = no-op silencieux
+_G.COPY_KEEPS_REF       = true    -- Copy Preset dans un slot garde les references des cues
+_G.DELETE_LEAVES        = {}      -- [no] = true : sequences qui survivent au Delete par plage
+_G.STORE_TRIG_AS_GO     = false   -- la console stocke "Go" quoi qu'on ecrive dans TrigType
 _G.REFUSE               = {}      -- [motif Lua] = reponse forcee
 
 -- Rig : Group 1 = SPOT (1..3), Group 2 = WASH (4..6), Group 3 = GENERAL (1..6).
@@ -102,11 +114,42 @@ local function parseList(str)
     return out
 end
 
+-- 'Property "Name" "texte"' ou 'Property "Name" 2' -> (Name, valeur texte)
+local function parseProp(rest)
+    local k, v = rest:match('^Property "(%w+)" "(.-)"$')
+    if k then return k, v end
+    k, v = rest:match('^Property "(%w+)" (%-?[%d%.]+)$')
+    if k then return k, v end
+    return nil
+end
+
 local function hasOption(s) return s:match("/NoConfirmation") or s:match("/Overwrite") or s:match("/Merge") or s:match("/Remove") end
+
+local function cookCue(c, mode)
+    local ok = false
+    for _, l in ipairs(c.lines) do
+        if l.sel and l.val and GROUPS[l.sel] and #GROUPS[l.sel] > 0 then ok = true end
+    end
+    if mode == "Remove" then c.cooked = false
+    else
+        c.cooked = ok
+        if mode == "Overwrite" then c.hard = false end
+    end
+    c.cookCount = (c.cookCount or 0) + 1
+end
+
+local function setCueProp(c, pk, pv)
+    local kind = CUE_PROPS[pk]
+    if not kind then return "Illegal property" end
+    if type(kind) == "table" and not kind[pv] then return "Illegal value" end
+    if kind == "num" and not tonumber(pv) then return "Illegal value" end
+    if pk == "TrigType" and STORE_TRIG_AS_GO then pv = "Go" end   -- console qui normalise de travers
+    c.props[pk] = pv
+    return "Ok"
+end
 
 local depth = 0
 local function execute(s)
-    -- refus forces par les scenarios
     for pat, reply in pairs(REFUSE) do
         if s:match(pat) then return reply end
     end
@@ -145,17 +188,33 @@ local function execute(s)
         if not hasOption(s) then return "Popup" end
         if presets[tonumber(cps)] == nil then return "Illegal object" end
         presets[tonumber(cpd)] = presets[tonumber(cpd)] or ""
+        if not COPY_KEEPS_REF then
+            for _, sq in pairs(seqs) do
+                for _, c in pairs(sq.cues) do
+                    for _, l in ipairs(c.lines) do
+                        if l.val == tonumber(cpd) then l.val = nil end
+                    end
+                end
+            end
+        end
         return "Ok"
     end
+    local rc = s:match("^Recast Preset 4%.(%d+)$")
+    if rc then return presets[tonumber(rc)] ~= nil and "Ok" or "Illegal object" end
     -- ---------------- appearances / images ----------------
     local ap = s:match("^Store Appearance (%d+) ")
     if ap then if not hasOption(s) then return "Popup" end apps[tonumber(ap)] = apps[tonumber(ap)] or {}; return "Ok" end
-    ap = s:match('^Label Appearance (%d+) "')
-    if ap then return apps[tonumber(ap)] and "Ok" or "Illegal object" end
-    local apn, apk, apv = s:match('^Set Appearance (%d+) Property "(%w+)" "(.-)"$')
+    local apl, apname = s:match('^Label Appearance (%d+) "(.-)"$')
+    if apl then
+        if not apps[tonumber(apl)] then return "Illegal object" end
+        apps[tonumber(apl)].Name = apname; return "Ok"
+    end
+    local apn, aprest = s:match('^Set Appearance (%d+) (Property .+)$')
     if apn then
         if not apps[tonumber(apn)] then return "Illegal object" end
-        apps[tonumber(apn)][apk] = apv; return "Ok"
+        local k, v = parseProp(aprest)
+        if not k then return "Syntax Error" end
+        apps[tonumber(apn)][k] = v; return "Ok"
     end
     local imp = s:match("^Import Image 'Images'%.(%d+) ")
     if imp then if not hasOption(s) then return "Popup" end images[tonumber(imp)] = true; return "Ok" end
@@ -174,10 +233,10 @@ local function execute(s)
         return "Ok"
     end
     -- ---------------- sequences : recipes ----------------
-    local gid, rs, rc, rl = s:match("^Assign Group (%d+) At Sequence (%d+) Cue (%d+) Part 0%.(%d+)$")
+    local gid, rs, rcue, rl = s:match("^Assign Group (%d+) At Sequence (%d+) Cue (%d+) Part 0%.(%d+)$")
     if gid then
         if not GROUPS[tonumber(gid)] then return "Illegal object" end
-        local c = cue(tonumber(rs), tonumber(rc))
+        local c = cue(tonumber(rs), tonumber(rcue))
         if not c then return "Illegal object" end
         local L = tonumber(rl)
         if L > #c.lines then
@@ -191,71 +250,97 @@ local function execute(s)
         return "Ok"
     end
     local pNo
-    pNo, rs, rc, rl = s:match("^Assign Preset 4%.(%d+) At Sequence (%d+) Cue (%d+) Part 0%.(%d+)$")
+    pNo, rs, rcue, rl = s:match("^Assign Preset 4%.(%d+) At Sequence (%d+) Cue (%d+) Part 0%.(%d+)$")
     if pNo then
         if presets[tonumber(pNo)] == nil then return "Illegal object" end
-        local c = cue(tonumber(rs), tonumber(rc))
+        local c = cue(tonumber(rs), tonumber(rcue))
         if not c or not c.lines[tonumber(rl)] then return "Illegal object" end
         c.lines[tonumber(rl)].val = tonumber(pNo)
+        cookCue(c, "MergeLowPriority")            -- auto-cook
         return "Ok"
     end
-    local lk, lv
-    rs, rc, rl, lk, lv = s:match('^Set Sequence (%d+) Cue (%d+) Part 0%.(%d+) Property "(%w+)" "(.-)"$')
+    -- liste de sequences ("a Thru b", "a + b"), ligne de recipe
+    local lst, rest
+    lst, rcue, rl, rest = s:match('^Set Sequence ([%d%s%+Thru]+) Cue (%d+) Part 0%.(%d+) (Property .+)$')
+    if lst and (lst:match("Thru") or lst:match("%+")) then
+        if not RANGED_FX_OK then return "Syntax Error" end
+        local k, v = parseProp(rest)
+        if not k then return "Syntax Error" end
+        if not LINE_PROPS[k] then return "Illegal property" end
+        local any = false
+        for _, no in ipairs(parseList(lst)) do
+            local c = cue(no, tonumber(rcue))
+            if c and c.lines[tonumber(rl)] then c.lines[tonumber(rl)].props[k] = v; cookCue(c, "MergeLowPriority"); any = true end
+        end
+        return any and "Ok" or "Illegal object"
+    end
+    rs, rcue, rl, rest = s:match('^Set Sequence (%d+) Cue (%d+) Part 0%.(%d+) (Property .+)$')
     if rs then
-        local c = cue(tonumber(rs), tonumber(rc))
+        local c = cue(tonumber(rs), tonumber(rcue))
         if not c or not c.lines[tonumber(rl)] then return "Illegal object" end
-        if not LINE_PROPS[lk] then return "Illegal property" end
-        c.lines[tonumber(rl)].props[lk] = lv
+        local k, v = parseProp(rest)
+        if not k then return "Syntax Error" end
+        if not LINE_PROPS[k] then return "Illegal property" end
+        c.lines[tonumber(rl)].props[k] = v
+        cookCue(c, "MergeLowPriority")
         return "Ok"
     end
     -- ---------------- sequences : proprietes de cue ----------------
-    local a, b, ck2, pk, pv = s:match('^Set Sequence (%d+) Thru (%d+) Cue (%d+) Property "(%w+)" "(.-)"$')
-    if a then
+    lst, rcue, rest = s:match('^Set Sequence ([%d%s%+Thru]+) Cue (%d+) (Property .+)$')
+    if lst and (lst:match("Thru") or lst:match("%+")) then
         if not RANGED_SET_OK then return "Syntax Error" end
+        local k, v = parseProp(rest)
+        if not k then return "Syntax Error" end
         local any = false
-        for no = tonumber(a), tonumber(b) do
-            local c = cue(no, tonumber(ck2))
+        for _, no in ipairs(parseList(lst)) do
+            local c = cue(no, tonumber(rcue))
             if c then
-                if not CUE_PROPS[pk] then return "Illegal property" end
-                c.props[pk] = pv; any = true
+                local r = setCueProp(c, k, v)
+                if r ~= "Ok" then return r end
+                any = true
             end
         end
         return any and "Ok" or "Illegal object"
     end
-    rs, rc, pk, pv = s:match('^Set Sequence (%d+) Cue (%d+) Property "(%w+)" "(.-)"$')
+    rs, rcue, rest = s:match('^Set Sequence (%d+) Cue (%d+) Part 0 (Property .+)$')
+    if not rs then rs, rcue, rest = s:match('^Set Sequence (%d+) Cue (%d+) (Property .+)$') end
     if rs then
-        local c = cue(tonumber(rs), tonumber(rc))
+        local c = cue(tonumber(rs), tonumber(rcue))
         if not c then return "Illegal object" end
-        local kind = CUE_PROPS[pk]
-        if not kind then return "Illegal property" end
-        if type(kind) == "table" and not kind[pv] then return "Illegal value" end
-        if kind == "num" and not tonumber(pv) then return "Illegal value" end
-        c.props[pk] = pv
-        return "Ok"
+        local k, v = parseProp(rest)
+        if not k then return "Syntax Error" end
+        return setCueProp(c, k, v)
     end
-    rs, pk, pv = s:match('^Set Sequence (%d+) Property "(%w+)" "(.-)"$')
+    rs, rest = s:match('^Set Sequence (%d+) (Property .+)$')
     if rs then
         local sq = seq(tonumber(rs))
         if not sq then return "Illegal object" end
-        local kind = SEQ_PROPS[pk]
+        local k, v = parseProp(rest)
+        if not k then return "Syntax Error" end
+        local kind = SEQ_PROPS[k]
         if not kind then return "Illegal property" end
-        if kind == "bool" and not isBool(pv) then return "Illegal value" end
-        sq.props[pk] = pv
+        if kind == "bool" and not isBool(v) then return "Illegal value" end
+        sq.props[k] = v
         return "Ok"
     end
     -- ---------------- sequences : cuisson, labels, appearances ----------------
+    local clst, copt = s:match("^Cook Sequence ([%d%s%+Thru]+) /(%w+)$")
+    if clst and (clst:match("Thru") or clst:match("%+")) then
+        if not RANGE_COOK_OK then return "Syntax Error" end
+        if not (copt == "Overwrite" or copt == "Merge" or copt == "MergeLowPriority" or copt == "Remove") then return "Popup" end
+        for _, no in ipairs(parseList(clst)) do
+            local sq = seq(no)
+            if sq then for _, c in pairs(sq.cues) do cookCue(c, copt) end end
+        end
+        return "Ok"
+    end
     local cks = s:match("^Cook Sequence (%d+)")
     if cks then
-        if not (s:match("/Overwrite") or s:match("/Merge") or s:match("/MergeLowPriority") or s:match("/Remove")) then return "Popup" end
+        local opt = s:match("/(%w+)$")
+        if not (opt == "Overwrite" or opt == "Merge" or opt == "MergeLowPriority" or opt == "Remove") then return "Popup" end
         local sq = seq(tonumber(cks))
         if not sq then return "Illegal object" end
-        for _, c in pairs(sq.cues) do
-            local ok = false
-            for _, l in ipairs(c.lines) do if l.sel and l.val then ok = true end end
-            c.cooked = ok
-            if s:match("/Overwrite") then c.hard = false end
-            c.cookCount = (c.cookCount or 0) + 1
-        end
+        for _, c in pairs(sq.cues) do cookCue(c, opt) end
         return "Ok"
     end
     local ln, lv2 = s:match('^Label Sequence (%d+) "(.-)"$')
@@ -290,18 +375,23 @@ local function execute(s)
         end
         return "Ok"
     end
-    local offList = s:match("^Off Sequence (.-)%s*Fade [%d%.]+$") or s:match("^Off Sequence (.-)$")
+    local offList, offFade = s:match("^Off Sequence (.-)%s+Fade ([%d%.]+)$")
+    if offList and not OFF_FADE_OK then return "Syntax Error" end
+    offList = offList or s:match("^Off Sequence (.-)$")
     if offList then
         for _, no in ipairs(parseList(offList)) do running[no] = nil end
         return "Ok"
     end
-    local vn, vv = s:match("^SetUserVar ['\"]([%w_]+)['\"] (.+)$")
+    local vn, vv = s:match("^SetGlobalVariable ['\"]([%w_]+)['\"] (.+)$")
+    if not vn then vn, vv = s:match("^SetUserVar ['\"]([%w_]+)['\"] (.+)$") end
     if vn then vars[vn] = vv; return "Ok" end
     -- ---------------- suppressions ----------------
     local da, db = s:match("^Delete Sequence (%d+) Thru (%d+) ")
     if da then
         if not hasOption(s) then return "Popup" end
-        for i = tonumber(da), tonumber(db) do seqs[i] = nil; running[i] = nil end
+        for i = tonumber(da), tonumber(db) do
+            if not DELETE_LEAVES[i] then seqs[i] = nil; running[i] = nil end
+        end
         return "Ok"
     end
     da = s:match("^Delete Sequence (%d+) ")
@@ -313,7 +403,7 @@ local function execute(s)
     da, db = s:match("^Delete Macro (%d+) Thru (%d+) ")
     if da then
         if not hasOption(s) then return "Popup" end
-        for i = tonumber(da), tonumber(db) do macStored[i] = nil; macs[tostring(i)] = nil end
+        for i = tonumber(da), tonumber(db) do macStored[i] = nil; macs[tostring(i)] = nil; macNames[i] = nil end
         return "Ok"
     end
     da, db = s:match("^Delete Appearance (%d+) Thru (%d+) ")
@@ -333,8 +423,11 @@ local function execute(s)
     -- ---------------- macros ----------------
     local ms = s:match("^Store Macro (%d+) ")
     if ms then if not hasOption(s) then return "Popup" end macStored[tonumber(ms)] = true; macs[ms] = {}; return "Ok" end
-    ms = s:match('^Label Macro (%d+) "')
-    if ms then return macStored[tonumber(ms)] and "Ok" or "Illegal object" end
+    local mn, mname = s:match('^Label Macro (%d+) "(.-)"$')
+    if mn then
+        if not macStored[tonumber(mn)] then return "Illegal object" end
+        macNames[tonumber(mn)] = mname; return "Ok"
+    end
     an, ms = s:match("^Assign Appearance (%d+) At Macro (%d+)$")
     if an then return (macStored[tonumber(ms)] and apps[tonumber(an)]) and "Ok" or "Illegal object" end
     local mm, mk, mv = s:match('^Set Macro (%d+)%.(%d+) Property "Command" "(.-)"$')
@@ -365,6 +458,7 @@ _G.Cmd = function(s)
     cmds[#cmds + 1] = s
     local r = execute(s)
     if r ~= "Ok" then cmds[#cmds] = s .. "  ## " .. r end
+    if CMD_RETURNS_NIL then return nil end
     return r
 end
 _G.Printf = function(...) end
@@ -404,6 +498,7 @@ _G.GetPath = function() return "IMGDIR_PLACEHOLDER" end
 _G.GetPathSeparator = function() return "/" end
 _G.SyncFS = function() end
 _G.UserVars = function() return vars end
+_G.GlobalVars = function() return vars end
 _G.GetVar = function(tbl, name) return tbl[name] end
 
 _G.ShowData = function()
@@ -421,14 +516,30 @@ local function genericHandle()
     return h
 end
 
+-- handle:Set d'une propriete inconnue : silencieux (2.5.1) ou erreur
+local function badSet(k)
+    if HANDLE_SET_SILENT then return end
+    error("Illegal property " .. tostring(k))
+end
+
 local function lineHandle(l)
     local h = {}
-    function h:Get(k) return l.props[k] or (k == "Selection" and l.sel and ("Group " .. l.sel)) or (k == "Values" and l.val and ("Preset 4." .. l.val)) or nil end
+    function h:Get(k)
+        if k == "Selection" then return l.sel and ("Group " .. l.sel) or nil end
+        if k == "Values" then return l.val and ("Preset 4." .. l.val) or nil end
+        if k == "DelayX" then
+            if l.props.DelayFromX or l.props.DelayToX then
+                return (l.props.DelayFromX or "0") .. " Thru " .. (l.props.DelayToX or "0")
+            end
+            return nil
+        end
+        return l.props[k]
+    end
     function h:Set(k, v)
         if k == "Selection" then l.sel = v and v.__gid or nil
         elseif k == "Values" then l.val = v and v.__pNo or nil
         elseif LINE_PROPS[k] then l.props[k] = tostring(v)
-        else error("Illegal property " .. tostring(k)) end
+        else badSet(k) end
     end
     return h
 end
@@ -453,7 +564,7 @@ local function partHandle(c)
         return c.props[k]
     end
     function h:Set(k, v)
-        if CUE_PROPS[k] then c.props[k] = tostring(v) else error("Illegal property") end
+        if CUE_PROPS[k] then c.props[k] = tostring(v) else badSet(k) end
     end
     return setmetatable(h, { __index = function(_, i)
         if type(i) == "number" and c.lines[i] then return lineHandle(c.lines[i]) end
@@ -474,10 +585,10 @@ _G.ObjectList = function(addr)
     local grp = addr:match("^Group (%d+)$")
     if grp then
         local gid = tonumber(grp)
-        if GROUP_NAMES[gid] then
+        if GROUPS[gid] then
             local h = genericHandle()
             h.__gid = gid
-            function h:Get(k) return GROUP_NAMES[gid] end
+            function h:Get(k) return GROUP_NAMES[gid] or ("G" .. gid) end
             if SELDATA_OK then
                 h.selectiondata = {}
                 for i, fid in ipairs(GROUPS[gid]) do
@@ -506,6 +617,7 @@ _G.ObjectList = function(addr)
     if ap then
         if not apps[tonumber(ap)] then return {} end
         local h = genericHandle()
+        function h:Get(k) return apps[tonumber(ap)][k] end
         function h:Set(k, v) apps[tonumber(ap)][k] = tostring(v) end
         return { h }
     end
@@ -519,6 +631,7 @@ _G.ObjectList = function(addr)
         if not macStored[tonumber(mac)] then return {} end
         macs[mac] = macs[mac] or {}
         local h = genericHandle()
+        function h:Get(k) if k == "Name" then return macNames[tonumber(mac)] end return nil end
         function h:Append()
             local ml = {}
             function ml:Set(k, v)
@@ -540,7 +653,7 @@ _G.ObjectList = function(addr)
         if not c then return {} end
         local h = genericHandle()
         function h:Get(k, role) return c.props[k] end
-        function h:Set(k, v) if CUE_PROPS[k] then c.props[k] = tostring(v) else error("Illegal property") end end
+        function h:Set(k, v) if CUE_PROPS[k] then c.props[k] = tostring(v) else badSet(k) end end
         return { h }
     end
     sn = addr:match("^Sequence (%d+)$")
@@ -548,8 +661,8 @@ _G.ObjectList = function(addr)
         local sq = seq(tonumber(sn))
         if not sq then return {} end
         local h = genericHandle()
-        function h:Get(k) return sq.props[k] or (k == "Name" and sq.name) or nil end
-        function h:Set(k, v) if SEQ_PROPS[k] then sq.props[k] = tostring(v) else error("Illegal property") end end
+        function h:Get(k) if k == "Name" then return sq.name end return sq.props[k] end
+        function h:Set(k, v) if SEQ_PROPS[k] then sq.props[k] = tostring(v) else badSet(k) end end
         return { h }
     end
     if addr:match("^Sequence ") then return {} end
@@ -580,6 +693,7 @@ _G.__images  = images
 _G.__running = running
 _G.__vars    = vars
 _G.__macStored = macStored
+_G.__macNames  = macNames
 '''
 
 
@@ -670,10 +784,11 @@ M_FXVHDR = M_C2_0 + NC
 M_FXV0 = M_FXVHDR + 1
 M_FXFHDR = M_FXV0 + NFS
 M_FXF0 = M_FXFHDR + 1
-M_RECOOK = M_FXF0 + NFV
-M_END = M_RECOOK                               # 156
-SEQ_DEL = B + MAX_ROWS * NC + MAX_GRP * NDIR - 1              # 316 (= sequence de test du CMD)
-MAC_DEL = B + 8 + 2 * NV + 5 + 2 * NC + MAX_ROWS * NC + MAX_GRP * NDIR - 1   # 365
+M_END = M_FXF0 + NFV - 1                       # 155 (156 reserve, plus de RE-CUISINER sur le board)
+M_RESERVED = B + 55
+SEQ_DEL = B + MAX_ROWS * NC + MAX_GRP * NDIR - 1              # 316 (= sequence de test)
+MAC_DEL = B + 55                                              # empreinte v9 exacte
+MAC_DEL_V8 = B + 8 + 2 * NV + 5 + 2 * NC + MAX_ROWS * NC + MAX_GRP * NDIR - 1   # 365 si board v8 detecte
 APP_DEL, IMG_DEL = APP_LAST, B + 2 * NC + 3
 SEQ_PROBE = SEQ_DEL
 
@@ -691,6 +806,7 @@ DIR_LABELS = ["J>C", "C>J", "E>I", "I>E", "1/2"]
 FADE_VALUES = ["0", "0.5", "1", "2", "3", "4"]
 FX_FADES = ["0", "0.5", "1", "2", "4"]
 FX_SWEEPS = ["0.5", "1", "2", "4", "8"]
+HEADLINE_OK = "Board construit - tous les controles passent."
 
 # Boucles FX qu'une ligne doit couper : les siennes et celles des groupes
 # qui partagent ses machines. SPOT et WASH chevauchent GENERAL ; GENERAL
@@ -702,7 +818,9 @@ def off_list(ranges, fade):
     parts = []
     for a, b in ranges:
         parts.append("%d Thru %d" % (a, b) if b > a else "%d" % a)
-    return "Off Sequence %s Fade %s" % (" + ".join(parts), fade) if parts else None
+    if not parts:
+        return None
+    return "Off Sequence %s Fade %s" % (" + ".join(parts), fade) if fade is not None else "Off Sequence %s" % " + ".join(parts)
 
 
 def split_ranges(ranges, keep):
@@ -739,9 +857,9 @@ def fx_kill_cmd(gi, di):
     return off_list(kill_ranges(gi + 1, seq_fx(gi, di)), "1")
 
 
-def shape_props(di):
+def shape_props(di, pulsed=False):
     """Timings MAtricks attendus sur la ligne de recipe d'une forme."""
-    p = {"DelayFromX": "0", "DelayToX": SWEEP}
+    p = {"DelayFromX": SWEEP if pulsed else "0", "DelayToX": SWEEP}
     if di in (3, 4):
         p["XWings"] = "2"
     if di in (2, 4):
@@ -781,12 +899,12 @@ def png_decode(path):
     return w, h, px
 
 
-def check_cleanup(cmds, lay=1, errors=None):
-    """Le nettoyage large du chemin 'plages occupees'."""
+def check_cleanup(cmds, lay=1, errors=None, mac_del=MAC_DEL):
+    """Le nettoyage du chemin 'plages occupees'."""
     errors = [] if errors is None else errors
     E = errors.append
     for d in ("Delete Sequence %d Thru %d /NoConfirmation" % (B, SEQ_DEL),
-              "Delete Macro %d Thru %d /NoConfirmation" % (B, MAC_DEL),
+              "Delete Macro %d Thru %d /NoConfirmation" % (B, mac_del),
               "Delete Appearance %d Thru %d /NoConfirmation" % (B, APP_DEL),
               "Delete Image 3.%d Thru Image 3.%d /NoConfirmation" % (B, IMG_DEL),
               "Delete Layout %d /NoConfirmation" % lay):
@@ -828,14 +946,13 @@ def check(cmds, macs, elems, seqs, cleanup=False):
         E("presets : %d 'Fixture Thru' pour %d Store Preset (attendu %d)" % (n_fthru, n_pst, C))
     if cmds[-1] != "ClearAll":
         E("la derniere commande n'est pas ClearAll")
-    # programmer propre apres le bloc presets
     attrs = [i for i, c in enumerate(cmds) if c.startswith("Attribute ")]
     if attrs and "ClearAll" not in cmds[attrs[-1]:attrs[-1] + 4]:
         E("pas de ClearAll juste apres le dernier preset")
 
     # ---------- jamais de popup : options partout ----------
     for c in cmds:
-        if re.match(r"^(Store|Delete|Copy|Import|Cook) ", c) and not re.search(r"/(NoConfirmation|Overwrite|Merge|Remove)", c):
+        if re.match(r"^(Store|Delete|Copy|Import|Cook) ", c) and not re.search(r"/(NoConfirmation|Overwrite|Merge|MergeLowPriority|Remove)", c):
             E("commande qui ouvrirait un popup : " + c)
 
     # ---------- objets crees ----------
@@ -845,14 +962,16 @@ def check(cmds, macs, elems, seqs, cleanup=False):
         E("stores de cue 2 (boucles FX) != %d" % (NFX * NDIR))
     if count(r"^Store Appearance \d+ /NoConfirmation$") != 4 * C + 6:
         E("appearances != %d" % (4 * C + 6))
-    n_macros = 3 + 2 * (1 + NV) + 2 * (1 + C) + (1 + NFS) + (1 + NFV) + 1
+    n_macros = 3 + 2 * (1 + NV) + 2 * (1 + C) + (1 + NFS) + (1 + NFV)
     if count(r"^Store Macro \d+ /NoConfirmation$") != n_macros:
         E("macros stockees != %d" % n_macros)
+    if M_RESERVED in macs:
+        E("une macro RE-CUISINER est encore posee sur le board")
     if count(r"^Import Image 'Images'\.\d+ ") != N_IMAGES:
         E("images importees != %d" % N_IMAGES)
     if count(r"^Cook Sequence \d+ /Overwrite$") != T * C + NFX * NDIR:
-        E("cuissons != %d" % (T * C + NFX * NDIR))
-    if any("PhaserRecipe" in c or "SpeedMaster" in c or "MAtricks " in c and "Delete" not in c for c in cmds):
+        E("cuissons unitaires != %d" % (T * C + NFX * NDIR))
+    if any("PhaserRecipe" in c or "SpeedMaster" in c or ("MAtricks " in c and "Delete" not in c) for c in cmds):
         E("reste du moteur phaser / MAtricks pool dans les commandes")
 
     # ---------- nettoyage ----------
@@ -860,31 +979,49 @@ def check(cmds, macs, elems, seqs, cleanup=False):
         check_cleanup(cmds, errors=errors)
     else:
         for c in cmds:
-            if (c.startswith("Delete ") and "Sequence %d /NoConfirmation" % SEQ_PROBE not in c) or \
-               (c.startswith("Off Sequence") and c != "Off Sequence %d" % SEQ_PROBE):
+            if c.startswith("Delete ") and c != "Delete Sequence %d /NoConfirmation" % SEQ_PROBE:
                 E("plages libres, et pourtant : " + c); break
+        offs = [c for c in cmds if c.startswith("Off Sequence")]
+        if offs != ["Off Sequence %d Fade 1" % SEQ_PROBE]:
+            E("plages libres : seul le Off de la sequence de test est attendu, vu %s" % offs[:3])
 
-    # ---------- probe du CMD de cue ----------
+    # ---------- probes sur la sequence de test ----------
     i_probe = [i for i, c in enumerate(cmds) if c == "Store Sequence %d Cue 1 /Overwrite /NoConfirmation" % SEQ_PROBE]
     if len(i_probe) != 1:
-        E("probe CMD : sequence de test %d non creee une fois" % SEQ_PROBE)
+        E("probe : sequence de test %d non creee une fois" % SEQ_PROBE)
     else:
         i = i_probe[0]
-        tail = cmds[i:i + 8]
-        for want in ('Set Sequence %d Cue 1 Property "Command" "SetUserVar \'cp_cmd\' 1"' % SEQ_PROBE,
-                     "Go+ Sequence %d" % SEQ_PROBE, "Off Sequence %d" % SEQ_PROBE,
+        tail = cmds[i:i + 14]
+        for want in ("SetGlobalVariable 'cp_cmd' 0",
+                     'Set Sequence %d Cue 1 Property "Command" "SetGlobalVariable \'cp_cmd\' 1"' % SEQ_PROBE,
+                     "Go+ Sequence %d" % SEQ_PROBE, "Off Sequence %d Fade 1" % SEQ_PROBE,
                      "Delete Sequence %d /NoConfirmation" % SEQ_PROBE):
             if want not in tail:
-                E("probe CMD : manque %s" % want)
-        if "SetUserVar 'cp_cmd' 0" not in cmds[i - 2:i + 1]:
-            E("probe CMD : variable non remise a 0 avant le test")
+                E("probe : manque %s" % want)
+        if tail.count("Go+ Sequence %d" % SEQ_PROBE) != 2:
+            E("probe : le CMD doit etre teste au Go+ ET a la retape")
+        if 'Set Sequence %d Property "WrapAround" 1' % SEQ_PROBE not in tail:
+            E("probe : WrapAround non pose sur la sequence de test (retape)")
     if SEQ_PROBE in seqs:
-        E("la sequence de test du CMD n'a pas ete supprimee")
+        E("la sequence de test n'a pas ete supprimee")
     i_first_seq = next((i for i, c in enumerate(cmds) if c == "Store Sequence %d Cue 1 /Overwrite /NoConfirmation" % B), None)
     if i_first_seq is None:
         E("la sequence %d n'est pas stockee avec /Overwrite /NoConfirmation" % B)
     elif i_probe and i_probe[0] > i_first_seq:
-        E("la probe CMD doit preceder la construction des sequences")
+        E("la probe doit preceder la construction des sequences")
+
+    # ---------- probes des formes par plage ----------
+    for want in ("Cook Sequence %d Thru %d /Remove" % (SEQ_FX0, SEQ_LAST),
+                 "Cook Sequence %d Thru %d /Overwrite" % (SEQ_FX0, SEQ_LAST),
+                 'Set Sequence %d Thru %d Cue 1 Part 0.1 Property "DelayToX" %s' % (SEQ_FX0, SEQ_LAST, SWEEP),
+                 'Set Sequence %d Thru %d Cue 2 Part 0.1 Property "DelayToX" %s' % (SEQ_FX0, SEQ_LAST, SWEEP),
+                 'Set Sequence %d Thru %d Cue 1 Property "CueInFade" 1' % (B, SEQ_END)):
+        if want not in cmds:
+            E("probe de forme par plage manquante : %s" % want)
+    # auto-test de la reference C1 : second Copy + Recast du slot
+    if cmds.count("Copy Preset 4.%d At Preset 4.%d /Overwrite /NoConfirmation /NoOops" % (B, P_FX1)) != 2 \
+            or "Recast Preset 4.%d" % P_FX1 not in cmds:
+        E("auto-test de la reference C1 (Copy + Recast) absent")
 
     # ---------- sequences couleur ----------
     for ti in range(1, T + 1):
@@ -907,10 +1044,9 @@ def check(cmds, macs, elems, seqs, cleanup=False):
                 E("sequence %d : timings MAtricks sur une couleur" % no)
             if not c1["cooked"] or c1["hard"]:
                 E("sequence %d : cue non cuisinee (ou valeurs dures)" % no)
-            if s["props"].get("OffWhenOverridden") != "Yes":
-                E("sequence %d : OffWhenOverridden manquant" % no)
-            if s["props"].get("PreferCueAppearance") != "Yes":
-                E("sequence %d : PreferCueAppearance manquant (la tuile ne montrerait pas son etat)" % no)
+            for k, v in (("OffWhenOverridden", ("Yes",)), ("PreferCueAppearance", ("Yes",)), ("WrapAround", ("1", "Yes"))):
+                if s["props"].get(k) not in v:
+                    E("sequence %d : %s = %s" % (no, k, s["props"].get(k)))
             if c1["props"].get("CueInFade") != "1":
                 E("sequence %d : CueInFade = %s" % (no, c1["props"].get("CueInFade")))
             if c1["props"].get("TrigType") not in (None, "Go"):
@@ -955,13 +1091,12 @@ def check(cmds, macs, elems, seqs, cleanup=False):
                     a, b = int(m.group(1)), int(m.group(2) or m.group(1))
                     if a <= no <= b:
                         E("sequence FX %d : son CMD coupe sa propre boucle" % no)
-            for k, v in (("WrapAround", ("Yes", "1")), ("OffWhenOverridden", ("Yes",)), ("PreferCueAppearance", ("Yes",))):
+            for k, v in (("WrapAround", ("1", "Yes")), ("OffWhenOverridden", ("Yes",)), ("PreferCueAppearance", ("Yes",))):
                 if s["props"].get(k) not in v:
                     E("sequence FX %d : %s = %s" % (no, k, s["props"].get(k)))
             if s["app"] != APP_FX:
                 E("sequence FX %d : appearance de sequence %s" % (no, s["app"]))
 
-    # ---------- plus aucune sequence au-dela ----------
     extra = [no for no in seqs if no > SEQ_LAST]
     if extra:
         E("sequences inattendues : %s" % extra[:5])
@@ -974,7 +1109,7 @@ def check(cmds, macs, elems, seqs, cleanup=False):
             E("en-tete %d doit etre inerte" % hdr)
     for vi, v in enumerate(FADE_VALUES):
         lc, lo = mac(M_FC0 + vi), mac(M_FO0 + vi)
-        want = ['Set Sequence %d Thru %d Cue 1 Property "CueInFade" "%s"' % (B, SEQ_END, v)]
+        want = ['Set Sequence %d Thru %d Cue 1 Property "CueInFade" %s' % (B, SEQ_END, v)]
         for ti in range(1, T + 1):
             want.append('Set Sequence %d Thru %d Cue 1 Property "Command" "%s"' % (seq_c(ti, 1), seq_c(ti, C), row_kill_cmd(ti, v)))
         want.append('Label Macro %d "FADE couleur %s"' % (M_FCHDR, v + "s"))
@@ -990,45 +1125,40 @@ def check(cmds, macs, elems, seqs, cleanup=False):
         for ci in range(1, C + 1):
             lines = mac(base0 + ci - 1)
             want = ["Copy Preset 4.%d At Preset 4.%d /Overwrite /NoConfirmation /NoOops" % (B + ci - 1, slot),
+                    "Recast Preset 4.%d" % slot,
                     'Label Preset 4.%d "CP %s"' % (slot, name),
                     'Label Macro %d "%s %s"' % (hdr, name, COLOR_NAMES[ci - 1])]
             want += ["Assign Appearance %d At Macro %d" % (app_on(cj) if cj == ci else app_off(cj), base0 + cj - 1) for cj in range(1, C + 1)]
             if lines != want:
-                E("pastille %d : %s" % (base0 + ci - 1, lines[:3]))
+                E("pastille %d : %s" % (base0 + ci - 1, lines[:4]))
     for vi, v in enumerate(FX_SWEEPS):
         lines = mac(M_FXV0 + vi)
-        want = ['Set Sequence %d Cue %d Part 0.1 Property "DelayToX" "%s"' % (seq_fx(gi, di), k, v)
-                for gi in range(1, NFX + 1) for di in range(1, NDIR + 1) for k in (1, 2)]
-        want += ["Cook Sequence %d /Overwrite" % seq_fx(gi, di) for gi in range(1, NFX + 1) for di in range(1, NDIR + 1)]
+        want = ['Set Sequence %d Thru %d Cue %d Part 0.1 Property "DelayToX" %s' % (SEQ_FX0, SEQ_LAST, k, v) for k in (1, 2)]
+        want.append("Cook Sequence %d Thru %d /MergeLowPriority" % (SEQ_FX0, SEQ_LAST))
         want.append('Label Macro %d "FX VITESSE %ss"' % (M_FXVHDR, v))
         want += ["Assign Appearance %d At Macro %d" % (APP_ACC if vj == vi else APP_GREY, M_FXV0 + vj) for vj in range(NFS)]
         if lines != want:
-            E("FX VITESSE %s : %s ... (%d lignes, attendu %d)" % (v, lines[:2], len(lines), len(want)))
+            E("FX VITESSE %s : %s ... (%d lignes, attendu %d)" % (v, lines[:3], len(lines), len(want)))
     for vi, v in enumerate(FX_FADES):
         lines = mac(M_FXF0 + vi)
-        want = ['Set Sequence %d Cue %d Property "CueInFade" "%s"' % (seq_fx(gi, di), k, v)
-                for gi in range(1, NFX + 1) for di in range(1, NDIR + 1) for k in (1, 2)]
+        want = ['Set Sequence %d Thru %d Cue %d Property "CueInFade" %s' % (SEQ_FX0, SEQ_LAST, k, v) for k in (1, 2)]
         want.append('Label Macro %d "FX FONDU %ss"' % (M_FXFHDR, v))
         want += ["Assign Appearance %d At Macro %d" % (APP_ACC if vj == vi else APP_GREY, M_FXF0 + vj) for vj in range(NFV)]
         if lines != want:
-            E("FX FONDU %s : %s ... (%d lignes, attendu %d)" % (v, lines[:2], len(lines), len(want)))
-    if mac(M_RECOOK) != ["Cook Sequence %d /Overwrite" % no for no in range(B, SEQ_LAST + 1)]:
-        E("RE-CUISINER : %d lignes" % len(mac(M_RECOOK)))
-    # boutons actifs par defaut
+            E("FX FONDU %s : %s ... (%d lignes, attendu %d)" % (v, lines[:3], len(lines), len(want)))
     for no, app in ((M_FC0 + 2, APP_ACC), (M_FO0 + 3, APP_ACC), (M_FXV0 + 2, APP_ACC), (M_FXF0 + 2, APP_ACC)):
         if "Assign Appearance %d At Macro %d" % (app, no) not in cmds:
             E("bouton par defaut %d non surligne" % no)
-    # aucune macro ne touche le programmer ni ne lance une sequence
     for no, lines in macs.items():
         for l in lines:
-            if re.match(r"^(ClearAll|Fixture|Group|At |Attribute|Delay|Store Sequence|Go\+|Goto)", l):
+            if re.match(r"^(ClearAll|Fixture|Group|At |Attribute|Delay|Store|Go\+|Goto|Delete)", l):
                 E("macro %d : %s" % (no, l)); break
-    # (RE-CUISINER n'est pas un bouton de live : il peut etre long)
-    long_macros = {no: len(l) for no, l in macs.items() if len(l) > 60 and no != M_RECOOK}
+    # budget de latence : aucune macro de live au-dessus de 25 lignes
+    long_macros = {no: len(l) for no, l in macs.items() if len(l) > 25}
     if long_macros:
         E("macros trop longues (latence) : %s" % long_macros)
 
-    # ---------- labels de macros uniques ----------
+    # ---------- labels uniques ----------
     labels = re.findall(r'^Label Macro (\d+) "(.*)"$', "\n".join(cmds), re.M)
     by_name = {}
     for no, name in labels:
@@ -1067,7 +1197,7 @@ def check(cmds, macs, elems, seqs, cleanup=False):
         E("le fond ne passe en alpha 0 que si l'image est en place")
 
     # ---------- layout ----------
-    expected = 1 + T * (1 + C) + NFX * NDIR + 1 + 2 * (1 + NV) + 2 * (1 + C) + (1 + NFS) + (1 + NFV) + 1
+    expected = 1 + T * (1 + C) + NFX * NDIR + 1 + 2 * (1 + NV) + 2 * (1 + C) + (1 + NFS) + (1 + NFV)
     if len(elems) != expected:
         E("cases du layout : %d != %d" % (len(elems), expected))
     pos = set()
