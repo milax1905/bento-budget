@@ -54,8 +54,11 @@ sonde et l'outil de diagnostic qui n'existaient que pour lui.
   Mécanique : une séquence à **2 cues** (`TrigType Follow` + `WrapAround`),
   cue 1 = C1, cue 2 = C2, le balayage venant de **délais individuels** posés
   machine par machine dans l'ordre du groupe. La tuile part en **`Go+`**
-  (seul `Go+` enchaîne les cues Follow) après un `Off … Fade` des 5 formes
-  de sa ligne (sinon le groupe retombe à sa couleur par défaut : flash).
+  (seul `Go+` enchaîne les cues Follow) après un `Off … Fade` de **toutes les
+  autres boucles qui touchent ses machines** — les 4 autres formes de sa
+  ligne et celles des groupes qui la chevauchent (sinon le groupe retombe à
+  sa couleur par défaut : flash). Sa propre boucle n'est pas coupée : `Go+`
+  la démarre si elle dort, et ne fait qu'avancer d'une cue si elle tourne.
   - **`FX C1` / `FX C2`** : les pastilles copient la couleur choisie
     (`Copy Preset … /Overwrite`) dans deux presets *slots* **référencés par
     les cues** → la boucle change de couleurs **en direct**.
@@ -64,14 +67,20 @@ sonde et l'outil de diagnostic qui n'existaient que pour lui.
     machine bascule net à son tour, aucune couleur intermédiaire. Un fondu
     `> 0` fait passer la console par le mélange RVB des deux couleurs
     (jaune + bleu = gris-blanc) : garde-le **court** devant l'étalement.
-  - **Vitesse** (battement / étalement du balayage) : `Options > Vitesse FX`,
-    **fixée à la génération** (1 s par défaut). La changer = régénérer.
+  - **Balayage** (temps que met la vague pour traverser le groupe = le
+    battement) : écran `2/3 Temps > Balayage FX (s)`, **fixé à la
+    génération** (1 s par défaut). Le changer = régénérer. Un groupe d'une ou
+    deux machines (ou le damier) n'a pas de décalage à répartir : toutes ses
+    machines prennent alors le battement complet, pour que la cue ait une
+    durée (une cue de durée nulle emballerait la boucle).
   - **Groupes imbriqués gérés** : le plugin relève les machines de chaque
     groupe et sait qui recouvre qui. Une couleur sur `SPOT` coupe aussi la
     boucle d'un `GENERAL` qui contient les spots. S'il ne peut pas énumérer
     un groupe, il coupe **toutes** les boucles (prudent).
-- **Rangées FADE** : `FADE couleur` réécrit la ligne 1 (le `Goto`) de
-  **toutes** les tuiles ; `FADE arrêt` réécrit la commande d'`Off All`
+- **Rangées FADE** : `FADE couleur` réécrit le `Goto` **et** les lignes
+  `Off` (relâche des boucles) de **toutes** les tuiles, couleur et FX, pour
+  que la boucle lâche au même temps que la couleur monte ; `FADE arrêt`
+  réécrit la commande d'`Off All`
   (`Off … Fade X` — c'est là que vit le fondu d'arrêt). Bouton actif surligné,
   en-tête relabellée.
 - **`Off All`** : relâche tout avec le fondu d'arrêt **et** remet toutes les
@@ -130,18 +139,27 @@ Console : pool **Plugins** → case vide → **Import** → `ColorPicker`.
 2. **1/3 Lignes et couleurs** — les groupes qui deviennent une ligne
    (pré-rempli avec ceux détectés, `1 + 2` ou `1 Thru 8`, 12 max ; sans
    groupe : les machines), nombre de couleurs (1–12).
-3. **2/3 Temps** — fade couleur (`1`), fade arrêt (`2`), vitesse FX =
-   étalement du balayage (`1`), fondu FX initial (`0` = sec).
-4. **3/3 Emplacement** — ID de départ (`101`), numéro de Layout (`1`).
+   Les numéros tapés sont **vérifiés** : un groupe inexistant est ignoré et
+   cité au récapitulatif ; si aucun n'est valide, l'écran est redemandé.
+3. **2/3 Temps** — fade couleur (`1`), fade arrêt (`2`) et, s'il y a des
+   groupes, balayage FX (`1`) et fondu FX initial (`0` = sec).
+4. **3/3 Emplacement** — ID de départ (`101` minimum : les numéros 1 à 100
+   ne sont jamais touchés), numéro de Layout (`1`).
 5. **Récapitulatif** — lignes par leur nom, couleurs, nombre de boucles FX,
    temps, plages exactes qui seront écrites, sort des presets (réutilisés /
-   créés / corrigés), et **ce qui sera écrasé** si les plages sont occupées.
-   `Construire` / `Modifier` (retour aux écrans) / `Annuler`. C'est la
-   **seule** confirmation : jamais une question par objet.
-6. **Écran final** — le bilan en quatre lignes et le mode d'emploi en six.
+   créés / corrigés). Si les plages sont **libres**, il le dit : rien
+   d'existant ne sera touché, aucun `Delete` n'est envoyé. Sinon
+   **ATTENTION** : la liste exacte de ce qui sera supprimé (y compris un
+   preset à toi sur un slot FX, ou un MAtricks d'une ancienne version).
+   `Construire` / `Modifier` (retour aux écrans, **pré-remplis** avec tes
+   valeurs) / `Annuler`. C'est la **seule** confirmation : jamais une
+   question par objet.
+6. **Écran final** — le bilan (lignes, boucles, plages, presets, images
+   importées, cases posées) et le mode d'emploi en six lignes.
 
 Annuler à n'importe quel écran = **aucune** commande envoyée. La virgule
-décimale est acceptée (`0,5` = `0.5`).
+décimale est acceptée (`0,5` = `0.5`). Les listes acceptent `+`, `,`, `;`,
+les espaces et `Thru`.
 
 Palette : `Red · Orange · Amber · Yellow · Green · Cyan · Azure · Blue ·
 Violet · Magenta · Pink · White`.
@@ -154,16 +172,21 @@ chaque livraison :
 ```
 pip install lupa
 python3 gma3/test/mock_test.py       # rig imbriqué de référence, ~200 vérifications
-python3 gma3/test/all_scenarios.py   # 12 profils : sans groupes, sans API de
+python3 gma3/test/all_scenarios.py   # 30 scénarios : sans groupes, sans API de
                                      # sélection, cellules, panne, palettes
-                                     # périmée / à jour / illisible, annulations,
-                                     # options personnalisées…
+                                     # périmée / à jour / illisible, annulation à
+                                     # chaque écran, plages libres / occupées,
+                                     # petits groupes, listes fausses, Modifier…
+python3 gma3/test/mutations.py       # 13 bugs réintroduits volontairement :
+                                     # la batterie doit les attraper tous
 ```
 
-Vérifié : objets et plages de nettoyage, contenu **exact** de chaque macro
-du board, aucune commande programmer sur le board, `/NoConfirmation`
-partout, aucune propriété de séquence non validée, forme des délais pour
-les 5 FX, PNG décodés octet par octet, placement du layout.
+Vérifié : objets et plages de nettoyage (et leur **absence** quand les
+plages sont libres), contenu **exact** de chaque macro du board (ce que
+chaque tuile coupe, ce qu'elle épargne, ce que chaque bouton FADE réécrit),
+aucune commande programmer sur le board, `/NoConfirmation` partout, aucune
+propriété de séquence non validée, forme et durée des délais pour les 5 FX,
+PNG décodés octet par octet, placement du layout, textes de l'assistant.
 
 ## Notes techniques (chaque point a été un échec silencieux avant)
 
@@ -175,8 +198,9 @@ les 5 FX, PNG décodés octet par octet, placement du layout.
   défaut), et seulement la couleur de fond — l'image n'est rendue que pour
   une macro.
 - **`Goto` n'enchaîne pas les cues `Follow`** : seul `Go+` le fait. `Go+`
-  avance d'une cue si la séquence tourne déjà → chaque tuile FX commence par
-  un `Off` des 5 formes de sa ligne.
+  avance d'une cue si la séquence tourne déjà (retaper la tuile = la boucle
+  continue) ; chaque tuile FX commence par un `Off` des **autres** boucles
+  qui touchent ses machines, jamais de la sienne.
 - **`OffFade` n'est pas une propriété de séquence** sur 2.5 (notification
   *Illegal property* à chaque écriture — 48 par appui en plein show). Le
   fondu d'arrêt est porté par `Off … Fade X`.
@@ -210,9 +234,12 @@ les 5 FX, PNG décodés octet par octet, placement du layout.
 ## Nettoyage manuel
 
 ```
-Delete Sequence 101 Thru …    (plages exactes affichées dans la confirmation)
+Delete Sequence 101 Thru …    (plages exactes affichées dans le récapitulatif)
 Delete Macro 101 Thru …
 Delete Appearance 101 Thru …
 Delete Image 3.101 Thru Image 3.…
 Delete Layout 1
+Delete MAtricks 101           (seulement s'il reste un MAtricks d'une v7)
 ```
+
+Les presets `4.101+` sont à toi : le plugin ne les supprime jamais.
