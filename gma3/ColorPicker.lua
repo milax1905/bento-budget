@@ -597,7 +597,7 @@ end
 
 local function main(display_handle)
     -- Il faut des fixtures. Detection SANS toucher au programmer :
-    -- annuler le dialogue doit etre un vrai no-op. On balaie large (les
+    -- annuler l'assistant doit etre un vrai no-op. On balaie large (les
     -- rigs numerotes en 1001+ existent) : la boucle s'arrete au 1er trouve.
     if not scanFixtures(2000, 1) then
         MessageBox({ title = "Color Picker LIVE",
@@ -610,18 +610,34 @@ local function main(display_handle)
     local autoGroups = scanGroups(200)
     local autoFix    = (not autoGroups) and scanFixtures(2000, MAX_FIXTURE_ROWS + 1) or nil
 
+    -- Texte de detection, avec les NOMS des groupes : c'est ce que
+    -- l'utilisateur reconnait, pas des numeros.
+    local function joinIds(ids, sep, max)
+        local t = {}
+        for i, v in ipairs(ids) do
+            if i > max then t[#t + 1] = "..."; break end
+            t[#t + 1] = tostring(v)
+        end
+        return table.concat(t, sep)
+    end
     local found
     if autoGroups then
-        found = string.format("%d groupes detectes", #autoGroups)
+        local names = {}
+        for i, gid in ipairs(autoGroups) do
+            if i > MAX_GROUP_ROWS then names[#names + 1] = "..."; break end
+            names[#names + 1] = groupName(gid)
+        end
+        found = string.format("%d groupe(s) : %s", #autoGroups, table.concat(names, ", "))
     elseif autoFix then
-        found = string.format("aucun groupe -> %d machines detectees",
-            math.min(#autoFix, MAX_FIXTURE_ROWS))
+        found = string.format("aucun groupe -> %d machine(s) : %s",
+            math.min(#autoFix, MAX_FIXTURE_ROWS), joinIds(autoFix, ", ", MAX_FIXTURE_ROWS))
     else
         found = "aucun groupe, aucune machine ?"
     end
 
-    -- Reglages par defaut (modifiables via "Options").
-    local grpStr, fixStr = "", ""
+    -- Reglages (tout est modifiable dans l'assistant).
+    local grpStr    = autoGroups and joinIds(autoGroups, " + ", MAX_GROUP_ROWS) or ""
+    local fixStr    = autoFix and joinIds(autoFix, " + ", MAX_FIXTURE_ROWS) or ""
     local nColors   = 12
     local colorFade = 1
     local offFade   = 2
@@ -630,58 +646,103 @@ local function main(display_handle)
     local fxSweep   = FX_SWEEP_DEFAULT
     local fxFade    = 0
 
-    local first = MessageBox({
+    -- =================== ASSISTANT : ecran 1, accueil ===================
+    local box = MessageBox({
         title    = "Color Picker LIVE  v" .. VERSION,
-        message  = string.format(
-            "Detecte : %s.\n\n"
-         .. "Genere : 1 ligne par cible + ALL, %d couleurs,\n"
-         .. "5 tuiles FX par groupe (J>C / C>J / E>I / I>E / 1/2),\n"
-         .. "tout en restitution (fondu %ds), sans programmer.\n"
-         .. "Objets ranges a partir du %d, Layout %d.\n"
-         .. "NB : la GENERATION, elle, passe par le programmer et prend\n"
-         .. "quelques dizaines de secondes — a faire avant le show.\n"
-         .. "Les boutons du board sont des MACROS stockees dans le show :\n"
-         .. "une correction du plugin ne s'applique qu'apres REGENERATION.",
-            found, nColors, colorFade, baseId, layNo),
+        message  = "Rig detecte : " .. found .. ".\n\n"
+                .. "Je construis un board de busking couleur :\n"
+                .. "  - 1 ligne par groupe + ALL, 12 couleurs\n"
+                .. "  - 5 formes FX par groupe, pastilles C1/C2, FX FONDU\n"
+                .. "  - rangees FADE couleur / arret, Off All\n"
+                .. "  - 100% restitution : zero programmer en live\n\n"
+                .. "Trois ecrans de reglages, un recapitulatif, puis la\n"
+                .. "construction (elle passe par le programmer : a faire\n"
+                .. "avant le show, pas pendant).",
         commands = {
-            { value = 1, name = "Generer" },
-            { value = 2, name = "Options" },
+            { value = 1, name = "Regler" },
+            { value = 2, name = "Reglages par defaut" },
             { value = 0, name = "Annuler" },
         },
     })
-    if not first or first.result == 0 or first.result == nil then return end
+    if not box or box.result == 0 or box.result == nil then return end
+    local useDefaults = (box.result == 2)
 
-    if first.result == 2 then
-        local cfg = MessageBox({
-            title    = "Color Picker LIVE  v" .. VERSION .. "  -  Options",
-            message  = "Laisse vide pour l'auto-detection. (defaut nb couleurs : 12)",
-            commands = {
-                { value = 1, name = "Generer" },
-                { value = 0, name = "Annuler" },
-            },
-            inputs = {
-                { name = "Groupes (ex: 1 Thru 8 / vide = auto)",  value = ""    },
-                { name = "Machines (si aucun groupe)",             value = ""    },
-                { name = "Nb couleurs (max 12)",                   value = "12"  },
-                { name = "Fade couleur (s)",                       value = "1"   },
-                { name = "Fade arret (s)",                         value = "2"   },
-                { name = "Vitesse FX / battement (s)",              value = "1"   },
-                { name = "Fondu FX (s, 0 = sec)",                   value = "0"   },
-                { name = "ID de depart (seq/macro/appearance)",    value = "101" },
-                { name = "Layout (No)",                            value = "1"   },
+    ::configure::
+    if not useDefaults then
+        -- ------------------- ecran 2 : lignes et couleurs -------------------
+        local inputs = {
+            { name = "Nb couleurs (1-12)", value = tostring(nColors) },
+        }
+        if autoGroups then
+            table.insert(inputs, 1, { name = "Groupes du board (ex: 1 + 2 ou 1 Thru 8)", value = grpStr })
+        else
+            table.insert(inputs, 1, { name = "Machines du board (ex: 1 Thru 8)", value = fixStr })
+        end
+        box = MessageBox({
+            title    = "Color Picker LIVE  -  1/3  Lignes et couleurs",
+            message  = (autoGroups
+                    and "Chaque groupe devient une ligne du board (12 max),\n"
+                     .. "avec ses 5 formes FX. La ligne ALL est toujours la.\n"
+                     .. "Enleve de la liste les groupes qui ne doivent pas y etre."
+                    or  "Sans groupe, chaque machine devient une ligne (12 max).\n"
+                     .. "Pas de FX dans ce mode (les FX balaient un groupe).\n"
+                     .. "Conseil : cree des groupes, c'est bien plus pratique.")
+                .. "\n\nCouleurs, dans l'ordre : Red Orange Amber Yellow Green\n"
+                .. "Cyan Azure Blue Violet Magenta Pink White.",
+            commands = { { value = 1, name = "Suivant" }, { value = 0, name = "Annuler" } },
+            inputs   = inputs,
+        })
+        if not box or box.result ~= 1 then return end
+        if autoGroups then
+            grpStr = box.inputs["Groupes du board (ex: 1 + 2 ou 1 Thru 8)"] or grpStr
+        else
+            fixStr = box.inputs["Machines du board (ex: 1 Thru 8)"] or fixStr
+        end
+        nColors = math.floor(toNum(box.inputs["Nb couleurs (1-12)"], 12, 1, #COLORS))
+
+        -- ------------------------- ecran 3 : temps -------------------------
+        box = MessageBox({
+            title    = "Color Picker LIVE  -  2/3  Temps",
+            message  = "Fade couleur : fondu quand tu tapes une tuile.\n"
+                    .. "Fade arret : fondu du Off All.\n"
+                    .. "(Les deux restent reglables sur le board, en live.)\n\n"
+                    .. "Vitesse FX : temps que met le balayage pour traverser\n"
+                    .. "le groupe = le battement de la boucle. Fixe a la\n"
+                    .. "generation.\n"
+                    .. "Fondu FX : 0 = chaque machine bascule net (la vague se\n"
+                    .. "lit, aucune couleur intermediaire). Reglable en live.",
+            commands = { { value = 1, name = "Suivant" }, { value = 0, name = "Annuler" } },
+            inputs   = {
+                { name = "Fade couleur (s)",          value = tostring(colorFade) },
+                { name = "Fade arret (s)",            value = tostring(offFade) },
+                { name = "Vitesse FX (s)",            value = tostring(fxSweep) },
+                { name = "Fondu FX (s, 0 = sec)",     value = tostring(fxFade) },
             },
         })
-        if not cfg or cfg.result ~= 1 then return end
-        grpStr    = cfg.inputs["Groupes (ex: 1 Thru 8 / vide = auto)"]
-        fixStr    = cfg.inputs["Machines (si aucun groupe)"]
-        nColors   = math.floor(toNum(cfg.inputs["Nb couleurs (max 12)"], 12, 1, #COLORS))
-        colorFade = toNum(cfg.inputs["Fade couleur (s)"], 1, 0, 600)
-        offFade   = toNum(cfg.inputs["Fade arret (s)"], 2, 0, 600)
+        if not box or box.result ~= 1 then return end
+        colorFade = toNum(box.inputs["Fade couleur (s)"], 1, 0, 600)
+        offFade   = toNum(box.inputs["Fade arret (s)"], 2, 0, 600)
         -- plancher a 0.1 s : une cue de duree nulle emballerait la boucle
-        fxSweep   = toNum(cfg.inputs["Vitesse FX / battement (s)"], FX_SWEEP_DEFAULT, 0.1, 60)
-        fxFade    = toNum(cfg.inputs["Fondu FX (s, 0 = sec)"], 0, 0, 60)
-        baseId    = math.floor(toNum(cfg.inputs["ID de depart (seq/macro/appearance)"], 101, 1, 100000))
-        layNo     = math.floor(toNum(cfg.inputs["Layout (No)"], 1, 1, 100000))
+        fxSweep   = toNum(box.inputs["Vitesse FX (s)"], FX_SWEEP_DEFAULT, 0.1, 60)
+        fxFade    = toNum(box.inputs["Fondu FX (s, 0 = sec)"], 0, 0, 60)
+
+        -- ---------------------- ecran 4 : emplacement ----------------------
+        box = MessageBox({
+            title    = "Color Picker LIVE  -  3/3  Emplacement",
+            message  = "Les objets du board sont ranges a partir d'un meme\n"
+                    .. "numero dans les pools Sequences, Macros, Appearances,\n"
+                    .. "Images 3.x et Presets 4.x (couleurs universelles).\n"
+                    .. "Les numeros 1 a 100 ne sont jamais touches.\n\n"
+                    .. "Le Layout indique est VIDE puis reconstruit.",
+            commands = { { value = 1, name = "Suivant" }, { value = 0, name = "Annuler" } },
+            inputs   = {
+                { name = "ID de depart (101+)", value = tostring(baseId) },
+                { name = "Layout (No)",         value = tostring(layNo) },
+            },
+        })
+        if not box or box.result ~= 1 then return end
+        baseId = math.floor(toNum(box.inputs["ID de depart (101+)"], 101, 1, 100000))
+        layNo  = math.floor(toNum(box.inputs["Layout (No)"], 1, 1, 100000))
     end
 
     local colors = {}
@@ -865,32 +926,71 @@ local function main(display_handle)
         occupied = true
     end
 
+    -- ==================== ASSISTANT : recapitulatif ====================
+    -- Un seul ecran dit TOUT ce qui va se passer : les lignes (par leur
+    -- nom), les plages ecrites, le sort des presets, et ce qui sera ecrase.
+    -- C'est aussi la SEULE confirmation d'ecrasement : "Construire" vaut
+    -- pour tous les objets d'un coup, jamais une question par objet.
+    local presetsToCreate, presetsToReuse = 0, 0
+    for ci, c in ipairs(colors) do
+        local pNo    = baseId + ci - 1
+        local exists = objectExists(string.format("Preset %d.%d", PT, pNo))
+        local nm     = exists and presetName(PT, pNo) or nil
+        if not exists then presetsToCreate = presetsToCreate + 1
+        elseif nm == nil or nm == c.name then presetsToReuse = presetsToReuse + 1 end
+    end
+    local rowNames = {}
+    for ti, t in ipairs(targets) do rowNames[ti] = t.label end
+    local recap = string.format(
+        "LIGNES (%d) : %s\n"
+     .. "COULEURS : %d   FX : %d boucles (%d formes x %d groupes)\n\n"
+     .. "Fade couleur %ss - Fade arret %ss - Vitesse FX %ss - Fondu FX %ss\n\n"
+     .. "ECRIT DANS LE SHOW :\n"
+     .. "  Sequences %d-%d   Macros %d-%d\n"
+     .. "  Appearances %d-%d   Images 3.%d-3.%d   Layout %d\n"
+     .. "  Presets 4.%d-4.%d : %d reutilises, %d crees, %d corriges\n"
+     .. "  (presets jamais effaces ; slots FX 4.%d et 4.%d)\n",
+        nTargets, table.concat(rowNames, ", "),
+        nColors, nFx * nDir, nDir, nFx,
+        tostring(colorFade), tostring(offFade), tostring(fxSweep), tostring(fxFade),
+        baseId, seqLast, baseId, macEnd,
+        baseId, appDelEnd, baseId, imgDelEnd, layNo,
+        baseId, baseId + nColors - 1, presetsToReuse, presetsToCreate, #staleColors,
+        pFx1, pFx2)
+    if truncated then
+        recap = recap .. string.format("\n(Lignes limitees a %d.)\n", math.max(MAX_GROUP_ROWS, MAX_FIXTURE_ROWS))
+    end
     if occupied or not detectOk then
-        local confirm = MessageBox({ title = "Color Picker LIVE",
-            message = string.format(
-                "Des objets existent peut-etre dans les plages du plugin.\n"
-             .. "Seront SUPPRIMES puis regeneres :\n"
-             .. "Sequence %d -> %d\nMacro %d -> %d\nAppearance %d -> %d\n"
-             .. "Image 3.%d -> 3.%d\nMAtricks %d\nLayout %d\n"
-             .. "(plages larges : elles nettoient aussi les restes des\n"
-             .. "generations precedentes, meme plus grosses).\n\n"
-             .. "Tes PRESETS couleur 4.%d -> 4.%d sont CONSERVES (jamais\n"
-             .. "effaces, reutilises tels quels). Seuls les 2 slots du FX,\n"
-             .. "4.%d et 4.%d, sont pilotes par le board.\n"
-             .. "ATTENTION : la generation fait defiler le rig (elle passe\n"
-             .. "par le programmer). A faire avant le show.\n"
-             .. "%s\n"
-             .. "Tout ecraser et regenerer ?",
-                baseId, seqDelEnd, baseId, macDelEnd, baseId, appDelEnd,
-                baseId, imgDelEnd, baseId, layNo,
-                baseId, baseId + nColors - 1, pFx1, pFx2,
-                (#staleColors > 0) and string.format(
-                    "\n%d preset(s) viennent d'une AUTRE palette (ancienne\n"
-                 .. "version du plugin) : les tuiles jouent aujourd'hui une\n"
-                 .. "couleur qui n'est pas la leur. Ils seront REMIS a la\n"
-                 .. "couleur du plugin. Ex : %s\n", #staleColors, staleColors[1]) or ""),
-            commands = { { value = 1, name = "Ecraser" }, { value = 0, name = "Annuler" } } })
-        if not confirm or confirm.result ~= 1 then return end
+        recap = recap .. string.format(
+            "\nATTENTION : ces plages contiennent deja des objets.\n"
+         .. "Ils seront SUPPRIMES puis regeneres (nettoyage large :\n"
+         .. "Sequence %d-%d, Macro %d-%d, Appearance %d-%d,\n"
+         .. "Image 3.%d-3.%d, Layout %d).\n",
+            baseId, seqDelEnd, baseId, macDelEnd, baseId, appDelEnd,
+            baseId, imgDelEnd, layNo)
+        if #staleColors > 0 then
+            recap = recap .. string.format(
+                "%d preset(s) d'une autre palette seront remis a leur\n"
+             .. "couleur (ex. %s).\n", #staleColors, staleColors[1])
+        end
+    else
+        recap = recap .. "\nPlages libres : rien d'existant ne sera touche.\n"
+    end
+    box = MessageBox({
+        title    = "Color Picker LIVE  -  Recapitulatif",
+        message  = recap,
+        commands = {
+            { value = 1, name = "Construire" },
+            { value = 2, name = "Modifier" },
+            { value = 0, name = "Annuler" },
+        },
+    })
+    if not box or box.result == 0 or box.result == nil then return end
+    if box.result == 2 then
+        useDefaults = false
+        goto configure
+    end
+    if occupied or not detectOk then
         -- Relacher AVANT de supprimer : une sequence effacee en cours de
         -- lecture coupe sa couleur d'un seul coup sur le plateau.
         Cmd(string.format('Off Sequence %d Thru %d Fade %s',
@@ -1549,59 +1649,36 @@ local function main(display_handle)
 
     local note = ""
     if failed > 0 then
-        note = string.format("\n(%d case(s) non placee(s) — voir [CP-diag])", failed)
+        note = string.format("  (%d case(s) non placee(s), voir [CP-diag])", failed)
     end
-    if truncated then
-        note = note .. string.format(
-            "\n(Lignes limitees a %d — regroupe tes machines pour plus)",
-            math.max(MAX_GROUP_ROWS, MAX_FIXTURE_ROWS))
+    if macroLineFails > 0 then
+        note = note .. string.format("  (%d macro(s) sans lignes : regenere)", macroLineFails)
     end
 
+    -- ===================== ASSISTANT : ecran final =====================
+    -- Court : le bilan en quatre lignes, puis le mode d'emploi en six.
     local msg = string.format(
-        "Color Picker LIVE v" .. VERSION .. " pret !\n\n"
-     .. "Lignes : %d (ALL + %s)   Couleurs : %d\n"
-     .. "Presets couleur : 4.%d -> 4.%d (%d crees, %d reutilises, %d corriges)\n"
-     .. "Sequences %d -> %d   Macros %d -> %d   Images : %d\n"
-     .. "Fade couleur %ss / arret %ss\n"
-     .. "Layout %d : %d/%d cases placees%s\n\n"
-     .. "EN LIVE : tape une tuile couleur -> la ligne passe a cette couleur\n"
-     .. "en restitution et la tuile SE REMPLIT (contour au repos, pave\n"
-     .. "plein quand elle joue). Autre tuile = changement de couleur.\n"
-     .. "FADE : le bouton ACTIF est surligne, le titre affiche la valeur.\n"
-     .. "%s"
-     .. "%s"
-     .. "FX (bout des lignes de groupes) : 5 formes —\n"
-     .. "J>C jardin>cour, C>J cour>jardin, E>I bords vers centre,\n"
-     .. "I>E centre vers bords, 1/2 damier (une machine sur deux en C1,\n"
-     .. "l'autre moitie en C2, elles echangent a chaque cue).\n"
-     .. "Tape une forme -> boucle C1<->C2 sur le groupe. Choisis C1 et C2\n"
-     .. "avec les pastilles du bas, meme en cours de boucle. Taper une\n"
-     .. "couleur ou Off All coupe le FX. (%d boucles FX construites)\n"
-     .. "COULEURS PAS A TON GOUT ? Modifie le Preset 4.x (pool Color) ->\n"
-     .. "tout le board suit. Regenerer ne touche jamais tes presets.\n"
-     .. "Le board est 100%% restitution : zero programmer (les en-tetes de\n"
-     .. "ligne sont inertes, elles ne selectionnent rien).\n"
-     .. "SI L'AFFICHAGE TE SEMBLE FAUX : Off All remet tout d'aplomb.\n"
-     .. "APRES UN REPATCH ou une modif de groupe : regenere le board, les\n"
-     .. "cues gardent les machines telles qu'elles etaient.",
-        nTargets, (groupIds and "groupes" or "machines"), nColors,
-        baseId, baseId + nColors - 1, presetsCreated, presetsReused, presetsFixed,
+        "Board construit.\n\n"
+     .. "Lignes %d (%s) - %d couleurs - %d boucles FX\n"
+     .. "Sequences %d-%d - Macros %d-%d - Images %d\n"
+     .. "Presets 4.%d-4.%d : %d reutilises, %d crees, %d corriges\n"
+     .. "Layout %d : %d/%d cases%s\n\n"
+     .. "EN LIVE\n"
+     .. "  Tuile couleur : la ligne prend la couleur, la tuile se remplit.\n"
+     .. "  J>C  C>J  E>I  I>E  1/2 : boucle C1<->C2 sur le groupe.\n"
+     .. "  C1 / C2 : les deux couleurs de la boucle, changeables en cours.\n"
+     .. "  FX FONDU : 0 = sec, sinon fondu entre C1 et C2.\n"
+     .. "  FADE couleur / arret : le bouton actif est surligne.\n"
+     .. "  Off All : tout relacher - et remettre le board d'aplomb.\n\n"
+     .. "Tes presets 4.x pilotent les couleurs : modifie-les, le board suit.\n"
+     .. "Apres un repatch ou une modif de groupe : regenere.",
+        nTargets, table.concat(rowNames, ", "), nColors, fxBuilt,
         baseId, seqLast, baseId, macEnd, imagesOk,
-        tostring(colorFade), tostring(offFade),
-        layNo, placed, placed + failed, note,
-        "FX FONDU (derniere rangee) : 0 = passage SEC, chaque machine\n"
-     .. "bascule net a son tour -> la vague se lit, et aucune couleur\n"
-     .. "intermediaire n'apparait. Un fondu > 0 fait passer la console\n"
-     .. "par le melange RVB des deux couleurs (jaune+bleu = gris-blanc)\n"
-     .. "et brouille la vague : garde-le COURT devant l'etalement.\n",
-        string.format(
-        "VITESSE DES FX : battement / etalement du balayage = Options >\n"
-     .. "Vitesse FX (a la generation, %ss ici). Pour la changer : regenere.\n",
-            tostring(fxSweep)),
-        fxBuilt)
+        baseId, baseId + nColors - 1, presetsReused, presetsCreated, presetsFixed,
+        layNo, placed, placed + failed, note)
 
-    MessageBox({ title = "Color Picker LIVE", message = msg,
-        commands = { { value = 1, name = "Super !" } } })
+    MessageBox({ title = "Color Picker LIVE  v" .. VERSION, message = msg,
+        commands = { { value = 1, name = "OK" } } })
     Printf("[ColorPickerLive v%s] %d lignes x %d couleurs, %d FX, layout %d : %d/%d cases.",
         VERSION, nTargets, nColors, fxBuilt, layNo, placed, placed + failed)
 end

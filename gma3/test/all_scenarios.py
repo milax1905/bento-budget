@@ -51,6 +51,10 @@ end
 '''
 
 
+def count_prefix(cmds, prefix):
+    return sum(1 for c in cmds if c.startswith(prefix))
+
+
 def boxes(lua):
     out = []
     for b in mt.lua_list(lua.eval("__boxes")):
@@ -126,7 +130,7 @@ stored = sorted(int(m.group(1)) for c in cmds for m in [re.match(r"^Store Preset
 want = sorted(no for no, nm in OLD.items() if nm != mt.COLOR_NAMES[no - 101])
 check("palette perimee", stored == want, "re-stockes %s != %s" % (stored, want))
 check("palette perimee", all("/Overwrite" in c for c in cmds if c.startswith("Store Preset")), "re-stockage sans /Overwrite")
-check("palette perimee", any("AUTRE palette" in m for _, m in boxes(lua)), "la confirmation ne signale pas la palette")
+check("palette perimee", any("autre palette" in m for _, m in boxes(lua)), "le recapitulatif ne signale pas la palette")
 check("palette perimee", "Copy Preset 4.101 At Preset 4.%d /Overwrite /NoConfirmation /NoOops" % mt.P_FX1 in cmds,
       "slots FX non re-seedes apres correction")
 
@@ -147,7 +151,7 @@ check("annulation", len(cmds) == 0, "%d commandes envoyees apres Annuler" % len(
 # 10) annulation a la confirmation d'ecrasement : rien n'est supprime
 lua, cmds, macs, elems = run("cancel2", RECORDING_BOX + '''
 BOX_ANSWER = function(t)
-    if (t.message or ""):match("Tout ecraser") then return 0 end
+    if (t.title or ""):match("Recapitulatif") then return 0 end
     return 1
 end''')
 check("annulation ecrasement", not any(c.startswith("Delete ") for c in cmds), "des objets ont ete supprimes")
@@ -156,18 +160,17 @@ check("annulation ecrasement", not any(c.startswith("Store ") for c in cmds), "d
 # 11) Options personnalisees : tout suit (fondus, vitesse, IDs, layout, couleurs)
 lua, cmds, macs, elems = run("options", RECORDING_BOX + '''
 BOX_ANSWER = function(t, inputs)
-    if (t.title or ""):match("Options") then
-        inputs["Nb couleurs (max 12)"] = "6"
+    local title = t.title or ""
+    if title:match("1/3") then inputs["Nb couleurs (1-12)"] = "6" end
+    if title:match("2/3") then
         inputs["Fade couleur (s)"] = "2"
         inputs["Fade arret (s)"] = "3"
-        inputs["Vitesse FX / battement (s)"] = "2"
+        inputs["Vitesse FX (s)"] = "2"
         inputs["Fondu FX (s, 0 = sec)"] = "0,2"
-        inputs["ID de depart (seq/macro/appearance)"] = "501"
-        inputs["Layout (No)"] = "3"
-        return 1
     end
-    if not t.inputs and (t.title or ""):match("v%d") and not (t.message or ""):match("pret") then
-        return 2          -- "Options" au premier ecran
+    if title:match("3/3") then
+        inputs["ID de depart (101+)"] = "501"
+        inputs["Layout (No)"] = "3"
     end
     return 1
 end''')
@@ -192,7 +195,52 @@ check("options", tile and tile[0] == "Goto Sequence 501 Cue 1 Fade 2", "tuile 1 
 check("options", "Copy Preset 4.501 At Preset 4.%d /Overwrite /NoConfirmation /NoOops" % (501 + 12) in cmds,
       "slot C1 decale par le nombre de couleurs")
 
-# 12) la generation ne laisse jamais le programmer charge, meme en nominal
+# 12) "Reglages par defaut" saute les trois ecrans et construit pareil
+lua, cmds, macs, elems = run("defaults", RECORDING_BOX + '''
+BOX_ANSWER = function(t)
+    if (t.title or ""):match("v%d") and not (t.message or ""):match("Board construit") then return 2 end
+    return 1
+end''')
+titles = [t for t, _ in boxes(lua)]
+check("reglages par defaut", not any("1/3" in t or "2/3" in t or "3/3" in t for t in titles),
+      "les ecrans de reglage ont ete montres : %s" % titles)
+check("reglages par defaut", any("Recapitulatif" in t for t in titles), "pas de recapitulatif")
+check("reglages par defaut", len(elems) == 115 and "Store Sequence 101 Cue 1 /NoConfirmation" in cmds,
+      "board different du nominal (%d cases)" % len(elems))
+
+# 13) "Modifier" au recapitulatif : on repasse par les ecrans, les nouvelles valeurs comptent
+lua, cmds, macs, elems = run("modify", RECORDING_BOX + '''
+local recaps = 0
+BOX_ANSWER = function(t, inputs)
+    local title = t.title or ""
+    if title:match("Recapitulatif") then
+        recaps = recaps + 1
+        if recaps == 1 then return 2 end     -- Modifier
+        return 1                              -- Construire
+    end
+    if recaps == 1 and title:match("2/3") then inputs["Fade couleur (s)"] = "4" end
+    return 1
+end''')
+titles = [t for t, _ in boxes(lua)]
+check("modifier", sum(1 for t in titles if "Recapitulatif" in t) == 2, "le recapitulatif doit s'afficher deux fois")
+check("modifier", sum(1 for t in titles if "2/3" in t) == 2, "l'ecran 2/3 doit s'afficher deux fois")
+check("modifier", 'Set Sequence 101 Cue 1 Property "CueInFade" "4"' in cmds, "la valeur du second passage n'est pas prise")
+check("modifier", count_prefix(cmds, "Store Sequence 101 Cue 1 ") == 1, "la sequence 101 stockee plusieurs fois")
+recap_msgs = [m for t, m in boxes(lua) if "Recapitulatif" in t]
+check("modifier", all("Fade couleur 1s" in recap_msgs[0] and "Fade couleur 4s" in recap_msgs[1] for _ in [0]),
+      "le recapitulatif ne reflete pas les valeurs")
+
+# 14) le recapitulatif dit la verite sur les lignes et les plages
+lua, cmds, macs, elems = run("recap", RECORDING_BOX)
+recap = [m for t, m in boxes(lua) if "Recapitulatif" in t][0]
+for frag in ("LIGNES (4) : ALL, SPOT, WASH, GENERAL", "COULEURS : 12", "15 boucles",
+             "Sequences 101-163", "Macros 101-212", "Presets 4.101-4.112", "Layout 1"):
+    check("recapitulatif", frag in recap, "manque '%s'" % frag)
+final = [m for t, m in boxes(lua) if "Board construit" in m]
+check("ecran final", final and "115/115" in final[0] and "12 reutilises" not in final[0] and "12 crees" in final[0],
+      "bilan final faux : %s" % (final[0][:200] if final else "absent"))
+
+# 15) la generation ne laisse jamais le programmer charge, meme en nominal
 lua, cmds, macs, elems = run("clean")
 last_sel = max(i for i, c in enumerate(cmds) if re.match(r"^(Fixture|Group) ", c))
 check("programmer propre", "ClearAll" in cmds[last_sel:], "pas de ClearAll apres la derniere selection")

@@ -122,21 +122,26 @@ Console : pool **Plugins** → case vide → **Import** → `ColorPicker`.
 > lancement (= le fichier chargé) **et** dans la bannière du board (= la
 > version qui a généré ce layout) : si elles diffèrent, régénère.
 
-## Options (fenêtre au lancement)
+## L'assistant (au lancement)
 
-| Champ | Défaut | Description |
-|---|---|---|
-| Groupes | *(vide)* | `1 Thru 8`… Vide = auto-détection (max 12 lignes). |
-| Machines | *(vide)* | Si aucun groupe : fixtures (vide = auto, max 12). |
-| Nb couleurs | `12` | Couleurs principales (max 12). |
-| Fade couleur (s) | `1` | Fondu au changement de couleur. |
-| Fade arrêt (s) | `2` | Fondu au relâché. |
-| Vitesse FX (s) | `1` | Battement de la boucle / étalement du balayage. |
-| Fondu FX (s) | `0` | Fondu initial entre C1 et C2 (réglable sur le board). |
-| ID de départ | `101` | Début de numérotation (seq / macro / appearance). |
-| Layout (No) | `1` | Numéro du Layout généré. |
+1. **Accueil** — le rig détecté (groupes par leur nom), ce qui va être
+   construit. `Regler` ouvre les trois écrans ; `Reglages par defaut` saute
+   directement au récapitulatif.
+2. **1/3 Lignes et couleurs** — les groupes qui deviennent une ligne
+   (pré-rempli avec ceux détectés, `1 + 2` ou `1 Thru 8`, 12 max ; sans
+   groupe : les machines), nombre de couleurs (1–12).
+3. **2/3 Temps** — fade couleur (`1`), fade arrêt (`2`), vitesse FX =
+   étalement du balayage (`1`), fondu FX initial (`0` = sec).
+4. **3/3 Emplacement** — ID de départ (`101`), numéro de Layout (`1`).
+5. **Récapitulatif** — lignes par leur nom, couleurs, nombre de boucles FX,
+   temps, plages exactes qui seront écrites, sort des presets (réutilisés /
+   créés / corrigés), et **ce qui sera écrasé** si les plages sont occupées.
+   `Construire` / `Modifier` (retour aux écrans) / `Annuler`. C'est la
+   **seule** confirmation : jamais une question par objet.
+6. **Écran final** — le bilan en quatre lignes et le mode d'emploi en six.
 
-La virgule décimale est acceptée (`0,5` = `0.5`).
+Annuler à n'importe quel écran = **aucune** commande envoyée. La virgule
+décimale est acceptée (`0,5` = `0.5`).
 
 Palette : `Red · Orange · Amber · Yellow · Green · Cyan · Azure · Blue ·
 Violet · Magenta · Pink · White`.
