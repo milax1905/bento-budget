@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Test de mutation : on casse le plugin volontairement, la batterie doit crier.
 
-Chaque mutation reintroduit un bug reel (vu sur console ou trouve en revue)
-dans une copie du plugin, puis rejoue mock_test.py et all_scenarios.py sur
-cette copie. Une mutation qui PASSE les tests signale un trou dans le filet.
+Chaque mutation reintroduit un bug reel (vu sur console, trouve en revue,
+ou typique des recipes MA3) dans une copie du plugin, puis rejoue
+mock_test.py et all_scenarios.py sur cette copie. Une mutation qui PASSE
+les tests signale un trou dans le filet.
 
 Usage :  python3 test/mutations.py      -> "TOUTES LES MUTATIONS ATTRAPEES" / liste
 """
@@ -15,54 +16,57 @@ MUTDIR = os.path.join(HERE, "_mut")
 
 # (nom, texte d'origine (unique), texte mutant)
 MUTATIONS = [
-    ("Goto au lieu de Go+ (la boucle reste bloquee sur la cue 1)",
-     'return string.format("Go+ Sequence %d", sq)',
-     'return string.format("Goto Sequence %d Cue 1", sq)'),
-    ("/NoConfirmation oublie sur Store Macro (popup en pleine generation)",
-     "Cmd(string.format('Store Macro %d /NoConfirmation', no))",
-     "Cmd(string.format('Store Macro %d', no))"),
-    ("sens de balayage inverse (J>C part de cour)",
-     '{ lbl = "J>C", fan = "fwd",    fb = "Delay 0 Thru %s" },\n    { lbl = "C>J", fan = "rev",    fb = "Delay %s Thru 0" },',
-     '{ lbl = "J>C", fan = "rev",    fb = "Delay 0 Thru %s" },\n    { lbl = "C>J", fan = "fwd",    fb = "Delay %s Thru 0" },'),
-    ("OffFade reintroduit (propriete inexistante sur 2.5)",
-     """Cmd(string.format('Set Sequence %d Property "OffWhenOverridden" "Yes"', no))
-            pcall(function()
-                local s = ObjectList("Sequence " .. no)[1]
-                if s then
-                    for ki = 1, 2 do""",
-     """Cmd(string.format('Set Sequence %d Property "OffWhenOverridden" "Yes"', no))
-            Cmd(string.format('Set Sequence %d Property "OffFade" "1"', no))
-            pcall(function()
-                local s = ObjectList("Sequence " .. no)[1]
-                if s then
-                    for ki = 1, 2 do"""),
-    ("ligne ALL non repeinte quand un groupe prend la main",
-     "if not seen[1] then rows[#rows + 1] = 1; seen[1] = true end",
-     "if false then rows[#rows + 1] = 1; seen[1] = true end"),
-    ("FADE couleur partiel (les Off des tuiles gardent l'ancien fondu)",
-     "for k = 1, (tileOffCount[m2] or 0) do",
-     "for k = 1, 0 do"),
-    ("la tuile FX coupe sa propre boucle avant de la lancer",
-     "killFxLines(ti, lines, colorFade, seqFx(gi, di))",
-     "killFxLines(ti, lines, colorFade)"),
+    ("Cook sans option (popup impossible depuis Lua : rien n'est cuisine)",
+     'return run(string.format("Cook Sequence %d /Overwrite", sq))',
+     'return run(string.format("Cook Sequence %d", sq))'),
+    ("Store sans /Overwrite /NoConfirmation (popup a la regeneration)",
+     "run(string.format('Store Sequence %d Cue 1 /Overwrite /NoConfirmation', sq))\n                for k, gid in ipairs(rowGroupIds(ti)) do",
+     "run(string.format('Store Sequence %d Cue 1', sq))\n                for k, gid in ipairs(rowGroupIds(ti)) do"),
+    ("TrigType en minuscules (valeur sensible a la casse -> Illegal value)",
+     'setProp(string.format("Sequence %d Cue %d", sq, k), "TrigType", "Follow")',
+     'setProp(string.format("Sequence %d Cue %d", sq, k), "TrigType", "follow")'),
+    ("la tuile FX coupe sa propre boucle (CMD sans exception)",
+     "local killCmd = offListCmd(killRanges(ti, sq), FX_KILL_FADE)",
+     "local killCmd = offListCmd(killRanges(ti), FX_KILL_FADE)"),
+    ("aucun CMD sur les cues couleur (les boucles d'autres groupes continuent)",
+     'if cmd then setProp(string.format("Sequence %d Cue 1", sq), "Command", cmd) end',
+     'if false then setProp(string.format("Sequence %d Cue 1", sq), "Command", cmd) end'),
+    ("E>I / I>E sans XWings (vagues identiques a J>C)",
+     'if dir.wings  then setLineProp(sq, k, 1, "XWings", "2") end',
+     'if false then setLineProp(sq, k, 1, "XWings", "2") end'),
+    ("C>J / I>E sans InvertX (sens jamais inverse)",
+     "if dir.invert then\n                        setLineProp(sq, k, 1, \"InvertX\", \"Yes\")",
+     "if false then\n                        setLineProp(sq, k, 1, \"InvertX\", \"Yes\")"),
+    ("PreferCueAppearance oublie sur les couleurs (tuiles sans etat)",
+     'setProp("Sequence " .. sq, "OffWhenOverridden", "Yes")\n                setProp("Sequence " .. sq, "PreferCueAppearance", "Yes", true)\n                setProp(string.format("Sequence %d Cue 1", sq), "CueInFade"',
+     'setProp("Sequence " .. sq, "OffWhenOverridden", "Yes")\n                setProp(string.format("Sequence %d Cue 1", sq), "CueInFade"'),
+    ("battement FX fige a 1 s (le reglage de l'assistant est ignore)",
+     'setLineProp(sq, k, 1, "DelayToX", fmtNum(fxSweep))',
+     'setLineProp(sq, k, 1, "DelayToX", "1")'),
+    ("retour de Cmd() ignore (le bug de la v8 : refus silencieux)",
+     'return s:sub(1, 2) == "ok"\nend',
+     'return true\nend'),
     ("plage de nettoyage des macros decalee de 1",
      "+ MAX_ROWS * NC + MAX_GROUP_ROWS * nDir - 1\n    local appDelEnd",
      "+ MAX_ROWS * NC + MAX_GROUP_ROWS * nDir\n    local appDelEnd"),
-    ("boucle de duree nulle sur un petit groupe (plus de plancher)",
-     "if maxD <= 0 then",
-     "if false then"),
-    ("nettoyage meme sur plages libres (le recap ment)",
-     "local occupied, detectOk = false, true",
-     "local occupied, detectOk = true, true"),
-    ("slot FX etranger non detecte (preset utilisateur ecrase sans avertir)",
-     'if nm == nil or not nm:match("^CP FX") then',
-     'if false then'),
-    ("ID de depart sous 101 accepte",
-     'baseId = math.floor(toNum(box.inputs["ID de depart (101+)"], 101, 101, 100000))',
-     'baseId = math.floor(toNum(box.inputs["ID de depart (101+)"], 101, 1, 100000))'),
-    ("numeros de groupes tapes non verifies",
-     "if objectExists(kind .. id) then kept[#kept + 1] = id",
-     "if true then kept[#kept + 1] = id"),
+    ("ligne ALL reduite a son premier groupe",
+     "for k, gid in ipairs(rowGroupIds(ti)) do",
+     "for k, gid in ipairs({ rowGroupIds(ti)[1] }) do"),
+    ("probe du CMD de cue supprimee (plus de verification)",
+     "local cmdProbe = probeCueCommand(seqProbe)",
+     "local cmdProbe = nil"),
+    ("FADE couleur reecrit aussi les boucles FX (mauvaise plage)",
+     "'Set Sequence %d Thru %d Cue 1 Property \"CueInFade\" \"%s\"', baseId, seqEnd, vs)",
+     "'Set Sequence %d Thru %d Cue 1 Property \"CueInFade\" \"%s\"', baseId, seqLast, vs)"),
+    ("WrapAround oublie (la boucle s'arrete apres la cue 2)",
+     'setPropTry("Sequence " .. sq, "WrapAround", { "Yes", "1" })',
+     '-- (WrapAround oublie)'),
+    ("image neon posee sur l'appearance d'une TUILE (une sequence ne la rend pas)",
+     "attach(imgFill(i), appOn(i))",
+     "attach(imgFill(i), appSeqOn(i))"),
+    ("en-tete de groupe tappable (selectionne le groupe en plein show)",
+     'pcall(function() elem:Set("Action", "None") end)',
+     'pcall(function() elem:Set("Action", "Go+") end)'),
 ]
 
 

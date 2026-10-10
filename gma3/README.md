@@ -1,122 +1,113 @@
-# Color Picker LIVE — plugin grandMA3 (onPC 2.5)
+# Color Picker LIVE — plugin grandMA3 onPC 2.5 (v9, recipes)
 
-Un **color picker de busking** : un board de layout où **chaque case est une
-macro** qui lance une mini-séquence **en restitution**, avec un fondu,
-**sans jamais toucher au programmer** pendant le show.
+Un plugin Lua qui construit un **board de busking couleur** dans un Layout :
+une ligne par groupe (+ ALL), 12 couleurs, 5 vagues FX par groupe, pastilles
+C1/C2, rangées FADE, vitesse et fondu FX réglables **en live**. Tout en
+**restitution** : le programmer n'est jamais touché pendant le show.
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                  C O L O R   P I C K E R   -   v8.0          │
-│ [ ALL  ] [Red][Orange][Amber][Yellow]…[White]                │
-│ [ SPOT ] [Red][Orange]…[White]  [J>C][C>J][E>I][I>E][1/2]    │
-│ [ WASH ] [Red][Orange]…[White]  [J>C][C>J][E>I][I>E][1/2]    │
-│ [════════════ Off All (barre rouge) ════════════]            │
-│ [FADE couleur 1s] [0s][0.5s][1s][2s][3s][4s]                 │
-│ [FADE arrêt 2s  ] [0][0.5][1][2][3][4]                       │
-│ [FX C1 Red      ] [●][○][○][○]…  (pastilles couleur)         │
-│ [FX C2 Blue     ] [○][○][○][●]…                              │
-│ [FX FONDU 0s    ] [FX 0][FX 0.1][FX 0.2][FX 0.5][FX 1]       │
-└──────────────────────────────────────────────────────────────┘
+[ C O L O R  P I C K E R ]
+[ ALL  ] [Red][Orange][Amber][Yellow][Green][Cyan][Azure][Blue][Violet][Magenta][Pink][White]
+[ SPOT ] [… 12 couleurs …]  [J>C][C>J][E>I][I>E][1/2]
+[ WASH ] [… 12 couleurs …]  [J>C][C>J][E>I][I>E][1/2]
+[═══════════════════════ Off All ═══════════════════════]
+[FADE couleur 1s] [0s][0.5s][1s][2s][3s][4s]
+[FADE arrêt 2s  ] [0][0.5][1][2][3][4]
+[FX C1 Red      ] [●][○]…
+[FX C2 Blue     ] [○][●]…
+[FX VITESSE 2s  ] [0.5s][1s][2s][4s][8s]                    [RE-CUISINER]
+[FX FONDU 1s    ] [0s][0.5s][1s][2s][4s]
 ```
 
-**v8 = uniquement ce qui a été vu marcher sur une console 2.5.0.3.** Le
-moteur FX « phaser + Speed Master » des versions 7.x, jamais validé (il
-produisait des erreurs et une rangée absente), a été retiré, ainsi que sa
-sonde et l'outil de diagnostic qui n'existaient que pour lui.
+## Ce qui change en v9 (après les retours console sur la v8)
 
-## Ce que fait le board
+| Retour | v8 | v9 |
+|---|---|---|
+| « Une tuile mettait une éternité à réagir » | chaque tuile = une macro de 40 à 100 lignes (Goto, Off, repeinture de toutes les tuiles) | les tuiles sont **les séquences elles-mêmes** : zéro ligne, réaction immédiate ; l'état visuel est tenu par la console (`PreferCueAppearance`) |
+| « Les FX allaient super vite, c'était horrible » | balayage 1 s, fondu 0, figés à la génération | vagues **MAtricks** (`DelayFromX/DelayToX`, `XWings`, `XGroup`, `InvertX`), défauts 2 s / 1 s, rangées **FX VITESSE** et **FX FONDU** en live |
+| « Il faut que ce soit des recipes » | cues stockées depuis le programmer | chaque cue est une **recipe** `Group → Preset 4.x` (+ timings), cuisinée par `Cook /Overwrite` |
+| « Des trucs font n'importe quoi » | le retour de `Cmd()` n'était jamais lu | **chaque commande est vérifiée** (`Ok` ou erreur), chaque ligne de recipe et chaque cue cuisinée sont relues ; le bilan compte et cite les refus |
 
-- **Case de gauche** = le vrai groupe (ou la machine) : on y voit sa couleur
-  live, mais elle est **inerte** (`Action = None`) — la taper ne sélectionne
-  rien.
-- **Tuiles couleur** : contour néon au repos, **remplies** quand elles jouent.
-  Une par ligne : `Off When Overridden` relâche la précédente toute seule.
-  Chaque tuile, en une frappe : lance sa séquence (`Goto … Fade …`), coupe
-  les boucles FX qui touchent ses machines, repeint sa ligne (et la ligne
-  `ALL`, qui n'a plus la main partout).
-- **Presets couleur universels** (`Preset 4.101`+) référencés par les cues :
-  modifie un preset et **tout le board suit**. Ils sont **réutilisés, jamais
-  effacés** — à condition que leur **label** soit celui de la couleur
-  attendue. Un label d'une autre palette (`Yellow` là où `Amber` est attendu)
-  est signalé dans la confirmation et **remis à la couleur du plugin**
-  (`Store … /Overwrite`), sinon la tuile jouerait une autre couleur que celle
-  qu'elle affiche.
-- **FX — 5 formes par ligne de groupe**, chacune une boucle C1 ↔ C2 :
+## Comment ça marche
 
-  | Tuile | Effet |
-  |-------|-------|
-  | `J>C` | balayage **jardin → cour** |
-  | `C>J` | balayage **cour → jardin** |
-  | `E>I` | **extérieur → intérieur** : les bords partent, le centre suit |
-  | `I>E` | **intérieur → extérieur** : le centre part, les bords suivent |
-  | `1/2` | **damier** : une machine sur deux en C1, l'autre moitié en C2, elles échangent à chaque cue |
+### Les tuiles sont des séquences
+- Chaque case couleur / FX du layout est `Sequence N` (élément `Action = Go+`).
+- `PreferCueAppearance = Yes` : séquence éteinte → appearance de la séquence (couleur sombre
+  à 30 %) ; séquence qui joue → appearance de sa cue (couleur pleine). Aucune repeinture,
+  état exact même après rechargement du show.
+- `OffWhenOverridden = Yes` partout : la couleur tapée prend toutes les valeurs de l'ancienne
+  couleur de la ligne **et** de la boucle FX du même groupe → elles s'éteignent seules (LTP).
+  ALL reste allumée tant qu'elle tient encore des machines.
+- Les boucles FX des **autres** groupes qui partagent des machines (SPOT dans GENERAL) sont
+  coupées par la colonne **CMD de la cue** : `Off Sequence 159 Thru 163 Fade 1`. Une tuile FX
+  coupe de la même façon toutes les boucles chevauchantes **sauf la sienne** (`Go+` la démarre,
+  ou l'avance si elle tourne déjà).
 
-  Mécanique : une séquence à **2 cues** (`TrigType Follow` + `WrapAround`),
-  cue 1 = C1, cue 2 = C2, le balayage venant de **délais individuels** posés
-  machine par machine dans l'ordre du groupe. La tuile part en **`Go+`**
-  (seul `Go+` enchaîne les cues Follow) après un `Off … Fade` de **toutes les
-  autres boucles qui touchent ses machines** — les 4 autres formes de sa
-  ligne et celles des groupes qui la chevauchent (sinon le groupe retombe à
-  sa couleur par défaut : flash). Sa propre boucle n'est pas coupée : `Go+`
-  la démarre si elle dort, et ne fait qu'avancer d'une cue si elle tourne.
-  - **`FX C1` / `FX C2`** : les pastilles copient la couleur choisie
-    (`Copy Preset … /Overwrite`) dans deux presets *slots* **référencés par
-    les cues** → la boucle change de couleurs **en direct**.
-  - **`FX FONDU`** (dernière rangée) : fondu entre les deux couleurs
-    (`CueInFade` des deux cues). **`FX 0` (défaut) = passage sec** : chaque
-    machine bascule net à son tour, aucune couleur intermédiaire. Un fondu
-    `> 0` fait passer la console par le mélange RVB des deux couleurs
-    (jaune + bleu = gris-blanc) : garde-le **court** devant l'étalement.
-  - **Balayage** (temps que met la vague pour traverser le groupe = le
-    battement) : écran `2/3 Temps > Balayage FX (s)`, **fixé à la
-    génération** (1 s par défaut). Le changer = régénérer. Un groupe d'une ou
-    deux machines (ou le damier) n'a pas de décalage à répartir : toutes ses
-    machines prennent alors le battement complet, pour que la cue ait une
-    durée (une cue de durée nulle emballerait la boucle).
-  - **Groupes imbriqués gérés** : le plugin relève les machines de chaque
-    groupe et sait qui recouvre qui. Une couleur sur `SPOT` coupe aussi la
-    boucle d'un `GENERAL` qui contient les spots. S'il ne peut pas énumérer
-    un groupe, il coupe **toutes** les boucles (prudent).
-- **Rangées FADE** : `FADE couleur` réécrit le `Goto` **et** les lignes
-  `Off` (relâche des boucles) de **toutes** les tuiles, couleur et FX, pour
-  que la boucle lâche au même temps que la couleur monte ; `FADE arrêt`
-  réécrit la commande d'`Off All`
-  (`Off … Fade X` — c'est là que vit le fondu d'arrêt). Bouton actif surligné,
-  en-tête relabellée.
-- **`Off All`** : relâche tout avec le fondu d'arrêt **et** remet toutes les
-  cases au repos. C'est aussi le **bouton de resynchro** si l'affichage te
-  semble faux (après rechargement du show, par exemple).
-- **Tuiles néon générées** : PNG fabriqués en pur Lua, écrits dans la *User
-  Image Library*, importés dans le pool Images, posés sur les appearances
-  (contour arrondi au repos, pavé plein en actif). Le fond passe en alpha 0
-  **seulement** si l'image est en place.
+### Les cues sont des recipes (zéro programmer)
+```
+Store Sequence 113 Cue 1 /Overwrite /NoConfirmation     -- crée séquence + cue vide
+Assign Group 1 At Sequence 113 Cue 1 Part 0.1           -- ligne de recipe 1 : Selection
+Assign Preset 4.101 At Sequence 113 Cue 1 Part 0.1      -- Values
+Cook Sequence 113 /Overwrite                            -- la console cuisine la cue
+```
+- Ligne ALL : une ligne de recipe par groupe du board (`Part 0.1`, `0.2`, …). Si la console
+  ne crée pas la ligne 2 par commande, repli par l'API objet (`part:Acquire("StandardRecipe")`
+  + `Set Selection / Values`), vérifié par `Count()`.
+- FX : deux cues (`C1` = preset slot `4.113`, `C2` = `4.114`), une ligne de recipe chacune,
+  avec les timings MAtricks de la forme :
 
-## Workflow live
+  | Forme | Timings sur la ligne de recipe |
+  |---|---|
+  | `J>C` | `DelayFromX 0`, `DelayToX <vitesse>` |
+  | `C>J` | idem + `InvertX Yes`, `InvertStyle All` |
+  | `E>I` | idem + `XWings 2` (les deux bords partent en premier) |
+  | `I>E` | `XWings 2` + `InvertX Yes` (le centre d'abord) |
+  | `1/2` | `XGroup 2` (une machine sur deux part en premier : damier qui s'échange à chaque cue) |
 
-1. (Il faut de l'intensité pour voir la couleur.)
-2. Tape une tuile → la ligne passe à cette couleur, la tuile se remplit.
-3. Tape une forme FX sur une ligne de groupe → boucle C1 ↔ C2. Change
-   C1 / C2 en bas quand tu veux, même en cours de boucle. `FX FONDU` règle
-   sec / fondu.
-4. `Off All` → tout se relâche. **Zéro programmer.**
+  `TrigType Follow` sur les deux cues, `WrapAround`, `CueInFade` = fondu FX. La cue dure le
+  temps de la vague : la suivante attend qu'elle soit finie.
+- Les pastilles C1/C2 : `Copy Preset 4.<couleur> At Preset 4.113 /Overwrite` — la cue cuisinée
+  **référence** le preset, la boucle change de couleur en direct.
+- `FX VITESSE` : réécrit `DelayToX` des 30 cues FX puis `Cook /Overwrite` les 15 boucles
+  (possible en cours de lecture). `FX FONDU` : réécrit le `CueInFade` des 30 cues.
+- `FADE couleur` : une seule commande par plage (`Set Sequence 101 Thru 148 Cue 1 Property
+  "CueInFade"`) + la réécriture du CMD de chaque ligne. `FADE arrêt` : réécrit `Off All`.
+- `RE-CUISINER` : `Cook /Overwrite` de toutes les séquences du board — après un repatch ou un
+  groupe modifié, pas besoin de régénérer.
+- **Programmer** : un `ClearAll` au départ, et le stockage des presets couleur universels
+  s'ils n'existent pas encore (un preset ne se crée pas sans valeurs), suivi d'un `ClearAll`.
+  Rien d'autre. Les membres des groupes sont lus sans programmer (`Group.selectiondata`).
 
-## Objets créés (à partir de l'ID de départ, défaut 101)
+### Vérification à la génération
+Le plugin lit le retour de **chaque** commande (`Ok` / `Illegal object` / `Illegal property` /
+`Syntax Error` …), compte le nombre de lignes de recipe de chaque cue, relit `OwnDataPresent`
+après la cuisson et `TrigType` sur les boucles, et teste **une fois** qu'un CMD de cue
+s'exécute bien au `Go+` (séquence de test vide : `SetUserVar` → `GetVar`, puis suppression).
+L'écran final affiche :
+```
+CONTROLES
+  Commandes refusees : 0
+  Lignes de recipe : 102/102   Cues cuisinees : 78/78
+  Boucles en Follow : 30/30   Groupes enumeres : 3/3
+  CMD de cue : OK
+```
+Un refus = compté, le premier est cité en clair. Jamais un board qui « fait n'importe quoi »
+en silence.
 
-| Pool        | Contenu |
-|-------------|---------|
-| Sequences   | 1 par (ligne × couleur) + **5 par groupe** |
-| Macros      | toutes les cases : tuiles, FX, `Off All`, en-têtes, FADE, C1/C2, FX FONDU |
-| Appearances | 2 par couleur + 6 utilitaires |
-| Images 3.x  | 1 contour + 1 plein par couleur + 4 |
-| Presets 4.x | couleurs universelles + 2 slots FX (**jamais effacés**) |
-| Layout      | le board (numéro au choix, défaut 1) |
+## Ce que le board écrit (base 101, modifiable)
 
-**Une seule confirmation, jamais une par objet** : toutes les commandes
-portent `/NoConfirmation` (nom depuis la v1.9 ; `/NoConfirm` ne suffit plus,
-`Import Image` et `Copy Preset` en ont besoin aussi). Le nettoyage couvre des
-**plages larges** (l'empreinte max possible) pour qu'une régénération plus
-petite ne laisse jamais d'orphelins ; les numéros de slots (presets FX,
-images, appearances) sont **stables** quel que soit le nombre de couleurs.
+| Pool | Numéros | Contenu |
+|---|---|---|
+| Sequences | 101 … 101 + lignes×couleurs + groupes×5 − 1 | 1 cue par couleur, 2 cues par vague FX |
+| Macros | 101 … 156 | Off All, en-têtes, FADE ×2, C1/C2, FX VITESSE, FX FONDU, RE-CUISINER |
+| Appearances | 101 … 154 | pastilles (images) + tuiles (aplats) + utilitaires |
+| Images 3.x | 101 … 126 | contours / pavés néon des boutons |
+| Presets 4.x | 101 … 112 + slots 113 / 114 | couleurs universelles (**jamais effacées**) |
+| Layout | au choix (défaut 1) | le board |
+
+**Une seule confirmation, jamais une par objet** : toutes les commandes portent une option
+(`/NoConfirmation`, `/Overwrite`…) — un popup ne peut pas s'ouvrir depuis un plugin. Le
+nettoyage couvre des **plages larges** (empreinte max, versions précédentes comprises).
 
 ## Installation
 
@@ -126,110 +117,81 @@ images, appearances) sont **stables** quel que soit le nombre de couleurs.
 
 Console : pool **Plugins** → case vide → **Import** → `ColorPicker`.
 
-> **Après chaque modification du `.lua`** : `ReloadAllPlugins` (`RP`). La
-> console met les `.lua` externes en cache. Le plugin affiche sa version au
-> lancement (= le fichier chargé) **et** dans la bannière du board (= la
-> version qui a généré ce layout) : si elles diffèrent, régénère.
+> **Après chaque modification du `.lua`** : `ReloadAllPlugins` (`RP`). Le plugin affiche sa
+> version au lancement (= le fichier chargé) et dans la bannière du board (= la version qui a
+> généré ce layout) : si elles diffèrent, régénère.
+
+**Il faut des groupes** (une recipe sélectionne un Group) : SPOT, WASH… dans l'ordre jardin →
+cour pour que les vagues aient un sens. Sans groupe, le plugin le dit et s'arrête.
 
 ## L'assistant (au lancement)
 
-1. **Accueil** — le rig détecté (groupes par leur nom), ce qui va être
-   construit. `Regler` ouvre les trois écrans ; `Reglages par defaut` saute
-   directement au récapitulatif.
-2. **1/3 Lignes et couleurs** — les groupes qui deviennent une ligne
-   (pré-rempli avec ceux détectés, `1 + 2` ou `1 Thru 8`, 12 max ; sans
-   groupe : les machines), nombre de couleurs (1–12).
-   Les numéros tapés sont **vérifiés** : un groupe inexistant est ignoré et
-   cité au récapitulatif ; si aucun n'est valide, l'écran est redemandé.
-3. **2/3 Temps** — fade couleur (`1`), fade arrêt (`2`) et, s'il y a des
-   groupes, balayage FX (`1`) et fondu FX initial (`0` = sec).
-4. **3/3 Emplacement** — ID de départ (`101` minimum : les numéros 1 à 100
-   ne sont jamais touchés), numéro de Layout (`1`).
-5. **Récapitulatif** — lignes par leur nom, couleurs, nombre de boucles FX,
-   temps, plages exactes qui seront écrites, sort des presets (réutilisés /
-   créés / corrigés). Si les plages sont **libres**, il le dit : rien
-   d'existant ne sera touché, aucun `Delete` n'est envoyé. Sinon
-   **ATTENTION** : la liste exacte de ce qui sera supprimé (y compris un
-   preset à toi sur un slot FX, ou un MAtricks d'une ancienne version).
-   `Construire` / `Modifier` (retour aux écrans, **pré-remplis** avec tes
-   valeurs) / `Annuler`. C'est la **seule** confirmation : jamais une
-   question par objet.
-6. **Écran final** — le bilan (lignes, boucles, plages, presets, images
-   importées, cases posées) et le mode d'emploi en six lignes.
+1. **Accueil** — le rig détecté (groupes par leur nom), ce qui va être construit.
+   `Regler` / `Reglages par defaut` / `Annuler`.
+2. **1/3 Lignes et couleurs** — les groupes du board (pré-remplis ; `1 + 2`, `1 Thru 8`, 12 max ;
+   les numéros inexistants sont ignorés et cités, une liste vide est redemandée), nombre de couleurs.
+3. **2/3 Temps** — fade couleur (`1`), fade arrêt (`2`), vitesse FX (`2`), fondu FX (`1`).
+   Les quatre restent réglables sur le board.
+4. **3/3 Emplacement** — ID de départ (`101` minimum), numéro de Layout (`1`).
+5. **Récapitulatif** — lignes, vagues, plages exactes, sort des presets, usage du programmer.
+   Plages libres → aucun `Delete` ; sinon `ATTENTION` + la liste exacte de ce qui sera supprimé.
+   `Construire` / `Modifier` (écrans pré-remplis) / `Annuler`. C'est la **seule** confirmation.
+6. **Écran final** — bilan, **contrôles**, mode d'emploi.
 
-Annuler à n'importe quel écran = **aucune** commande envoyée. La virgule
-décimale est acceptée (`0,5` = `0.5`). Les listes acceptent `+`, `,`, `;`,
-les espaces et `Thru`.
+Annuler à n'importe quel écran = aucune commande. Virgule décimale acceptée (`0,5`).
 
-Palette : `Red · Orange · Amber · Yellow · Green · Cyan · Azure · Blue ·
-Violet · Magenta · Pink · White`.
+## En live
+
+- **Tuile couleur** : la ligne prend la couleur (fade couleur), la tuile s'allume, l'ancienne
+  s'éteint. Les boucles FX qui touchaient ces machines s'arrêtent.
+- **`J>C` `C>J` `E>I` `I>E` `1/2`** : vague C1↔C2 sur le groupe ; retaper = la boucle continue.
+  Une couleur sur la ligne l'arrête. `Off All` arrête tout.
+- **C1 / C2** : les deux couleurs de la vague, changeables en cours.
+- **FX VITESSE / FX FONDU** : battement et douceur de la vague (recuisson, à faire entre deux
+  looks plutôt qu'en plein effet).
+- **FADE couleur / FADE arrêt** : le bouton actif est surligné.
+- **RE-CUISINER** : après un repatch ou un groupe modifié.
 
 ## Vérification (`test/`)
 
-Le plugin est rejoué dans une **console factice** (Lua via `lupa`) avant
-chaque livraison :
-
 ```
 pip install lupa
-python3 gma3/test/mock_test.py       # rig imbriqué de référence, ~200 vérifications
-python3 gma3/test/all_scenarios.py   # 30 scénarios : sans groupes, sans API de
-                                     # sélection, cellules, panne, palettes
-                                     # périmée / à jour / illisible, annulation à
-                                     # chaque écran, plages libres / occupées,
-                                     # petits groupes, listes fausses, Modifier…
-python3 gma3/test/mutations.py       # 13 bugs réintroduits volontairement :
-                                     # la batterie doit les attraper tous
+python3 gma3/test/mock_test.py       # rig imbriqué de référence, ~250 vérifications
+python3 gma3/test/all_scenarios.py   # 30 scénarios : repli Acquire, sans selectiondata,
+                                     # Set par plage refusé, CMD inerte, commande refusée,
+                                     # panne, palettes, annulations, plages occupées,
+                                     # listes fausses, petits groupes, Modifier…
+python3 gma3/test/mutations.py       # 17 bugs réintroduits volontairement : 17 attrapés
 ```
 
-Vérifié : objets et plages de nettoyage (et leur **absence** quand les
-plages sont libres), contenu **exact** de chaque macro du board (ce que
-chaque tuile coupe, ce qu'elle épargne, ce que chaque bouton FADE réécrit),
-aucune commande programmer sur le board, `/NoConfirmation` partout, aucune
-propriété de séquence non validée, forme et durée des délais pour les 5 FX,
-PNG décodés octet par octet, placement du layout, textes de l'assistant.
+La console factice répond `Ok` ou une **erreur** à chaque commande (toute commande hors modèle =
+`Syntax Error`), modélise les lignes de recipe, la cuisson, le CMD de cue, les membres des
+groupes. Vérifié : zéro programmer hors `ClearAll` et presets, options sur tout ce qui pourrait
+ouvrir un popup, contenu exact de chaque recipe et de chaque CMD (ce qu'une tuile coupe, ce
+qu'elle épargne), macros courtes (aucune au-dessus de 60 lignes en live), appearances des tuiles
+sans image, placement du layout, textes de l'assistant et du bilan.
+
+## À observer sur ta console (ce que le simulateur ne peut pas prouver)
+
+1. `Assign Group … Part 0.2` crée bien la 2ᵉ ligne (sinon le repli Lua prend le relais — le
+   bilan le dit si aucun des deux ne marche).
+2. Tuile séquence : couleur pleine quand elle joue, sombre sinon (`PreferCueAppearance`).
+3. Sens de `InvertX`, extrémité de la vague, `XGroup 2` = alternance.
+4. `CMD de cue : OK` au bilan.
+5. `Copy Preset A At B /Overwrite` : la boucle change de couleur sans recuisson.
 
 ## Notes techniques (chaque point a été un échec silencieux avant)
 
-- **Tap d'une case** : propriété **`Action`** (`Go+`, `None`…).
-  `PlaybackFunction` / `Function` n'existent pas. Le défaut dépend du profil
-  utilisateur → posé explicitement.
-- **Pourquoi des macros** : un élément de layout affiche l'appearance de
-  la *séquence*, pas de la cue active (sauf `PreferCueAppearance`, Off par
-  défaut), et seulement la couleur de fond — l'image n'est rendue que pour
-  une macro.
-- **`Goto` n'enchaîne pas les cues `Follow`** : seul `Go+` le fait. `Go+`
-  avance d'une cue si la séquence tourne déjà (retaper la tuile = la boucle
-  continue) ; chaque tuile FX commence par un `Off` des **autres** boucles
-  qui touchent ses machines, jamais de la sienne.
-- **`OffFade` n'est pas une propriété de séquence** sur 2.5 (notification
-  *Illegal property* à chaque écriture — 48 par appui en plein show). Le
-  fondu d'arrêt est porté par `Off … Fade X`.
-- Trigger de cue : **`TrigType`** = `Follow` (sensible à la casse). Boucle =
-  2 cues Follow + `WrapAround`.
-- **`Delay <t>`** en mot-clé de départ pose un délai **individuel** sur la
-  sélection ; le programmer **accumule** → construction machine par machine.
-  `Delay 0 Thru 1 Thru 0` est du MA2 : les formes symétriques sont calculées
-  en Lua.
-- **`SelectionFirst()` / `SelectionNext()`** renvoient un index de
-  **subfixture**, pas un FID → `GetSubfixture(idx).FID` (ou `ToAddr()` pour
-  une cellule). Sans cette API : repli sur `Delay a Thru b`.
-- Les délais individuels rallongent la **Duration** de la cue, que le
-  `Follow` attend → le balayage finit avant la cue suivante. Le damier porte
-  un délai uniforme pour la même raison (une cue de durée nulle emballerait
-  la boucle).
-- `/NoConfirmation` partout ; ranged delete d'images avec le mot-clé répété
-  (`Delete Image 3.101 Thru Image 3.128`).
-- Cues écrites via `ColorRGB_R/G/B` **puis** `At Preset 4.x` : la cue est
-  liée au preset, la console convertit vers les autres systèmes de couleur.
-- **`Copy Preset … /Overwrite`** pour les slots FX : `/Merge` laissait des
-  attributs de l'ancienne couleur (source de couleurs « pas demandées »).
-- `ImageMode = Bar` sur l'appearance (image entière, aspect conservé).
-- Layout : handle `DataPool().Layouts[n]` pris une fois, dernier enfant après
-  chaque `Assign … At Layout`, `posx/posy/positionw/positionh`, échelle
-  native auto-mesurée, coordonnées ≥ 0, axe Y inversé en fin.
-- **La génération utilise le programmer** (impossible autrement pour stocker
-  des cues) — après confirmation, sous `pcall`, avec un `ClearAll` garanti à
-  la fin même en cas de panne. À faire avant le show.
+- Tap d'une case : propriété **`Action`** (`Go+`, `None`). Un en-tête de groupe reste inerte.
+- Un layout ne rend l'**image** d'une appearance que pour une macro → les tuiles-séquences
+  utilisent des appearances à plat (`BackR/G/B`), les boutons gardent les PNG néon.
+- `Goto` n'enchaîne pas les cues `Follow` ; seul `Go+` le fait.
+- `OffFade` n'existe pas sur 2.5 ; le fondu d'arrêt vit dans `Off … Fade X`.
+- Valeurs de propriétés **sensibles à la casse** (`"Follow"`, `"Yes"`), grilles MAtricks
+  remises à `"None"` (jamais `0`).
+- Un `Cook` ou un `Store` sans option ouvre un popup, impossible depuis un plugin → options partout.
+- `SelectionFirst()` renvoie un index de subfixture, pas un FID ; `Group.selectiondata[*].sf_index`
+  → `GetSubfixture(idx)`.
 
 ## Nettoyage manuel
 
@@ -239,7 +201,6 @@ Delete Macro 101 Thru …
 Delete Appearance 101 Thru …
 Delete Image 3.101 Thru Image 3.…
 Delete Layout 1
-Delete MAtricks 101           (seulement s'il reste un MAtricks d'une v7)
 ```
 
 Les presets `4.101+` sont à toi : le plugin ne les supprime jamais.

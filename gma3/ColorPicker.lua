@@ -1,5 +1,5 @@
 -- =====================================================================
---  Color Picker LIVE  -  Plugin Lua pour grandMA3 v2.x
+--  Color Picker LIVE  -  Plugin Lua pour grandMA3 v2.5
 -- ---------------------------------------------------------------------
 --  Un color picker de busking, construit comme le font les pupitreurs :
 --
@@ -12,46 +12,52 @@
 --    [FADE arret  ] [0][0.5][1][2][3][4]
 --    [FX C1 <col> ] [pastilles couleur]   -> couleur 1 de la boucle
 --    [FX C2 <col> ] [pastilles couleur]   -> couleur 2 de la boucle
---    [FX FONDU    ] [FX 0][FX 0.1][FX 0.2][FX 0.5][FX 1]  (sec <-> fondu)
---    + banniere titre en haut (l'axe Y du layout est inverse a la fin).
+--    [FX VITESSE  ] [0.5][1][2][4][8]     -> battement de la vague (s)
+--    [FX FONDU    ] [0][0.5][1][2][4]     -> fondu de chaque machine (s)
+--    [RE-CUISINER ]                       -> apres un repatch / groupe modifie
 --
---  MECANIQUE (v8) — tout le board est fait de MACROS :
---  - Chaque tuile est une MACRO qui (1) lance la sequence couleur en
---    RESTITUTION (Goto ... Fade), (2) coupe le FX de sa ligne, (3)
---    repeint les appearances de la ligne -> la tuile tapee SE REMPLIT,
---    les autres redeviennent des contours. C'est exactement le mecanisme
---    des pastilles FX C1/C2, valide sur console.
---    (Une tuile-sequence, elle, ne peut PAS se remplir avec l'image :
---     la console ne prend que la COULEUR de fond de l'appearance de cue,
---     d'ou l'ancienne "case pleine" moche.)
---  - Look "neon" : images PNG generees par le plugin (contour arrondi au
---    repos, pave arrondi PLEIN quand actif), tuiles nettoyees (ni icone,
---    ni barre, ni bordure).
---  - "Off When Overridden" sur les sequences : la couleur precedente se
---    relache toute seule -> une seule tuile allumee par ligne.
---  - FX : 5 tuiles par ligne de groupe = 5 FORMES d'effet, chacune une
---    boucle C1<->C2 (2 cues en Follow + WrapAround, balayage par delais
---    individuels — le SEUL moteur valide sur console 2.5) :
---      J>C  balayage jardin -> cour        C>J  cour -> jardin
---      E>I  des bords vers le centre       I>E  du centre vers les bords
---      1/2  damier : une machine sur deux en C1, l'autre moitie en C2,
---           et elles echangent a chaque cue (aucun delay).
---    Les pastilles C1/C2 re-teintent la boucle en live (Copy /Overwrite
---    dans deux presets slots references par les cues).
---  - AUCUNE action du board ne touche le programmer (seule la GENERATION
---    l'utilise, apres confirmation, et le rend propre).
+--  MECANIQUE (v9) — RECIPES, zero programmer :
+--  - Chaque cue est une RECIPE : Selection = Group, Values = Preset 4.x,
+--    et pour les FX les timings MAtricks (DelayFromX / DelayToX, XWings,
+--    XGroup, InvertX). La console la CUISINE (Cook /Overwrite). Le plugin
+--    n'ecrit jamais de valeurs depuis le programmer : il assemble des
+--    objets (Store / Assign / Set / Cook) et VERIFIE le retour de chaque
+--    commande ("Ok" ou une erreur) et l'etat des objets (lignes de
+--    recipe, cue cuisinee). Tout echec est compte et affiche au bilan.
+--  - Les tuiles couleur et FX sont LES SEQUENCES ELLES-MEMES posees dans
+--    le layout : zero macro, zero repeinture -> reaction immediate. L'etat
+--    visuel est tenu par la console : "PreferCueAppearance" -> tuile
+--    sombre quand la sequence dort, couleur pleine quand elle joue.
+--  - Exclusivite par LTP + "Off When Overridden" : la couleur tapee prend
+--    toutes les valeurs de l'ancienne couleur de la ligne (et de la boucle
+--    FX du meme groupe) -> elles s'eteignent seules.
+--  - Les boucles FX des AUTRES groupes qui partagent des machines sont
+--    coupees par la colonne CMD de la cue ("Off Sequence a Thru b Fade").
+--    Le plugin verifie a la generation qu'un CMD de cue s'execute bien.
+--  - FX : 5 tuiles par ligne de groupe = 5 FORMES de vague, chacune une
+--    boucle C1<->C2 (2 cues Follow + WrapAround) :
+--      J>C  jardin -> cour (DelayFromX 0, DelayToX = battement)
+--      C>J  cour -> jardin (idem + InvertX)
+--      E>I  des bords vers le centre (XWings 2)
+--      I>E  du centre vers les bords (XWings 2 + InvertX)
+--      1/2  damier : XGroup 2 -> une machine sur deux part en premier,
+--           les deux moities sont toujours en couleurs opposees.
+--    Battement (FX VITESSE) et fondu (FX FONDU) se reglent EN LIVE.
+--  - Les pastilles C1/C2 re-teintent la boucle en live : Copy /Overwrite
+--    dans deux presets slots que les cues cuisinees REFERENCENT.
+--  - Look : boutons en images PNG "neon" generees par le plugin ; tuiles
+--    couleur = aplat (sombre / plein), le seul rendu possible pour une
+--    sequence dans un layout.
 --
 --  NB : apres toute modification de ce fichier -> "ReloadAllPlugins" (RP).
 -- =====================================================================
 
 -- Version affichee dans les dialogues : elle dit quelle version du .lua
--- la console a REELLEMENT chargee (apres un ReloadAllPlugins). Les macros
--- deja stockees dans le show, elles, datent de la derniere GENERATION —
--- c'est pour ca qu'un correctif n'agit qu'apres avoir regenere.
-local VERSION = "8.0"
+-- la console a REELLEMENT chargee (apres un ReloadAllPlugins). Les objets
+-- deja stockes dans le show, eux, datent de la derniere GENERATION.
+local VERSION = "9.0"
 
--- Palette en ordre ARC-EN-CIEL (blanc en dernier). Chaque couleur a deux
--- appearances : contour (repos) et pleine (tuile active -> "se remplit").
+-- Palette en ordre ARC-EN-CIEL (blanc en dernier).
 local COLORS = {
     { name = "Red",     r = 255, g =   0, b =   0 },
     { name = "Orange",  r = 255, g =  70, b =   0 },
@@ -67,60 +73,42 @@ local COLORS = {
     { name = "White",   r = 255, g = 255, b = 255 },
 }
 
-local MAX_FIXTURE_ROWS = 12   -- limite de lignes en mode "une par machine"
-local MAX_GROUP_ROWS   = 12   -- limite de lignes de groupes (board lisible)
+local MAX_GROUP_ROWS = 12   -- lignes de groupes max (board lisible)
 
 -- Valeurs proposees par les boutons de fade (secondes).
 local FADE_VALUES = { 0, 0.5, 1, 2, 3, 4 }
 
--- Etalement du balayage FX (secondes) : delay individuel reparti sur le
--- groupe, dans l'ordre des fixtures. C'est aussi le BATTEMENT de la boucle
--- (la duree d'une cue = son plus grand delay + son fondu), donc il ne doit
--- jamais valoir 0 : une cue de duree nulle ferait tourner la boucle a
--- l'infini sans respirer.
-local FX_SWEEP_DEFAULT = 1
+-- Battement de la vague FX (secondes) : le temps que met la vague pour
+-- traverser le groupe = la duree d'une cue de la boucle (DelayToX). Il
+-- ne vaut jamais 0 : une cue de duree nulle emballerait la boucle.
+local FX_SWEEPS        = { 0.5, 1, 2, 4, 8 }
+local FX_SWEEP_DEFAULT = 2
 
--- Transition du FX : fondu d'entree des cues de boucle.
---   0 = passage SEC. Chaque machine bascule net a son tour -> la vague se
---       lit parfaitement et AUCUNE couleur intermediaire n'apparait.
---   > 0 = fondu enchaine. Attention : la console interpole les composantes
---       RVB, donc entre deux couleurs opposees (jaune/bleu, rouge/cyan) le
---       point milieu est gris-blanc. Plus le fondu est long par rapport a
---       l'etalement du balayage, plus la vague se brouille.
--- D'ou le defaut a 0, et des valeurs COURTES devant l'etalement (1 s).
-local FX_FADES = { 0, 0.1, 0.2, 0.5, 1 }
+-- Fondu de chaque machine dans la vague (CueInFade des cues de boucle) :
+-- 0 = bascule nette, sinon fondu doux. Reglable en live.
+local FX_FADES        = { 0, 0.5, 1, 2, 4 }
+local FX_FADE_DEFAULT = 1
 
--- Sens du balayage : une sequence FX par sens et par groupe.
+-- Fondu avec lequel une tuile FX relache les AUTRES boucles qui touchent
+-- ses machines (colonne CMD de ses cues). Fixe : les tuiles FX ne sont
+-- pas reecrites par les rangees FADE (macros courtes).
+local FX_KILL_FADE = 1
+
+-- Formes de la vague : une sequence FX par forme et par groupe.
 --   J = jardin (debut du groupe), C = cour (fin du groupe),
 --   E = exterieur (les bords), I = interieur (le centre).
---   fan  = forme du delay individuel le long du groupe.
---   fb   = commande de repli si on ne peut pas enumerer les fixtures
---          (nil = pas de delay du tout).
+-- Tout passe par les timings MAtricks de la ligne de recipe :
+--   DelayFromX 0 / DelayToX <battement> pour toutes les formes, puis
+--   wings  : XWings 2  -> les deux moities se repondent (bords d'abord)
+--   invert : InvertX Yes + InvertStyle All -> sens inverse
+--   group2 : XGroup 2  -> une machine sur deux (damier)
 local FX_DIRS = {
-    { lbl = "J>C", fan = "fwd",    fb = "Delay 0 Thru %s" },
-    { lbl = "C>J", fan = "rev",    fb = "Delay %s Thru 0" },
-    { lbl = "E>I", fan = "sym",    fb = "Delay 0 Thru %s" },
-    { lbl = "I>E", fan = "symOut", fb = "Delay 0 Thru %s" },
-    { lbl = "1/2", fan = "alt",    fb = nil },
+    { lbl = "J>C" },
+    { lbl = "C>J", invert = true },
+    { lbl = "E>I", wings = true },
+    { lbl = "I>E", wings = true, invert = true },
+    { lbl = "1/2", group2 = true },
 }
-
--- Position du delay (0..1) de la i-eme machine d'un groupe de n.
-local function fanFactor(fan, i, n)
-    if fan == "alt" then return 0 end   -- damier : aucun delay
-    if n < 2 then return 0 end
-    if fan == "rev" then return (n - i) / (n - 1) end
-    if fan == "sym" or fan == "symOut" then
-        -- distance au bord, ramenee entre 0 (bord) et 1 (centre)
-        local d   = math.min(i - 1, n - i)
-        local mid = math.floor((n - 1) / 2)
-        local f   = (mid > 0) and (d / mid) or 0
-        -- "sym"    : les bords partent en premier  (exterieur -> interieur)
-        -- "symOut" : le centre part en premier     (interieur -> exterieur)
-        if fan == "symOut" then return 1 - f end
-        return f
-    end
-    return (i - 1) / (n - 1)             -- "fwd" : jardin -> cour
-end
 
 -- Nombre decimal propre pour la ligne de commande ("0.4", "1", "0").
 local function fmtNum(v)
@@ -332,60 +320,6 @@ local function breathe()
     pcall(coroutine.yield, 0)
 end
 
--- Machines de la selection courante, RANGEES DE JARDIN A COUR : c'est ce
--- qui definit le sens d'un balayage.
---   ATTENTION : SelectionFirst()/SelectionNext() renvoient un index de
---   SUBFIXTURE (index de patch interne), PAS un numero de machine — il
---   faut passer par GetSubfixture(idx) pour obtenir le FID (ou l'adresse
---   d'une cellule). Ils renvoient aussi la position dans la grille de
---   selection (gridX) : c'est l'ordre que MA3 utilise lui-meme pour
---   etaler une valeur sur une selection, donc on trie dessus.
--- Renvoie nil si l'API n'est pas disponible sur ce build (-> repli sur le
--- fan "Delay a Thru b").
-local function selectionAddrs(cap)
-    local out, seen = {}, {}
-    local hitCap = false
-    local ok = pcall(function()
-        local idx, gx = SelectionFirst()
-        local rank = 0
-        while idx ~= nil do
-            if #out >= cap then hitCap = true; break end
-            rank = rank + 1
-            local addr
-            pcall(function()
-                local sf = GetSubfixture(idx)
-                if not sf then return end
-                local fid = sf.FID or sf.fid
-                if fid and tonumber(fid) and tonumber(fid) >= 1 then
-                    addr = string.format("Fixture %d", math.floor(tonumber(fid)))
-                elseif sf.ToAddr then
-                    -- cellule (subfixture) : "Fixture 301.1"
-                    local a = tostring(sf:ToAddr() or "")
-                    if a ~= "" then
-                        addr = a:match("^Fixture ") and a or ("Fixture " .. a)
-                    end
-                end
-            end)
-            if addr and not seen[addr] then
-                seen[addr] = true
-                out[#out + 1] = { addr = addr, x = tonumber(gx) or 0, rank = rank }
-            end
-            idx, gx = SelectionNext(idx)
-        end
-    end)
-    -- Groupe enorme : construire le balayage machine par machine couterait
-    -- des milliers de commandes -> on repasse sur le fan par plage.
-    if hitCap then return nil end
-    if not ok or #out < 1 then return nil end
-    table.sort(out, function(a, b)
-        if a.x ~= b.x then return a.x < b.x end
-        return a.rank < b.rank
-    end)
-    local addrs = {}
-    for i, e in ipairs(out) do addrs[i] = e.addr end
-    return addrs
-end
-
 -- --------------------------- constructeurs ---------------------------
 
 -- Appearance pleine couleur (fond). Proprietes BackR/G/B/Alpha en 0-255,
@@ -445,39 +379,272 @@ local function makeMacro(no, name, appNo, lines)
     end
 end
 
--- Fade d'entree d'une cue : dans le modele MA3 la propriete vit sur la
--- PART 0 de la cue -> double ecriture, commande cue-level + handle Part 0
--- (best-effort, l'une des deux passe selon le build).
-local function setCueFade(sq, cueNo, sec)
-    Cmd(string.format('Set Sequence %d Cue %d Property "CueInFade" "%s"',
-        sq, cueNo, fmtNum(sec)))
-    pcall(function()
-        local part = ObjectList(string.format("Sequence %d Cue %d Part 0", sq, cueNo))[1]
-        if part then part:Set("CueInFade", fmtNum(sec)) end
-    end)
+-- ------------------- commandes VERIFIEES (le coeur v9) -----------------
+-- Cmd() renvoie une chaine : "Ok", ou une erreur ("Illegal object",
+-- "Syntax Error", "Illegal property", ...). La v8 ne la lisait pas : une
+-- commande refusee passait en silence et le board "faisait n'importe
+-- quoi". Ici chaque refus est compte, le premier est cite au bilan.
+local CP = { fails = 0, firstFail = nil, cosmetic = 0, log = {} }
+
+local function cmdOk(r)
+    if r == nil then return true end        -- build qui ne renvoie rien
+    local s = tostring(r):lower()
+    return s:sub(1, 2) == "ok"
 end
 
--- Commandes de restitution (aucune ne touche le programmer).
--- Goto = saut direct a la cue 1 avec un fondu (syntaxe manuel 2.4 :
--- "Goto [Object] ... (Fade [Fade_Time])"). Parfait pour une sequence
--- couleur a UNE cue.
-local function gotoCmd(sq, fade)
-    return string.format("Goto Sequence %d Cue 1 Fade %s", sq, fmtNum(fade))
-end
-
--- ATTENTION : "Goto" ne declenche PAS les cues suivantes en Follow — seul
--- "Go+" enchaine les cues follow/timed (manuel : Play Back Cues). Les
--- boucles FX doivent donc partir avec Go+, sinon elles restent bloquees
--- sur la cue 1.
-local function goPlusCmd(sq)
-    return string.format("Go+ Sequence %d", sq)
-end
-
-local function offCmd(a, b, fade)
-    if b and b > a then
-        return string.format("Off Sequence %d Thru %d Fade %s", a, b, fmtNum(fade))
+-- cosmetic = true : commande d'habillage (appearance, label...) dont
+-- l'echec ne casse pas le board -> comptee a part.
+local function run(s, cosmetic)
+    local r = Cmd(s)
+    if cmdOk(r) then return true end
+    if cosmetic then
+        CP.cosmetic = CP.cosmetic + 1
+    else
+        CP.fails = CP.fails + 1
+        if not CP.firstFail then
+            CP.firstFail = string.format("%s  ->  %s", s, tostring(r))
+        end
     end
-    return string.format("Off Sequence %d Fade %s", a, fmtNum(fade))
+    if #CP.log < 40 then
+        CP.log[#CP.log + 1] = string.format("%s -> %s", s, tostring(r))
+    end
+    Printf("[CP] refuse : %s -> %s", s, tostring(r))
+    return false
+end
+
+local function handleOf(addr)
+    local h
+    pcall(function() h = ObjectList(addr)[1] end)
+    return h
+end
+
+-- Set d'une propriete : commande, et si elle est refusee, ecriture par
+-- le handle objet (certaines proprietes ne passent que par l'un des deux
+-- selon le build). L'echec n'est compte que si LES DEUX refusent.
+local function setProp(addr, name, value, cosmetic)
+    local s = string.format('Set %s Property "%s" "%s"', addr, name, tostring(value))
+    local r = Cmd(s)
+    if cmdOk(r) then return true end
+    local ok = pcall(function()
+        local h = ObjectList(addr)[1]
+        if not h then error("no handle") end
+        h:Set(name, tostring(value))
+    end)
+    if ok then return true end
+    if cosmetic then
+        CP.cosmetic = CP.cosmetic + 1
+    else
+        CP.fails = CP.fails + 1
+        if not CP.firstFail then
+            CP.firstFail = string.format("%s  ->  %s", s, tostring(r))
+        end
+    end
+    Printf("[CP] refuse : %s -> %s", s, tostring(r))
+    return false
+end
+
+-- Lecture d'une propriete (texte), nil si illisible.
+local function getProp(addr, name)
+    local v
+    pcall(function()
+        local h = ObjectList(addr)[1]
+        if h then
+            local ok, r = pcall(function() return h:Get(name, Enums.Roles.Edit) end)
+            if ok and r ~= nil then v = r else v = h:Get(name) end
+        end
+    end)
+    if v == nil then return nil end
+    return tostring(v)
+end
+
+-- ------------------------------ recipes ------------------------------
+-- Une ligne de recipe est un enfant de la PART 0 de la cue, adressee
+-- "Sequence N Cue K Part 0.L" (L = numero de ligne, a partir de 1).
+local function partOf(sq, cue)
+    return handleOf(string.format("Sequence %d Cue %d Part 0", sq, cue))
+end
+
+-- Nombre de lignes de recipe d'une cue (nil si la console ne le dit pas).
+local function lineCount(sq, cue)
+    local n
+    pcall(function()
+        local part = partOf(sq, cue)
+        if not part then return end
+        local ok, c = pcall(function() return part:Count() end)
+        if ok and type(c) == "number" then n = c; return end
+        local ch = part:Children()
+        if ch then n = #ch end
+    end)
+    return n
+end
+
+-- Ajoute la ligne L (Group -> Preset) a la cue. Chemin console-verifie :
+-- "Assign Group ... At ... Part 0.L" cree la ligne quand elle n'existe
+-- pas. Si la ligne n'apparait pas (verification par Count), repli par
+-- l'API objet : part:Acquire("StandardRecipe") + Set Selection/Values.
+-- Renvoie true si la ligne est la (ou si on ne peut pas le verifier).
+local function addRecipeLine(sq, cue, lineNo, gid, pt, pNo)
+    local addr = string.format("Sequence %d Cue %d Part 0.%d", sq, cue, lineNo)
+    -- (pas run() : un refus ici n'est une erreur que si le repli echoue aussi)
+    local assignCmd = string.format("Assign Group %d At %s", gid, addr)
+    local r = Cmd(assignCmd)
+    local n = lineCount(sq, cue)
+    if cmdOk(r) and (n == nil or n >= lineNo) then
+        run(string.format("Assign Preset %d.%d At %s", pt, pNo, addr))
+        return true, "cmd"
+    end
+    if not cmdOk(r) then Printf("[CP] %s -> %s (repli API objet)", assignCmd, tostring(r)) end
+    -- La commande n'a pas cree la ligne : API objet.
+    local okLua = pcall(function()
+        local part = partOf(sq, cue)
+        if not part then error("no part") end
+        local line = part:Acquire("StandardRecipe")
+        if not line then error("no line") end
+        local g = ObjectList("Group " .. gid)[1]
+        local p = ObjectList(string.format("Preset %d.%d", pt, pNo))[1]
+        if not g or not p then error("no refs") end
+        line:Set("Selection", g)
+        line:Set("Values", p)
+    end)
+    n = lineCount(sq, cue)
+    if okLua and n and n >= lineNo then return true, "lua" end
+    CP.fails = CP.fails + 1
+    if not CP.firstFail then
+        CP.firstFail = string.format("ligne de recipe %d de Sequence %d Cue %d non creee", lineNo, sq, cue)
+    end
+    Printf("[CP] %s", CP.firstFail)
+    return false
+end
+
+-- Propriete d'une ligne de recipe (timings MAtricks) : commande, puis
+-- handle de la ligne si la commande est refusee.
+local function setLineProp(sq, cue, lineNo, name, value)
+    local addr = string.format("Sequence %d Cue %d Part 0.%d", sq, cue, lineNo)
+    local s = string.format('Set %s Property "%s" "%s"', addr, name, tostring(value))
+    local r = Cmd(s)
+    if cmdOk(r) then return true end
+    local ok = pcall(function()
+        local part = partOf(sq, cue)
+        local line = part and part[lineNo]
+        if not line then error("no line") end
+        line:Set(name, tostring(value))
+    end)
+    if ok then return true end
+    CP.fails = CP.fails + 1
+    if not CP.firstFail then CP.firstFail = string.format("%s  ->  %s", s, tostring(r)) end
+    Printf("[CP] refuse : %s -> %s", s, tostring(r))
+    return false
+end
+
+-- Cuisson : TOUJOURS avec une option (sans option la console ouvre un
+-- popup, impossible depuis un plugin). /Overwrite = la cue ne contient
+-- que ce que dit la recipe (aucune valeur "dure" residuelle).
+local function cook(sq)
+    return run(string.format("Cook Sequence %d /Overwrite", sq))
+end
+
+-- Une cue cuisinee a du contenu : "OwnDataPresent" (Yes/true). nil si la
+-- propriete n'est pas lisible sur ce build.
+local function cueHasData(sq, cue)
+    local v = getProp(string.format("Sequence %d Cue %d Part 0", sq, cue), "OwnDataPresent")
+    if v == nil then return nil end
+    v = v:lower()
+    return v == "yes" or v == "true" or v == "1"
+end
+
+-- ------------------------ membres d'un groupe ------------------------
+-- Sans programmer : le handle du groupe expose sa selection
+-- (selectiondata[*].sf_index -> GetSubfixture). Sert a savoir quels
+-- groupes se CHEVAUCHENT (une couleur sur SPOT doit couper la boucle
+-- d'un GENERAL qui contient les spots). Renvoie nil si l'API manque.
+local function groupMembers(gid)
+    local out
+    pcall(function()
+        local h = ObjectList("Group " .. gid)[1]
+        if not h then return end
+        local sd = h.selectiondata or h.SelectionData or h.SELECTIONDATA
+        if type(sd) ~= "table" then return end
+        local seen, list = {}, {}
+        for _, f in pairs(sd) do
+            local idx = type(f) == "table" and (f.sf_index or f.SF_INDEX or f.sfIndex) or nil
+            if idx then
+                local key
+                pcall(function()
+                    local sf = GetSubfixture(idx)
+                    if not sf then return end
+                    local fix = sf.fixture or sf.Fixture
+                    local fid = (fix and (fix.fid or fix.FID)) or sf.FID or sf.fid
+                    if fid and tonumber(fid) then
+                        key = "F" .. tostring(math.floor(tonumber(fid)))
+                    elseif sf.ToAddr then
+                        key = tostring(sf:ToAddr())
+                    end
+                end)
+                key = key or ("S" .. tostring(idx))
+                if not seen[key] then seen[key] = true; list[#list + 1] = key end
+            end
+        end
+        if #list > 0 then out = list end
+    end)
+    return out
+end
+
+-- Repli : lecture par la SELECTION (le programmer, en lecture seule :
+-- "Group g" puis ClearAll). SelectionFirst/Next renvoient un index de
+-- subfixture, pas un FID.
+local function groupMembersBySelection(gid)
+    local out
+    pcall(function()
+        Cmd("ClearAll")
+        Cmd("Group " .. gid)
+        local list, seen = {}, {}
+        local idx = SelectionFirst()
+        local guard = 0
+        while idx ~= nil and guard < 4096 do
+            guard = guard + 1
+            local key
+            pcall(function()
+                local sf = GetSubfixture(idx)
+                if not sf then return end
+                local fix = sf.fixture or sf.Fixture
+                local fid = (fix and (fix.fid or fix.FID)) or sf.FID or sf.fid
+                if fid and tonumber(fid) then
+                    key = "F" .. tostring(math.floor(tonumber(fid)))
+                elseif sf.ToAddr then
+                    key = tostring(sf:ToAddr())
+                end
+            end)
+            key = key or ("S" .. tostring(idx))
+            if not seen[key] then seen[key] = true; list[#list + 1] = key end
+            idx = SelectionNext(idx)
+        end
+        Cmd("ClearAll")
+        if #list > 0 then out = list end
+    end)
+    pcall(Cmd, "ClearAll")
+    return out
+end
+
+-- -------------------------- probe du CMD de cue ------------------------
+-- Les boucles chevauchantes sont coupees par la colonne CMD des cues.
+-- On verifie UNE fois, sur une sequence de test vide (aucune sortie),
+-- qu'un CMD s'execute bien au Go+ : SetUserVar puis lecture Lua.
+local function probeCueCommand(sq)
+    local result = nil
+    pcall(function()
+        run("SetUserVar 'cp_cmd' 0", true)
+        run(string.format("Store Sequence %d Cue 1 /Overwrite /NoConfirmation", sq), true)
+        run(string.format("Label Sequence %d \"CP probe\"", sq), true)
+        setProp(string.format("Sequence %d Cue 1", sq), "Command", "SetUserVar 'cp_cmd' 1", true)
+        run(string.format("Go+ Sequence %d", sq), true)
+        for _ = 1, 5 do pcall(coroutine.yield, 0.1) end
+        local v
+        pcall(function() v = GetVar(UserVars(), "cp_cmd") end)
+        result = (tostring(v) == "1")
+        run(string.format("Off Sequence %d", sq), true)
+        run(string.format("Delete Sequence %d /NoConfirmation", sq), true)
+    end)
+    return result
 end
 
 -- ------------------------ placement layout ---------------------------
@@ -558,11 +725,11 @@ local function fillLayout(layoutNo, elements)
         local ok = false
         if elem ~= nil then
             ok = place(elem, e)
-            -- Taper une case de macro DOIT lancer la macro. La propriete
+            -- Taper une case (macro ou sequence) DOIT la lancer (Go+). La propriete
             -- s'appelle "Action" (ni "PlaybackFunction" ni "Function", qui
             -- n'existent pas) et sa valeur par defaut depend du profil
             -- utilisateur -> on la pose explicitement.
-            if e.object:match("^Macro ") then
+            if e.object:match("^Macro ") or e.object:match("^Sequence ") then
                 pcall(function() elem:Set("Action", "Go+") end)
             elseif e.inert then
                 -- En-tete de ligne : c'est le vrai objet Group/Fixture (on
@@ -609,26 +776,60 @@ local function fillLayout(layoutNo, elements)
     return placed, failed
 end
 
+-- Essaie plusieurs ecritures d'une meme propriete ("Yes" puis 1...) :
+-- l'echec n'est compte que si aucune ne passe.
+local function setPropTry(addr, name, values, cosmetic)
+    local savedFails, savedFirst, savedCos = CP.fails, CP.firstFail, CP.cosmetic
+    for i, v in ipairs(values) do
+        CP.fails, CP.firstFail, CP.cosmetic = savedFails, savedFirst, savedCos
+        if setProp(addr, name, v, cosmetic) then return true end
+        if i < #values then
+            CP.fails, CP.firstFail, CP.cosmetic = savedFails, savedFirst, savedCos
+        end
+    end
+    return false
+end
+
+-- "Off Sequence a Thru b + c + d Thru e Fade f" a partir d'une liste de
+-- plages {a, b}.
+local function offListCmd(ranges, fade)
+    local parts = {}
+    for _, r in ipairs(ranges) do
+        if r[2] > r[1] then parts[#parts + 1] = string.format("%d Thru %d", r[1], r[2])
+        else parts[#parts + 1] = tostring(r[1]) end
+    end
+    if #parts == 0 then return nil end
+    return string.format("Off Sequence %s Fade %s", table.concat(parts, " + "), fmtNum(fade))
+end
+
 -- ------------------------------- main --------------------------------
 
 local function main(display_handle)
-    macroLineFails = 0        -- compteur de run : le chunk est mis en cache
-    -- Il faut des fixtures. Detection SANS toucher au programmer :
-    -- annuler l'assistant doit etre un vrai no-op. On balaie large (les
-    -- rigs numerotes en 1001+ existent) : la boucle s'arrete au 1er trouve.
+    CP.fails, CP.firstFail, CP.cosmetic, CP.log = 0, nil, 0, {}
+    macroLineFails = 0        -- compteurs de run : le chunk est mis en cache
+
+    -- Il faut des fixtures et des GROUPES (une recipe selectionne un
+    -- Group). Detection SANS toucher au programmer : annuler l'assistant
+    -- doit etre un vrai no-op.
     if not scanFixtures(2000, 1) then
         MessageBox({ title = "Color Picker LIVE",
             message = "Aucune fixture disponible.\nPatche au moins un projecteur RGB.",
             commands = { { value = 1, name = "OK" } } })
         return
     end
-
-    -- Detection AUTOMATIQUE : groupes d'abord, sinon machines une a une.
     local autoGroups = scanGroups(1000)
-    local autoFix    = (not autoGroups) and scanFixtures(2000, MAX_FIXTURE_ROWS + 1) or nil
+    if not autoGroups then
+        MessageBox({ title = "Color Picker LIVE  v" .. VERSION,
+            message = "Aucun groupe dans le show.\n\n"
+                   .. "Le board est construit en RECIPES : chaque cue dit\n"
+                   .. "\"ce groupe prend ce preset\". Il lui faut donc tes\n"
+                   .. "groupes (SPOT, WASH, ...), dans l'ordre jardin -> cour\n"
+                   .. "pour que les vagues FX aient un sens.\n\n"
+                   .. "Cree tes groupes, puis relance le plugin.",
+            commands = { { value = 1, name = "OK" } } })
+        return
+    end
 
-    -- Texte de detection, avec les NOMS des groupes : c'est ce que
-    -- l'utilisateur reconnait, pas des numeros.
     local function joinIds(ids, sep, max)
         local t = {}
         for i, v in ipairs(ids) do
@@ -637,48 +838,38 @@ local function main(display_handle)
         end
         return table.concat(t, sep)
     end
-    local found, plan
-    if autoGroups then
-        local names = {}
-        for i, gid in ipairs(autoGroups) do
-            if i > MAX_GROUP_ROWS then names[#names + 1] = "..."; break end
-            names[#names + 1] = groupName(gid)
-        end
-        found = string.format("%d groupe(s) : %s", #autoGroups, table.concat(names, ", "))
-        plan  = "  - 1 ligne par groupe + ALL, 12 couleurs\n"
-             .. "  - 5 formes FX par groupe, pastilles C1/C2, FX FONDU\n"
-    else
-        found = string.format("aucun groupe -> %d machine(s) : %s",
-            math.min(#(autoFix or {}), MAX_FIXTURE_ROWS),
-            autoFix and joinIds(autoFix, ", ", MAX_FIXTURE_ROWS) or "?")
-        plan  = "  - 1 ligne par machine (12 max) + ALL, 12 couleurs\n"
-             .. "  - pas de FX sans groupe (cree des groupes pour en avoir)\n"
+    local names = {}
+    for i, gid in ipairs(autoGroups) do
+        if i > MAX_GROUP_ROWS then names[#names + 1] = "..."; break end
+        names[#names + 1] = groupName(gid)
     end
+    local found = string.format("%d groupe(s) : %s", #autoGroups, table.concat(names, ", "))
 
-    -- Reglages (tout est modifiable dans l'assistant). Les listes
-    -- pre-remplies sont COMPLETES : c'est le recapitulatif qui signale
-    -- une troncature a 12 lignes, pas un "..." muet.
-    local grpStr    = autoGroups and joinIds(autoGroups, " + ", 100000) or ""
-    local fixStr    = autoFix and joinIds(autoFix, " + ", 100000) or ""
+    -- Reglages (tout est modifiable dans l'assistant). La liste
+    -- pre-remplie est COMPLETE : c'est le recapitulatif qui signale une
+    -- troncature a 12 lignes.
+    local grpStr    = joinIds(autoGroups, " + ", 100000)
     local nColors   = 12
     local colorFade = 1
     local offFade   = 2
     local baseId    = 101
     local layNo     = 1
     local fxSweep   = FX_SWEEP_DEFAULT
-    local fxFade    = 0
+    local fxFade    = FX_FADE_DEFAULT
 
     -- =================== ASSISTANT : ecran 1, accueil ===================
     local box = MessageBox({
         title    = "Color Picker LIVE  v" .. VERSION,
         message  = "Rig detecte : " .. found .. ".\n\n"
                 .. "Je construis un board de busking couleur :\n"
-                .. plan
+                .. "  - 1 ligne par groupe + ALL, 12 couleurs\n"
+                .. "  - 5 vagues FX par groupe (MAtricks), pastilles C1/C2,\n"
+                .. "    vitesse et fondu FX reglables en live\n"
                 .. "  - rangees FADE couleur / arret, Off All\n"
-                .. "  - 100% restitution : zero programmer en live\n\n"
+                .. "  - tout en RECIPES (Group + Preset), cuisinees par la\n"
+                .. "    console : zero programmer, en live comme a la generation\n\n"
                 .. "Trois ecrans de reglages, un recapitulatif, puis la\n"
-                .. "construction (elle passe par le programmer : a faire\n"
-                .. "avant le show, pas pendant).",
+                .. "construction. Chaque commande est verifiee.",
         commands = {
             { value = 1, name = "Regler" },
             { value = 2, name = "Reglages par defaut" },
@@ -692,50 +883,36 @@ local function main(display_handle)
     ::configure::
     if not useDefaults then
         -- ------------------- ecran 2 : lignes et couleurs -------------------
-        local inputs = {
-            { name = "Nb couleurs (1-12)", value = tostring(nColors) },
-        }
-        local mapping = ""
-        if autoGroups then
-            table.insert(inputs, 1, { name = "Groupes du board", value = grpStr })
-            local m = {}
-            for i, gid in ipairs(autoGroups) do
-                if i > MAX_GROUP_ROWS then m[#m + 1] = "..."; break end
-                m[#m + 1] = string.format("%d=%s", gid, groupName(gid))
-            end
-            mapping = "Groupes : " .. table.concat(m, ", ") .. "\n"
-        else
-            table.insert(inputs, 1, { name = "Machines du board", value = fixStr })
+        local m = {}
+        for i, gid in ipairs(autoGroups) do
+            if i > MAX_GROUP_ROWS then m[#m + 1] = "..."; break end
+            m[#m + 1] = string.format("%d=%s", gid, groupName(gid))
         end
         box = MessageBox({
             title    = "Color Picker LIVE  -  1/3  Lignes et couleurs",
-            message  = (autoGroups
-                    and "Chaque groupe devient une ligne du board (12 max),\n"
-                     .. "avec ses 5 formes FX. La ligne ALL est toujours la.\n"
-                     .. "Numeros separes par + ou une plage : 1 + 2, 1 Thru 8.\n"
-                     .. mapping
-                    or  "Sans groupe, chaque machine devient une ligne (12 max).\n"
-                     .. "Pas de FX dans ce mode (les FX balaient un groupe).\n"
-                     .. "Numeros separes par + ou une plage : 1 + 2, 1 Thru 8.\n")
-                .. "\nCouleurs, dans l'ordre : Red Orange Amber Yellow Green\n"
-                .. "Cyan Azure Blue Violet Magenta Pink White.",
+            message  = "Chaque groupe devient une ligne du board (12 max),\n"
+                    .. "avec ses 5 vagues FX. La ligne ALL = tous ces groupes.\n"
+                    .. "Numeros separes par + ou une plage : 1 + 2, 1 Thru 8.\n"
+                    .. "Groupes : " .. table.concat(m, ", ") .. "\n"
+                    .. "\nCouleurs, dans l'ordre : Red Orange Amber Yellow Green\n"
+                    .. "Cyan Azure Blue Violet Magenta Pink White.",
             commands = { { value = 1, name = "Suivant" }, { value = 0, name = "Annuler" } },
-            inputs   = inputs,
+            inputs   = {
+                { name = "Groupes du board",   value = grpStr },
+                { name = "Nb couleurs (1-12)", value = tostring(nColors) },
+            },
         })
         if not box or box.result ~= 1 then return end
         nColors = math.floor(toNum(box.inputs["Nb couleurs (1-12)"], 12, 1, #COLORS))
-        -- Les numeros tapes doivent EXISTER : un groupe absent donnerait une
-        -- ligne morte (cues stockees depuis une selection vide). On garde
-        -- les bons, on note les autres pour le recap ; si rien n'est
-        -- valide, on redemande.
-        local typed = autoGroups and box.inputs["Groupes du board"] or box.inputs["Machines du board"]
-        local kind  = autoGroups and "Group " or "Fixture "
+        -- Les numeros tapes doivent EXISTER : on garde les bons, on note
+        -- les autres pour le recap ; si rien n'est valide, on redemande.
+        local typed = box.inputs["Groupes du board"]
         local ids, rejected = parseRange(typed)
         droppedIds = {}
         for _, tok in ipairs(rejected or {}) do droppedIds[#droppedIds + 1] = tok end
         local kept = {}
         for _, id in ipairs(ids or {}) do
-            if objectExists(kind .. id) then kept[#kept + 1] = id
+            if objectExists("Group " .. id) then kept[#kept + 1] = id
             else droppedIds[#droppedIds + 1] = tostring(id) end
         end
         if #kept == 0 then
@@ -746,41 +923,32 @@ local function main(display_handle)
                 commands = { { value = 1, name = "OK" } } })
             goto configure
         end
-        if autoGroups then grpStr = joinIds(kept, " + ", 100000)
-        else fixStr = joinIds(kept, " + ", 100000) end
+        grpStr = joinIds(kept, " + ", 100000)
 
         -- ------------------------- ecran 3 : temps -------------------------
-        local tInputs = {
-            { name = "Fade couleur (s)", value = fmtNum(colorFade) },
-            { name = "Fade arret (s)",   value = fmtNum(offFade) },
-        }
-        local tMsg = "Fade couleur : fondu quand tu tapes une tuile.\n"
-                  .. "Fade arret : fondu du Off All.\n"
-                  .. "(Les deux restent reglables sur le board, en live.)\n"
-        if autoGroups then
-            tInputs[#tInputs + 1] = { name = "Balayage FX (s)",       value = fmtNum(fxSweep) }
-            tInputs[#tInputs + 1] = { name = "Fondu FX (s, 0 = sec)", value = fmtNum(fxFade) }
-            tMsg = tMsg
-                .. "\nBalayage FX : temps que met la vague pour traverser\n"
-                .. "le groupe (plus grand = plus lent). C'est le battement\n"
-                .. "de la boucle, fixe a la generation.\n"
-                .. "Fondu FX : 0 = chaque machine bascule net (la vague se\n"
-                .. "lit, aucune couleur intermediaire). Reglable en live."
-        end
         box = MessageBox({
             title    = "Color Picker LIVE  -  2/3  Temps",
-            message  = tMsg,
+            message  = "Fade couleur : fondu quand tu tapes une tuile.\n"
+                    .. "Fade arret : fondu du Off All.\n"
+                    .. "Vitesse FX : temps que met la vague pour traverser le\n"
+                    .. "groupe (= le battement de la boucle). 2 s = ample.\n"
+                    .. "Fondu FX : fondu de chaque machine dans la vague\n"
+                    .. "(0 = bascule nette, 1 s = doux).\n\n"
+                    .. "Les quatre restent reglables sur le board, en live.",
             commands = { { value = 1, name = "Suivant" }, { value = 0, name = "Annuler" } },
-            inputs   = tInputs,
+            inputs   = {
+                { name = "Fade couleur (s)", value = fmtNum(colorFade) },
+                { name = "Fade arret (s)",   value = fmtNum(offFade) },
+                { name = "Vitesse FX (s)",   value = fmtNum(fxSweep) },
+                { name = "Fondu FX (s)",     value = fmtNum(fxFade) },
+            },
         })
         if not box or box.result ~= 1 then return end
         colorFade = toNum(box.inputs["Fade couleur (s)"], 1, 0, 600)
         offFade   = toNum(box.inputs["Fade arret (s)"], 2, 0, 600)
-        if autoGroups then
-            -- plancher a 0.1 s : une cue de duree nulle emballerait la boucle
-            fxSweep = toNum(box.inputs["Balayage FX (s)"], FX_SWEEP_DEFAULT, 0.1, 60)
-            fxFade  = toNum(box.inputs["Fondu FX (s, 0 = sec)"], 0, 0, 60)
-        end
+        -- plancher a 0.1 s : une cue de duree nulle emballerait la boucle
+        fxSweep   = toNum(box.inputs["Vitesse FX (s)"], FX_SWEEP_DEFAULT, 0.1, 60)
+        fxFade    = toNum(box.inputs["Fondu FX (s)"], FX_FADE_DEFAULT, 0, 60)
 
         -- ---------------------- ecran 4 : emplacement ----------------------
         box = MessageBox({
@@ -804,35 +972,19 @@ local function main(display_handle)
     local colors = {}
     for i = 1, nColors do colors[i] = COLORS[i] end
 
-    -- Cibles : ALL en premiere ligne, puis groupes (sinon machines).
-    local targets = { { label = "ALL", sel = "Fixture Thru", header = nil } }
-    local groupIds = parseRange(grpStr) or autoGroups
+    -- Cibles : ALL en premiere ligne (= tous les groupes du board), puis
+    -- une ligne par groupe.
+    local groupIds  = parseRange(grpStr) or autoGroups
     local truncated = false
-    if groupIds then
-        if #groupIds > MAX_GROUP_ROWS then
-            truncated = true
-            while #groupIds > MAX_GROUP_ROWS do table.remove(groupIds) end
-        end
-        for _, gid in ipairs(groupIds) do
-            targets[#targets + 1] = {
-                label = groupName(gid), sel = "Group " .. gid,
-                header = "Group " .. gid, isGroup = true, gid = gid,
-            }
-        end
-    else
-        local fixIds = parseRange(fixStr) or autoFix or scanFixtures(2000, MAX_FIXTURE_ROWS + 1)
-        if fixIds and #fixIds > MAX_FIXTURE_ROWS then
-            truncated = true
-            while #fixIds > MAX_FIXTURE_ROWS do table.remove(fixIds) end
-        end
-        if fixIds then
-            for _, fid in ipairs(fixIds) do
-                targets[#targets + 1] = {
-                    label = "Fix " .. fid, sel = "Fixture " .. fid,
-                    header = "Fixture " .. fid,
-                }
-            end
-        end
+    if #groupIds > MAX_GROUP_ROWS then
+        truncated = true
+        while #groupIds > MAX_GROUP_ROWS do table.remove(groupIds) end
+    end
+    local targets = { { label = "ALL", header = nil } }
+    for _, gid in ipairs(groupIds) do
+        targets[#targets + 1] = {
+            label = groupName(gid), header = "Group " .. gid, isGroup = true, gid = gid,
+        }
     end
     local nTargets = #targets
 
@@ -843,8 +995,6 @@ local function main(display_handle)
     for ti = 2, nTargets do
         local t = targets[ti]
         if seenLbl[t.label] then
-            -- on suffixe jusqu'a obtenir un nom vraiment libre (un groupe
-            -- peut deja s'appeler "SPOT 2")
             local base, n = t.label, t.gid or ti
             repeat
                 t.label = base .. " " .. tostring(n)
@@ -854,10 +1004,13 @@ local function main(display_handle)
         seenLbl[t.label] = true
     end
 
-    -- Cibles de type groupe (les seules a recevoir des sequences FX).
-    local groupTis = {}
+    -- Lignes de groupe (les seules a recevoir des sequences FX) : gi <-> ti.
+    local groupTis, fxGiOfTi = {}, {}
     for ti, t in ipairs(targets) do
-        if t.isGroup then groupTis[#groupTis + 1] = ti end
+        if t.isGroup then
+            groupTis[#groupTis + 1] = ti
+            fxGiOfTi[ti] = #groupTis
+        end
     end
     local nFx  = #groupTis
     local nDir = #FX_DIRS
@@ -865,104 +1018,89 @@ local function main(display_handle)
     -- ------------------------- numerotation --------------------------
     -- Les numeros derives des couleurs utilisent NC = #COLORS (capacite
     -- MAX), PAS nColors : regenerer avec un autre nombre de couleurs ne
-    -- doit JAMAIS decaler un slot (sinon les presets slots FX, jamais
-    -- effaces, atterriraient sur les presets couleur du run precedent).
-    local NC = #COLORS
-    local nV = #FADE_VALUES
+    -- doit JAMAIS decaler un slot.
+    local NC  = #COLORS
+    local nV  = #FADE_VALUES
+    local nFV = #FX_FADES
+    local nFS = #FX_SWEEPS
 
     -- Sequences : couleurs, puis 5 sequences FX par groupe (1 par forme).
     local nSeq    = nTargets * nColors
     local seqEnd  = baseId + nSeq - 1
     local seqFx0  = baseId + nSeq
-    local seqLast = (nFx > 0) and (seqFx0 + nFx * nDir - 1) or seqEnd
+    local seqLast = seqFx0 + nFx * nDir - 1
     local function seqColor(ti, ci) return baseId + (ti - 1) * nColors + (ci - 1) end
     local function seqFx(gi, di)    return seqFx0 + (gi - 1) * nDir + (di - 1) end
 
-    -- Appearances : pleine (active) / contour (repos) par couleur, puis
-    -- les utilitaires.
-    local function appOn(ci)  return baseId + ci - 1 end
-    local function appOff(ci) return baseId + NC + ci - 1 end
+    -- Appearances. Avec image (boutons = macros) : pleine / contour par
+    -- couleur + utilitaires. A PLAT (tuiles = sequences, un layout ne rend
+    -- pas l'image d'une sequence) : sombre / pleine par couleur + FX.
+    local function appOn(ci)  return baseId + ci - 1 end           -- pastille pleine
+    local function appOff(ci) return baseId + NC + ci - 1 end      -- pastille contour
     local appDark   = baseId + 2 * NC        -- headers, banniere (a plat)
     local appGrey   = baseId + 2 * NC + 1    -- bouton fade au repos
     local appAccent = baseId + 2 * NC + 2    -- bouton fade actif (rempli)
     local appRed    = baseId + 2 * NC + 3    -- barre Off All (a plat)
-    local appFx     = baseId + 2 * NC + 4    -- tuile FX au repos
-    local appFxOn   = baseId + 2 * NC + 5    -- tuile FX active (remplie)
+    local appFxSeq  = baseId + 2 * NC + 4    -- tuile FX qui dort (a plat)
+    local appFxOn   = baseId + 2 * NC + 5    -- tuile FX qui joue (a plat)
+    local function appSeqOn(ci)  return baseId + 2 * NC + 6 + ci - 1 end       -- tuile qui joue
+    local function appSeqOff(ci) return baseId + 3 * NC + 6 + ci - 1 end       -- tuile qui dort
+    local appLastNow = baseId + 4 * NC + 5
 
     -- Presets : couleurs universelles + 2 slots FX (adresses STABLES).
     local PT   = 4
     local pFx1 = baseId + NC
     local pFx2 = baseId + NC + 1
 
-    -- Images : contours, puis pleines, puis utilitaires.
+    -- Images : contours, puis pleines, puis utilitaires (boutons seulement).
     local function imgOut(ci)  return baseId + ci - 1 end
     local function imgFill(ci) return baseId + NC + ci - 1 end
     local imgGrey = baseId + 2 * NC
     local imgAcc  = baseId + 2 * NC + 1
-    local imgFxO  = baseId + 2 * NC + 2
-    local imgFxF  = baseId + 2 * NC + 3
+    local nImages = 2 * nColors + 2
 
-    -- Macros : outils, rangees FADE, pastilles C1/C2, puis TOUTES les
-    -- tuiles du board (couleurs + FX).
+    -- Macros : SEULEMENT les boutons de reglage (plus aucune tuile).
     local macOffAll, macAllHdr, macTitle = baseId, baseId + 1, baseId + 2
     local macFadeCHdr = baseId + 3
-    local macFadeC0   = baseId + 4                  -- .. baseId + 3 + nV
-    local macFadeOHdr = baseId + 4 + nV
-    local macFadeO0   = baseId + 5 + nV             -- .. baseId + 4 + 2*nV
-    local macC1Hdr    = baseId + 5 + 2 * nV
-    local macC1_0     = macC1Hdr + 1                -- .. + NC - 1
-    local macC2Hdr    = macC1_0 + NC
-    local macC2_0     = macC2Hdr + 1                -- .. + NC - 1
-    local nFV         = #FX_FADES
-    local macFxFHdr   = macC2_0 + NC                -- "FX FONDU <v>"
-    local macFxF0     = macFxFHdr + 1               -- .. + nFV - 1
-    local macTile0    = macFxF0 + nFV               -- tuiles couleur
-    local macFx0      = macTile0 + nTargets * nColors
-    local macEnd      = (nFx > 0) and (macFx0 + nFx * nDir - 1)
-                                  or (macTile0 + nTargets * nColors - 1)
-    local function macTile(ti, ci) return macTile0 + (ti - 1) * nColors + (ci - 1) end
-    local function macFx(gi, di)   return macFx0 + (gi - 1) * nDir + (di - 1) end
+    local macFadeC0   = baseId + 4                  -- .. +9
+    local macFadeOHdr = baseId + 4 + nV             -- +10
+    local macFadeO0   = baseId + 5 + nV             -- +11 .. +16
+    local macC1Hdr    = baseId + 5 + 2 * nV         -- +17
+    local macC1_0     = macC1Hdr + 1                -- +18 .. +29
+    local macC2Hdr    = macC1_0 + NC                -- +30
+    local macC2_0     = macC2Hdr + 1                -- +31 .. +42
+    local macFxVHdr   = macC2_0 + NC                -- +43  "FX VITESSE <v>"
+    local macFxV0     = macFxVHdr + 1               -- +44 .. +48
+    local macFxFHdr   = macFxV0 + nFS               -- +49  "FX FONDU <v>"
+    local macFxF0     = macFxFHdr + 1               -- +50 .. +54
+    local macReCook   = macFxF0 + nFV               -- +55
+    local macEnd      = macReCook
 
-    -- Plafonds de NETTOYAGE : ils couvrent la PLUS GROSSE empreinte
-    -- possible (nb max de lignes/couleurs, et les versions precedentes du
-    -- plugin), pas seulement la config courante. Sinon une regeneration
-    -- plus petite laisse des orphelins : labels dupliques (#2) et boucles
-    -- FX fantomes que le nouveau Off All ne peut plus eteindre.
-    local MAX_ROWS  = 1 + math.max(MAX_GROUP_ROWS, MAX_FIXTURE_ROWS)
+    -- Plafonds de NETTOYAGE : la PLUS GROSSE empreinte possible, versions
+    -- precedentes comprises (la v8 avait une macro par tuile), pour qu'une
+    -- regeneration ne laisse jamais d'orphelins.
+    local MAX_ROWS  = 1 + MAX_GROUP_ROWS
     local seqDelEnd = baseId + MAX_ROWS * NC + MAX_GROUP_ROWS * nDir - 1
-    local macDelEnd = baseId + 8 + 2 * nV + nFV + 2 * NC
+    local macDelEnd = baseId + 8 + 2 * nV + 5 + 2 * NC
                         + MAX_ROWS * NC + MAX_GROUP_ROWS * nDir - 1
-    local appDelEnd = baseId + 2 * NC + 5
+    local appDelEnd = appLastNow
     local imgDelEnd = baseId + 2 * NC + 3
+    local seqProbe  = seqDelEnd            -- sequence de test du CMD, effacee
 
     -- ------------------- occupation / confirmation -------------------
     local occupied, detectOk = false, true
-    local function checkUsed(fmt, a, b)
-        for no = a, b do
-            local used, ok = objectUsed(string.format(fmt, no))
-            if not ok then detectOk = false; return end
-            if used then occupied = true; return end
-        end
-    end
     local function checkExists(fmt, a, b)
         for no = a, b do
             if objectExists(string.format(fmt, no)) then occupied = true; return end
         end
     end
-    -- Par EXISTENCE, pour tout : une sequence ou une macro labellisee mais
-    -- vide est quand meme du contenu utilisateur, elle doit declencher la
-    -- confirmation. (checkUsed sert au Layout, plus bas.)
     checkExists("Sequence %d", baseId, seqDelEnd)
-    if detectOk and not occupied then checkExists("Macro %d", baseId, macDelEnd) end
-    if detectOk and not occupied then checkExists("Appearance %d", baseId, appDelEnd) end
-    -- Le pool Images est le seul ou le plugin ecrit sans rien demander :
-    -- il doit passer par la meme confirmation que le reste.
-    if detectOk and not occupied then checkExists("Image 3.%d", baseId, imgDelEnd) end
+    if not occupied then checkExists("Macro %d", baseId, macDelEnd) end
+    if not occupied then checkExists("Appearance %d", baseId, appDelEnd) end
+    if not occupied then checkExists("Image 3.%d", baseId, imgDelEnd) end
 
-    -- Presets couleur d'une AUTRE palette : le plugin les reutilise tels
-    -- quels (pour garder tes retouches), mais si le LABEL ne correspond pas
-    -- au nom de la couleur attendue, c'est un reste d'une ancienne version
-    -- et la tuile jouerait une couleur qui n'est pas la sienne.
+    -- Presets couleur d'une AUTRE palette : reutilises tels quels si le
+    -- label correspond, sinon remis a la couleur du plugin (annonce).
     local staleColors = {}
     for ci, c in ipairs(colors) do
         local nm = presetName(PT, baseId + ci - 1)
@@ -973,16 +1111,12 @@ local function main(display_handle)
     end
     if #staleColors > 0 then occupied = true end
     -- Les deux SLOTS FX appartiennent au plugin ("CP FX C1" / "CP FX C2").
-    -- Un preset a toi a ces numeros serait relabellise puis ecrase par les
-    -- pastilles : on le dit dans le recap, et on ne le prend qu'apres OK.
     local foreignSlots = {}
-    if nFx > 0 then
-        for _, slot in ipairs({ pFx1, pFx2 }) do
-            if objectExists(string.format("Preset %d.%d", PT, slot)) then
-                local nm = presetName(PT, slot)
-                if nm == nil or not nm:match("^CP FX") then
-                    foreignSlots[#foreignSlots + 1] = string.format("4.%d (%s)", slot, nm or "?")
-                end
+    for _, slot in ipairs({ pFx1, pFx2 }) do
+        if objectExists(string.format("Preset %d.%d", PT, slot)) then
+            local nm = presetName(PT, slot)
+            if nm == nil or not nm:match("^CP FX") then
+                foreignSlots[#foreignSlots + 1] = string.format("4.%d (%s)", slot, nm or "?")
             end
         end
     end
@@ -990,18 +1124,12 @@ local function main(display_handle)
     -- (MAtricks "CPFX" : reliquat des versions 7 -> nettoye s'il existe.)
     local oldMatricks = objectExists("MAtricks " .. baseId)
     if oldMatricks then occupied = true end
-    -- Le Layout aussi : un layout existant, meme VIDE (prepare/renomme par
-    -- l'utilisateur), doit etre confirme.
-    if detectOk and not occupied and
-            (objectExists("Layout " .. layNo) or objectUsed("Layout " .. layNo)) then
+    if not occupied and (objectExists("Layout " .. layNo) or objectUsed("Layout " .. layNo)) then
         occupied = true
     end
 
-    -- ==================== ASSISTANT : recapitulatif ====================
-    -- Un seul ecran dit TOUT ce qui va se passer : les lignes (par leur
-    -- nom), les plages ecrites, le sort des presets, et ce qui sera ecrase.
-    -- C'est aussi la SEULE confirmation d'ecrasement : "Construire" vaut
-    -- pour tous les objets d'un coup, jamais une question par objet.
+    -- Presets a creer (= le seul moment ou le programmer sert : un preset
+    -- ne se cree pas sans valeurs).
     local presetsToCreate, presetsToReuse = 0, 0
     for ci, c in ipairs(colors) do
         local pNo    = baseId + ci - 1
@@ -1010,37 +1138,40 @@ local function main(display_handle)
         if not exists then presetsToCreate = presetsToCreate + 1
         elseif nm == nil or nm == c.name then presetsToReuse = presetsToReuse + 1 end
     end
+
+    -- ==================== ASSISTANT : recapitulatif ====================
     local rowNames = {}
     for ti, t in ipairs(targets) do rowNames[ti] = t.label end
     local recap = string.format(
         "LIGNES (%d) : %s\n"
-     .. "COULEURS : %d   FX : %s\n\n"
-     .. "Fade couleur %ss - Fade arret %ss\n%s\n"
-     .. "ECRIT DANS LE SHOW :\n"
+     .. "COULEURS : %d   FX : %d vagues (%d formes x %d groupes)\n\n"
+     .. "Fade couleur %ss - Fade arret %ss\n"
+     .. "Vitesse FX %ss - Fondu FX %ss\n\n"
+     .. "ECRIT DANS LE SHOW (en recipes Group + Preset) :\n"
      .. "  Sequences %d-%d   Macros %d-%d\n"
      .. "  Appearances %d-%d   Images 3.%d-3.%d   Layout %d\n"
      .. "  Presets 4.%d-4.%d : %d reutilises, %d crees, %d corriges\n"
-     .. "  (presets jamais effaces%s)\n",
+     .. "  (presets jamais effaces ; slots FX 4.%d et 4.%d)\n"
+     .. "Programmer : un ClearAll au depart%s.\n",
         nTargets, table.concat(rowNames, ", "),
-        nColors,
-        (nFx > 0) and string.format("%d boucles (%d formes x %d groupes)", nFx * nDir, nDir, nFx)
-                   or "aucune (pas de groupe)",
-        fmtNum(colorFade), fmtNum(offFade),
-        (nFx > 0) and string.format("Balayage FX %ss - Fondu FX %ss\n", fmtNum(fxSweep), fmtNum(fxFade)) or "",
+        nColors, nFx * nDir, nDir, nFx,
+        fmtNum(colorFade), fmtNum(offFade), fmtNum(fxSweep), fmtNum(fxFade),
         baseId, seqLast, baseId, macEnd,
-        baseId, appDelEnd, baseId, imgDelEnd, layNo,
+        baseId, appDelEnd, baseId, baseId + nImages - 1, layNo,
         baseId, baseId + nColors - 1, presetsToReuse, presetsToCreate, #staleColors,
-        (nFx > 0) and string.format(" ; slots FX 4.%d et 4.%d", pFx1, pFx2) or "")
+        pFx1, pFx2,
+        ((presetsToCreate + #staleColors) > 0)
+            and string.format(", et %d preset(s) a stocker (puis ClearAll)", presetsToCreate + #staleColors)
+            or ", rien d'autre")
     if truncated then
-        recap = recap .. string.format("\n(Lignes limitees a %d.)\n", math.max(MAX_GROUP_ROWS, MAX_FIXTURE_ROWS))
+        recap = recap .. string.format("\n(Lignes limitees a %d.)\n", MAX_GROUP_ROWS)
     end
     if #droppedIds > 0 then
         recap = recap .. "\nIgnores (inexistants) : " .. table.concat(droppedIds, ", ") .. "\n"
     end
-    if occupied or not detectOk then
+    if occupied then
         recap = recap .. string.format(
-            (detectOk and "\nATTENTION : ces plages contiennent deja des objets.\n"
-                       or "\nVERIFICATION IMPOSSIBLE : nettoyage large par securite.\n")
+            "\nATTENTION : ces plages contiennent deja des objets.\n"
          .. "Ils seront SUPPRIMES puis regeneres (nettoyage large :\n"
          .. "Sequence %d-%d, Macro %d-%d, Appearance %d-%d,\n"
          .. "Image 3.%d-3.%d, Layout %d%s).\n",
@@ -1073,53 +1204,47 @@ local function main(display_handle)
         useDefaults = false
         goto configure
     end
-    if occupied or not detectOk then
+    if occupied then
         -- Relacher AVANT de supprimer : une sequence effacee en cours de
         -- lecture coupe sa couleur d'un seul coup sur le plateau.
-        Cmd(string.format('Off Sequence %d Thru %d Fade %s',
-            baseId, seqDelEnd, fmtNum(offFade)))
-        -- ... et on laisse le fondu se faire (5 s max) avant le Delete,
-        -- sinon la suppression coupe net de toute facon.
+        run(string.format('Off Sequence %d Thru %d Fade %s', baseId, seqDelEnd, fmtNum(offFade)), true)
         for _ = 1, math.min(50, math.ceil(offFade * 10)) do pcall(coroutine.yield, 0.1) end
-        Cmd(string.format('Delete Sequence %d Thru %d /NoConfirmation', baseId, seqDelEnd))
-        Cmd(string.format('Delete Macro %d Thru %d /NoConfirmation', baseId, macDelEnd))
-        Cmd(string.format('Delete Appearance %d Thru %d /NoConfirmation', baseId, appDelEnd))
-        -- Le pool Images aussi : sans ce Delete, "Import Image" retombe sur
-        -- un slot occupe et le test de reussite ne peut pas distinguer un
-        -- import frais d'un PNG perime.
-        Cmd(string.format('Delete Image 3.%d Thru Image 3.%d /NoConfirmation', baseId, imgDelEnd))
+        run(string.format('Delete Sequence %d Thru %d /NoConfirmation', baseId, seqDelEnd), true)
+        run(string.format('Delete Macro %d Thru %d /NoConfirmation', baseId, macDelEnd), true)
+        run(string.format('Delete Appearance %d Thru %d /NoConfirmation', baseId, appDelEnd), true)
+        run(string.format('Delete Image 3.%d Thru Image 3.%d /NoConfirmation', baseId, imgDelEnd), true)
         if oldMatricks then
-            Cmd(string.format('Delete MAtricks %d /NoConfirmation', baseId))
+            run(string.format('Delete MAtricks %d /NoConfirmation', baseId), true)
         end
-        Cmd(string.format('Delete Layout %d /NoConfirmation', layNo))
+        run(string.format('Delete Layout %d /NoConfirmation', layNo), true)
     end
+    -- Le seul ClearAll "de principe" : un programmer charge au moment du
+    -- Store mettrait des valeurs dures dans les cues (Cook /Overwrite les
+    -- effacerait, mais autant partir propre).
+    Cmd("ClearAll")
 
-    -- 1) Appearances : pleine couleur (active) + version sombre (repos)
-    --    pour chaque couleur, puis les utilitaires.
+    -- 1) Appearances.
     for i, c in ipairs(colors) do
-        makeAppearance(appOn(i), "CP " .. c.name, c.r, c.g, c.b)
-        makeAppearance(appOff(i), "CP " .. c.name .. " Dim",
+        makeAppearance(appOn(i),     "CP " .. c.name,            c.r, c.g, c.b)
+        makeAppearance(appOff(i),    "CP " .. c.name .. " Dim",
+            math.floor(c.r * 0.30), math.floor(c.g * 0.30), math.floor(c.b * 0.30))
+        makeAppearance(appSeqOn(i),  "CP Tile " .. c.name,       c.r, c.g, c.b)
+        makeAppearance(appSeqOff(i), "CP Tile " .. c.name .. " Dim",
             math.floor(c.r * 0.30), math.floor(c.g * 0.30), math.floor(c.b * 0.30))
     end
     makeAppearance(appDark,   "CP Dark",    36, 40, 48)
     makeAppearance(appGrey,   "CP Grey",    66, 72, 84)
     makeAppearance(appAccent, "CP Fade On", 235, 238, 245)
     makeAppearance(appRed,    "CP Off Red", 128, 34, 40)
-    -- Repos VS actif : deux violets bien differents, pour que les tuiles FX
-    -- gardent un etat lisible meme si les images n'ont pas pu etre importees.
-    makeAppearance(appFx,     "CP FX",       52, 30,  80)
+    makeAppearance(appFxSeq,  "CP FX",       52, 30,  80)
     makeAppearance(appFxOn,   "CP FX On",   150, 90, 235)
     breathe()
 
-    -- 1a) Images NEON : tuiles arrondies generees en PNG par le plugin,
-    --     ecrites dans la User Image Library, importees dans le pool
-    --     Images et posees sur les appearances. Le fond de l'appearance
-    --     passe en alpha 0 UNIQUEMENT si l'image est bien en place (sinon
-    --     on garde le fond uni comme repli visible).
+    -- 1a) Images NEON pour les BOUTONS (macros) : pastilles C1/C2 et
+    --     rangees de reglage. Le fond de l'appearance passe en alpha 0
+    --     UNIQUEMENT si l'image est bien en place.
     local imagesOk = 0
     pcall(function()
-        -- (Les slots d'images ont ete vides par le nettoyage si la plage
-        -- etait occupee ; sinon ils sont libres par construction.)
         local dir = GetPath(Enums.PathType.UserImageLibrary, true)
         local sep = "/"
         pcall(function() sep = GetPathSeparator() end)
@@ -1144,22 +1269,16 @@ local function main(display_handle)
                 if a then
                     a:Set("Image", ShowData().MediaPools.Images[imgNo])
                     a:Set("BackAlpha", "0")
-                    -- "Bar" = image entiere, aspect conserve (letterbox) :
-                    -- les coins arrondis restent ronds meme si la case
-                    -- n'est pas parfaitement carree. ("Stretch", le defaut,
-                    -- les deformerait.) Silencieux si le build differe.
                     a:Set("ImageMode", "Bar")
                 end
             end)
         end
         for i, c in ipairs(colors) do
-            if writeAndImport(imgOut(i), string.format("cp_neon_%02d.png", i),
-                    c.r, c.g, c.b, false) then
+            if writeAndImport(imgOut(i), string.format("cp_neon_%02d.png", i), c.r, c.g, c.b, false) then
                 imagesOk = imagesOk + 1
                 attach(imgOut(i), appOff(i))
             end
-            if writeAndImport(imgFill(i), string.format("cp_fill_%02d.png", i),
-                    c.r, c.g, c.b, true) then
+            if writeAndImport(imgFill(i), string.format("cp_fill_%02d.png", i), c.r, c.g, c.b, true) then
                 imagesOk = imagesOk + 1
                 attach(imgFill(i), appOn(i))
             end
@@ -1172,471 +1291,286 @@ local function main(display_handle)
             imagesOk = imagesOk + 1
             attach(imgAcc, appAccent)
         end
-        if writeAndImport(imgFxO, "cp_neon_fx.png", 150, 90, 235, false) then
-            imagesOk = imagesOk + 1
-            attach(imgFxO, appFx)
-        end
-        if writeAndImport(imgFxF, "cp_fill_fx.png", 150, 90, 235, true) then
-            imagesOk = imagesOk + 1
-            attach(imgFxF, appFxOn)
-        end
         pcall(function() SyncFS() end)
     end)
     breathe()
 
-    -- ================= PHASE QUI UTILISE LE PROGRAMMER =================
-    -- Tout ce bloc (presets, cues couleur, boucles FX) charge le programmer.
-    -- Il est sous pcall : quoi qu'il arrive, on repasse par un ClearAll —
-    -- un plugin qui meurt en laissant le programmer charge, c'est le rig
-    -- bloque sur une couleur en plein show.
+    -- 1b) Presets couleur UNIVERSELS (pool Color = 4). Existants et bien
+    --     labellises -> REUTILISES. Sinon -> stockes depuis le programmer
+    --     (le seul objet qui l'exige), puis ClearAll.
     local presetsCreated, presetsReused, presetsFixed = 0, 0, 0
-    local grpAddrs, grpSet = {}, {}
-    local fxBuilt, fxFallback = 0, 0
-    local okBuild, errBuild = pcall(function()
-
-    -- 1b) Presets couleur UNIVERSELS (pool Color = 4), Preset 4.<baseId>...
-    --     S'ils existent deja -> REUTILISES tels quels (tes modifs de
-    --     couleur survivent aux regenerations). Sinon -> crees.
-    for ci, c in ipairs(colors) do
-        local pNo    = baseId + ci - 1
-        local exists = objectExists(string.format("Preset %d.%d", PT, pNo))
-        local nm     = exists and presetName(PT, pNo) or nil
-        -- Reutilise si c'est BIEN cette couleur (label identique) : tes
-        -- retouches de teinte survivent. Un label different = preset d'une
-        -- autre palette -> on le remet a la couleur du plugin, sinon la
-        -- tuile joue autre chose que ce qu'elle affiche. Label illisible
-        -- -> on ne touche a rien (prudent).
-        if exists and (nm == nil or nm == c.name) then
-            presetsReused = presetsReused + 1
-        else
-            Cmd("ClearAll")
-            Cmd("Fixture Thru")
-            Cmd(string.format('Attribute "ColorRGB_R" At %d', math.floor(c.r / 255 * 100 + 0.5)))
-            Cmd(string.format('Attribute "ColorRGB_G" At %d', math.floor(c.g / 255 * 100 + 0.5)))
-            Cmd(string.format('Attribute "ColorRGB_B" At %d', math.floor(c.b / 255 * 100 + 0.5)))
-            -- /Overwrite : remplacement COMPLET (un /Merge laisserait les
-            -- composantes de l'ancienne couleur qui ne sont pas reecrites).
-            Cmd(string.format('Store Preset %d.%d /Overwrite /NoConfirmation /Universal', PT, pNo))
-            Cmd(string.format('Label Preset %d.%d "%s"', PT, pNo, c.name))
-            if exists then presetsFixed = presetsFixed + 1
-            else presetsCreated = presetsCreated + 1 end
-        end
-    end
-    Cmd("ClearAll")
-
-    -- 1c) Presets SLOTS du FX (C1 / C2) : les pastilles copient la couleur
-    --     choisie DEDANS (Copy /Overwrite) -> les cues FX, qui REFERENCENT
-    --     ces slots, changent de couleurs instantanement. Les slots sont
-    --     la propriete du plugin : ils sont RE-SEMES a chaque generation
-    --     (C1 = Red, C2 = Blue), pour que l'en-tete et la pastille remplie
-    --     disent toujours ce que la boucle joue vraiment.
-    if nFx > 0 then
-        Cmd(string.format('Copy Preset %d.%d At Preset %d.%d /Overwrite /NoConfirmation /NoOops',
-            PT, baseId, PT, pFx1))
-        Cmd(string.format('Copy Preset %d.%d At Preset %d.%d /Overwrite /NoConfirmation /NoOops',
-            PT, baseId + math.min(7, nColors - 1), PT, pFx2))
-        Cmd(string.format('Label Preset %d.%d "CP FX C1"', PT, pFx1))
-        Cmd(string.format('Label Preset %d.%d "CP FX C2"', PT, pFx2))
-    end
-    breathe()
-
-    -- 2) Mini-sequences couleur : 1 par (cible x couleur), 1 cue.
-    --    La cue applique d'abord les attributs directs (filet de securite),
-    --    puis le PRESET par-dessus : si la reference passe, la cue est LIEE
-    --    au preset -> modifier le preset met a jour tout le board.
-    --    (Ces sequences ne sont PAS sur le layout : ce sont les macros du
-    --     board qui les lancent. Elles gardent une appearance pour rester
-    --     lisibles dans le pool.)
-    for ti, t in ipairs(targets) do
+    local okPresets, errPresets = pcall(function()
         for ci, c in ipairs(colors) do
-            local sq = seqColor(ti, ci)
-            Cmd("ClearAll")
-            Cmd(t.sel)
-            Cmd(string.format('Attribute "ColorRGB_R" At %d', math.floor(c.r / 255 * 100 + 0.5)))
-            Cmd(string.format('Attribute "ColorRGB_G" At %d', math.floor(c.g / 255 * 100 + 0.5)))
-            Cmd(string.format('Attribute "ColorRGB_B" At %d', math.floor(c.b / 255 * 100 + 0.5)))
-            Cmd(string.format('At Preset %d.%d', PT, baseId + ci - 1))
-            Cmd(string.format('Store Sequence %d Cue 1 /NoConfirmation', sq))
-            Cmd(string.format('Label Sequence %d "%s %s"', sq, t.label, c.name))
-            Cmd(string.format('Assign Appearance %d At Sequence %d', appOn(ci), sq))
-            setCueFade(sq, 1, colorFade)
-            -- PAS de 'Set ... Property "OffFade"' : cette propriete n'existe
-            -- pas sur la console (notification "Illegal property" a chaque
-            -- ligne). Le fondu d'arret est porte par le "Fade" de la
-            -- commande Off, qui lui est valide.
-            Cmd(string.format('Set Sequence %d Property "OffWhenOverridden" "Yes"', sq))
-            pcall(function()
-                local s = ObjectList("Sequence " .. sq)[1]
-                if s then
-                    s:Set("OffWhenOverridden", "Yes")
-                end
-            end)
+            local pNo    = baseId + ci - 1
+            local exists = objectExists(string.format("Preset %d.%d", PT, pNo))
+            local nm     = exists and presetName(PT, pNo) or nil
+            if exists and (nm == nil or nm == c.name) then
+                presetsReused = presetsReused + 1
+            else
+                Cmd("ClearAll")
+                Cmd("Fixture Thru")
+                Cmd(string.format('Attribute "ColorRGB_R" At %d', math.floor(c.r / 255 * 100 + 0.5)))
+                Cmd(string.format('Attribute "ColorRGB_G" At %d', math.floor(c.g / 255 * 100 + 0.5)))
+                Cmd(string.format('Attribute "ColorRGB_B" At %d', math.floor(c.b / 255 * 100 + 0.5)))
+                run(string.format('Store Preset %d.%d /Overwrite /NoConfirmation /Universal', PT, pNo))
+                run(string.format('Label Preset %d.%d "%s"', PT, pNo, c.name), true)
+                if exists then presetsFixed = presetsFixed + 1
+                else presetsCreated = presetsCreated + 1 end
+            end
         end
-        breathe()
-    end
+    end)
     Cmd("ClearAll")
-
-    -- 2b) Sequences FX : 5 par groupe (une FORME de balayage chacune).
-    --     Construites par COMMANDES (le seul chemin fiable de bout en
-    --     bout) : cue 1 = groupe At Preset SLOT C1, cue 2 = SLOT C2, avec
-    --     un delay individuel reparti sur le groupe (sens = J>C, C>J ou
-    --     E>I, I>E ou 1/2), les deux cues en TrigType Follow + WrapAround.
-    --     Les cues referencent les presets slots -> les pastilles C1/C2
-    --     re-teintent la boucle meme en cours de route.
-    -- Machines de chaque groupe, dans l'ordre : sert au balayage (construit
-    -- machine par machine) ET a savoir quels groupes SE CHEVAUCHENT, pour
-    -- qu'une couleur coupe toutes les boucles qui touchent ses machines.
-    for gi, ti in ipairs(groupTis) do
-        Cmd("ClearAll")
-        Cmd(targets[ti].sel)
-        local addrs = selectionAddrs(64)
-        grpAddrs[gi] = addrs
-        if addrs then
-            local set = {}
-            for _, a in ipairs(addrs) do set[a] = true end
-            grpSet[gi] = set
-        end
+    if not okPresets then
+        Printf("[CP] presets : %s", tostring(errPresets))
     end
-    Cmd("ClearAll")
+    -- 1c) Slots FX (C1 / C2) : re-semes a chaque generation (C1 = 1ere
+    --     couleur, C2 = 8e), pour que l'en-tete dise ce que la boucle joue.
+    run(string.format('Copy Preset %d.%d At Preset %d.%d /Overwrite /NoConfirmation /NoOops',
+        PT, baseId, PT, pFx1))
+    run(string.format('Copy Preset %d.%d At Preset %d.%d /Overwrite /NoConfirmation /NoOops',
+        PT, baseId + math.min(7, nColors - 1), PT, pFx2))
+    run(string.format('Label Preset %d.%d "CP FX C1"', PT, pFx1), true)
+    run(string.format('Label Preset %d.%d "CP FX C2"', PT, pFx2), true)
     breathe()
 
+    -- 2) Membres des groupes : pour savoir qui CHEVAUCHE qui (une couleur
+    --    doit couper toutes les boucles qui touchent ses machines).
+    local grpSet, grpKnown = {}, 0
     for gi, ti in ipairs(groupTis) do
-        local t = targets[ti]
-        -- Balayage machine par machine avec un "Delay <t>" individuel
-        -- (syntaxe documentee) : controle EXACT du sens. Sans enumeration
-        -- possible, repli sur le fan par plage "Delay a Thru b".
-        local addrs = grpAddrs[gi]
-        if not addrs then fxFallback = fxFallback + 1 end
-        for di, dir in ipairs(FX_DIRS) do
-            local no = seqFx(gi, di)
-
-            for k, slot in ipairs({ pFx1, pFx2 }) do
-                Cmd("ClearAll")
-                if addrs then
-                    local n = #addrs
-                    -- Les delais d'abord, pour garantir une DUREE de cue :
-                    -- une boucle Follow dont la cue dure 0 s'emballe (le
-                    -- damier n'a pas de balayage ; une forme symetrique sur
-                    -- 2 machines non plus ; un groupe d'1 machine non plus).
-                    -- Si personne ne porte de delay, tout le monde prend le
-                    -- battement complet : rien ne se decale, mais la cue
-                    -- dure ce qu'elle doit durer.
-                    local dls, maxD = {}, 0
-                    for i = 1, n do
-                        dls[i] = (dir.fan == "alt") and fxSweep
-                                 or (fanFactor(dir.fan, i, n) * fxSweep)
-                        if dls[i] > maxD then maxD = dls[i] end
-                    end
-                    if maxD <= 0 then
-                        for i = 1, n do dls[i] = fxSweep end
-                    end
-                    for i, addr in ipairs(addrs) do
-                        -- "1/2" : damier. Une machine sur deux prend l'autre
-                        -- couleur DANS LA MEME cue -> les deux moities sont
-                        -- toujours en couleurs opposees, et elles echangent
-                        -- a chaque cue. (Les autres sens : meme couleur pour
-                        -- tout le monde, mais decalee dans le temps.)
-                        local pNo = slot
-                        if dir.fan == "alt" and (i % 2 == 0) then
-                            pNo = (slot == pFx1) and pFx2 or pFx1
-                        end
-                        Cmd(addr)
-                        Cmd(string.format('At Preset %d.%d', PT, pNo))
-                        Cmd("Delay " .. fmtNum(dls[i]))
-                    end
-                else
-                    Cmd(t.sel)
-                    Cmd(string.format('At Preset %d.%d', PT, slot))
-                    Cmd(string.format(dir.fb or "Delay %s", fmtNum(fxSweep)))
-                end
-                Cmd(string.format('Store Sequence %d Cue %d /NoConfirmation', no, k))
-                setCueFade(no, k, fxFade)
-                -- La propriete du trigger s'appelle TrigType (valeur
-                -- sensible a la casse : "Follow") — manuel + forum MA.
-                Cmd(string.format('Set Sequence %d Cue %d Property "TrigType" "Follow"', no, k))
-            end
-            Cmd(string.format('Label Sequence %d "FX %s %s"', no, t.label, dir.lbl))
-            Cmd(string.format('Assign Appearance %d At Sequence %d', appFxOn, no))
-            Cmd(string.format('Set Sequence %d Property "WrapAround" "Yes"', no))
-            Cmd(string.format('Set Sequence %d Property "OffWhenOverridden" "Yes"', no))
-            pcall(function()
-                local s = ObjectList("Sequence " .. no)[1]
-                if s then
-                    for ki = 1, 2 do
-                        pcall(function()
-                            local cue = ObjectList(string.format("Sequence %d Cue %d", no, ki))[1]
-                            if cue then cue:Set("TrigType", "Follow") end
-                        end)
-                    end
-                    pcall(function() s:Set("WrapAround", "Yes") end)
-                    -- Go+ repart de la cue courante ou de la premiere selon
-                    -- le "Restart Mode" ; on demande la premiere (silencieux
-                    -- si le build nomme la propriete autrement — la boucle a
-                    -- 2 cues tourne de toute facon).
-                    pcall(function() s:Set("RestartMode", "First Cue") end)
-                    s:Set("OffWhenOverridden", "Yes")
-                end
-            end)
-            if objectExists(string.format("Sequence %d Cue 2", no)) then
-                fxBuilt = fxBuilt + 1
-            else
-                Printf("[CP] FX sequence %d (%s %s) : construction incomplete",
-                    no, t.label, dir.lbl)
-            end
+        local gid = targets[ti].gid
+        local members = groupMembers(gid)
+        if not members then members = groupMembersBySelection(gid) end
+        if members then
+            local set = {}
+            for _, k in ipairs(members) do set[k] = true end
+            grpSet[gi] = set
+            grpKnown = grpKnown + 1
         end
-        breathe()
     end
-    end)   -- ============ fin de la phase "programmer" ============
-    -- Dans TOUS les cas, on rend le programmer propre.
-    Cmd("ClearAll")
-    if not okBuild then
-        Printf("[CP] echec pendant la construction : %s", tostring(errBuild))
-        MessageBox({ title = "Color Picker LIVE",
-            message = "La construction s'est interrompue.\n\n"
-                   .. "Le programmer a ete vide (rien ne reste allume par\n"
-                   .. "le plugin). Le board est incomplet : relance la\n"
-                   .. "generation, ou nettoie les plages affichees.\n\n"
-                   .. "Detail : " .. tostring(errBuild),
-            commands = { { value = 1, name = "OK" } } })
-        return
-    end
-
-    -- Phases 3 et 4 (macros, layout) : le programmer est deja propre, mais
-    -- une erreur ici laisserait un board a moitie construit SANS rien dire.
-    -- Les resultats remontent par ces variables.
-    local placed, failed = 0, 0
-    local okBoard, errBoard = pcall(function()
-
-    -- ------------------------- 3) les macros -------------------------
-    -- TOUT le board est fait de macros : c'est le seul mecanisme ou la
-    -- tuile prend vraiment l'IMAGE (contour au repos / pave plein quand
-    -- actif). Chaque tuile : lance sa sequence en restitution, coupe le FX
-    -- de sa ligne, et repeint la ligne (feedback radio).
-
-    -- Quels groupes FX touchent les machines de la ligne ti ? (Groupes
-    -- imbriques : "General" contient "Contres" — sans ca, la boucle du
-    -- groupe englobant reprendrait la couleur a sa cue suivante.)
-    -- En cas de doute (enumeration impossible), on repond OUI : mieux vaut
-    -- couper un effet de trop que de perdre la main sur la couleur.
-    local fxGiOfTi0 = {}
-    for gi, ti in ipairs(groupTis) do fxGiOfTi0[ti] = gi end
     local function overlappingGis(ti)
         local out = {}
-        if nFx == 0 then return out end
-        local mine = fxGiOfTi0[ti]
+        local mine = fxGiOfTi[ti]
         for gi = 1, nFx do
             local hit
-            if ti == 1 or gi == mine then                 -- ALL, ou son propre groupe
-                hit = true
+            if ti == 1 or gi == mine then
+                hit = true                                -- ALL, ou son propre groupe
             elseif not mine or not grpSet[gi] or not grpSet[mine] then
                 hit = true                                -- inconnu -> prudent
             else
-                for addr in pairs(grpSet[mine]) do
-                    if grpSet[gi][addr] then hit = true; break end
+                for k in pairs(grpSet[mine]) do
+                    if grpSet[gi][k] then hit = true; break end
                 end
             end
             if hit then out[#out + 1] = gi end
         end
         return out
     end
-
-    -- Lignes de "remise au repos" d'un ensemble de lignes du board.
-    local function resetLines(rows, out, skipMac)
-        local isRow = {}
-        for _, ti in ipairs(rows) do isRow[ti] = true end
-        for _, ti in ipairs(rows) do
-            for cj = 1, nColors do
-                local m = macTile(ti, cj)
-                if m ~= skipMac then
-                    out[#out + 1] = string.format('Assign Appearance %d At Macro %d',
-                        appOff(cj), m)
-                end
+    -- Plages de boucles a couper quand on tape la ligne ti, moins "except".
+    local function killRanges(ti, except)
+        local gis = overlappingGis(ti)
+        local ranges = {}
+        local function add(a, b)
+            if except and except >= a and except <= b then
+                if except > a then ranges[#ranges + 1] = { a, except - 1 } end
+                if except < b then ranges[#ranges + 1] = { except + 1, b } end
+            else
+                ranges[#ranges + 1] = { a, b }
             end
         end
+        if #gis == nFx and nFx > 0 then
+            add(seqFx0, seqLast)
+        else
+            for _, gi in ipairs(gis) do add(seqFx(gi, 1), seqFx(gi, nDir)) end
+        end
+        return ranges
+    end
+    local function rowKillCmd(ti, fade)
+        return offListCmd(killRanges(ti), fade)
+    end
+
+    -- 3) Probe : un CMD de cue s'execute-t-il au Go+ sur ce build ?
+    local cmdProbe = probeCueCommand(seqProbe)
+    breathe()
+
+    -- ======================= 4) SEQUENCES EN RECIPES =======================
+    local linesWanted, linesOk, cuesWanted, cuesCooked, cuesUnknown = 0, 0, 0, 0, 0
+    local trigOk, trigWanted, trigUnknown = 0, 0, 0
+    local function noteCue(sq, cue)
+        cuesWanted = cuesWanted + 1
+        local hd = cueHasData(sq, cue)
+        if hd == nil then cuesUnknown = cuesUnknown + 1
+        elseif hd then cuesCooked = cuesCooked + 1 end
+    end
+    -- Groupes d'une ligne : ALL = tous les groupes du board.
+    local function rowGroupIds(ti)
+        if ti == 1 then
+            local ids = {}
+            for _, tj in ipairs(groupTis) do ids[#ids + 1] = targets[tj].gid end
+            return ids
+        end
+        return { targets[ti].gid }
+    end
+
+    local okBuild, errBuild = pcall(function()
+        -- 4a) Sequences couleur : 1 par (ligne x couleur), 1 cue, une ligne
+        --     de recipe par groupe de la ligne.
+        for ti, t in ipairs(targets) do
+            for ci, c in ipairs(colors) do
+                local sq = seqColor(ti, ci)
+                run(string.format('Store Sequence %d Cue 1 /Overwrite /NoConfirmation', sq))
+                for k, gid in ipairs(rowGroupIds(ti)) do
+                    linesWanted = linesWanted + 1
+                    if addRecipeLine(sq, 1, k, gid, PT, baseId + ci - 1) then linesOk = linesOk + 1 end
+                end
+                cook(sq)
+                run(string.format('Label Sequence %d "%s %s"', sq, t.label, c.name), true)
+                setProp("Sequence " .. sq, "OffWhenOverridden", "Yes")
+                setProp("Sequence " .. sq, "PreferCueAppearance", "Yes", true)
+                setProp(string.format("Sequence %d Cue 1", sq), "CueInFade", fmtNum(colorFade))
+                run(string.format('Assign Appearance %d At Sequence %d', appSeqOff(ci), sq), true)
+                run(string.format('Assign Appearance %d At Sequence %d Cue 1', appSeqOn(ci), sq), true)
+                local cmd = rowKillCmd(ti, colorFade)
+                if cmd then setProp(string.format("Sequence %d Cue 1", sq), "Command", cmd) end
+                noteCue(sq, 1)
+            end
+            breathe()
+        end
+
+        -- 4b) Sequences FX : 5 par groupe, 2 cues Follow + WrapAround,
+        --     une ligne de recipe par cue (Group -> slot C1 / C2) portant
+        --     les timings MAtricks de la forme.
         for gi, ti in ipairs(groupTis) do
-            if isRow[ti] then
-                for dj = 1, nDir do
-                    local m = macFx(gi, dj)
-                    if m ~= skipMac then
-                        out[#out + 1] = string.format('Assign Appearance %d At Macro %d',
-                            appFx, m)
+            local t = targets[ti]
+            for di, dir in ipairs(FX_DIRS) do
+                local sq = seqFx(gi, di)
+                local killCmd = offListCmd(killRanges(ti, sq), FX_KILL_FADE)
+                for k = 1, 2 do
+                    run(string.format('Store Sequence %d Cue %d /Overwrite /NoConfirmation', sq, k))
+                    linesWanted = linesWanted + 1
+                    if addRecipeLine(sq, k, 1, t.gid, PT, (k == 1) and pFx1 or pFx2) then
+                        linesOk = linesOk + 1
+                    end
+                    setLineProp(sq, k, 1, "DelayFromX", "0")
+                    setLineProp(sq, k, 1, "DelayToX", fmtNum(fxSweep))
+                    if dir.wings  then setLineProp(sq, k, 1, "XWings", "2") end
+                    if dir.group2 then setLineProp(sq, k, 1, "XGroup", "2") end
+                    if dir.invert then
+                        setLineProp(sq, k, 1, "InvertX", "Yes")
+                        setLineProp(sq, k, 1, "InvertStyle", "All")
+                    end
+                    setProp(string.format("Sequence %d Cue %d", sq, k), "TrigType", "Follow")
+                    setProp(string.format("Sequence %d Cue %d", sq, k), "CueInFade", fmtNum(fxFade))
+                    run(string.format('Assign Appearance %d At Sequence %d Cue %d', appFxOn, sq, k), true)
+                    if killCmd then setProp(string.format("Sequence %d Cue %d", sq, k), "Command", killCmd) end
+                end
+                setPropTry("Sequence " .. sq, "WrapAround", { "Yes", "1" })
+                setProp("Sequence " .. sq, "OffWhenOverridden", "Yes")
+                setProp("Sequence " .. sq, "PreferCueAppearance", "Yes", true)
+                run(string.format('Assign Appearance %d At Sequence %d', appFxSeq, sq), true)
+                cook(sq)
+                run(string.format('Label Sequence %d "FX %s %s"', sq, t.label, dir.lbl), true)
+                for k = 1, 2 do
+                    noteCue(sq, k)
+                    trigWanted = trigWanted + 1
+                    local tt = getProp(string.format("Sequence %d Cue %d", sq, k), "TrigType")
+                    if tt == nil then trigUnknown = trigUnknown + 1
+                    elseif tt:lower() == "follow" then trigOk = trigOk + 1 end
+                end
+            end
+            breathe()
+        end
+    end)
+    Cmd("ClearAll")
+    if not okBuild then
+        Printf("[CP] echec pendant la construction : %s", tostring(errBuild))
+        MessageBox({ title = "Color Picker LIVE",
+            message = "La construction s'est interrompue.\n\n"
+                   .. "Le programmer est vide. Le board est incomplet :\n"
+                   .. "relance la generation (les plages seront nettoyees).\n\n"
+                   .. "Detail : " .. tostring(errBuild),
+            commands = { { value = 1, name = "OK" } } })
+        return
+    end
+
+    -- Les rangees FADE reecrivent les cues par PLAGE ("Sequence a Thru b
+    -- Cue 1") : une seule ligne de macro. On verifie ici que la console
+    -- accepte cette forme ; sinon les macros detaillent sequence par
+    -- sequence (plus long, mais sur).
+    local rangedOk = run(string.format('Set Sequence %d Thru %d Cue 1 Property "CueInFade" "%s"',
+        baseId, seqEnd, fmtNum(colorFade)))
+
+    -- ============================ 5) MACROS ============================
+    local placed, failed = 0, 0
+    local okBoard, errBoard = pcall(function()
+        -- 5a) Off All : relache tout avec le fade d'arret. L'etat des
+        --     tuiles suit tout seul (sequences eteintes = sombres).
+        makeMacro(macOffAll, "Off All", appRed,
+            { offListCmd({ { baseId, seqLast } }, offFade) })
+        makeMacro(macAllHdr, "ALL", appDark, {})
+        makeMacro(macTitle, "C O L O R  P I C K E R   -   v" .. VERSION, appDark, {})
+
+        -- 5b) Rangees FADE : un bouton = reglage de tout le board + etat
+        --     affiche (bouton actif surligne, en-tete relabellee). Libelles
+        --     UNIQUES entre les deux rangees (sinon MA3 suffixe "#2").
+        local function fadeLabel(v)
+            if v == math.floor(v) then return string.format("%ds", v) end
+            return tostring(v) .. "s"
+        end
+        local function fadeLabelO(v)
+            if v == math.floor(v) then return string.format("%d", v) end
+            return tostring(v)
+        end
+        makeMacro(macFadeCHdr, "FADE couleur " .. fadeLabel(colorFade), appDark, {})
+        makeMacro(macFadeOHdr, "FADE arret "   .. fadeLabel(offFade),   appDark, {})
+        for vi, v in ipairs(FADE_VALUES) do
+            local vs = fmtNum(v)
+            local linesC, linesO = {}, {}
+            -- fade couleur : le CueInFade de toutes les cues couleur...
+            if rangedOk then
+                linesC[#linesC + 1] = string.format(
+                    'Set Sequence %d Thru %d Cue 1 Property "CueInFade" "%s"', baseId, seqEnd, vs)
+            else
+                for sq = baseId, seqEnd do
+                    linesC[#linesC + 1] = string.format(
+                        'Set Sequence %d Cue 1 Property "CueInFade" "%s"', sq, vs)
+                end
+            end
+            -- ... et le fade du CMD (relache des boucles) de chaque ligne.
+            for ti = 1, nTargets do
+                local cmd = rowKillCmd(ti, v)
+                if cmd then
+                    if rangedOk then
+                        linesC[#linesC + 1] = string.format(
+                            'Set Sequence %d Thru %d Cue 1 Property "Command" "%s"',
+                            seqColor(ti, 1), seqColor(ti, nColors), cmd)
+                    else
+                        for ci = 1, nColors do
+                            linesC[#linesC + 1] = string.format(
+                                'Set Sequence %d Cue 1 Property "Command" "%s"', seqColor(ti, ci), cmd)
+                        end
                     end
                 end
             end
-        end
-    end
-
-    local allRows = {}
-    for ti = 1, nTargets do allRows[ti] = ti end
-
-    -- Commandes "coupe les boucles FX qui touchent cette ligne". Le fondu
-    -- vaut celui de la couleur : la boucle se relache pendant que la
-    -- couleur monte -> aucun trou (sinon les machines retombent a leur
-    -- couleur par defaut, gros flash blanc).
-    -- "except" : une sequence a NE PAS couper (la boucle que la tuile FX
-    -- va lancer juste apres — l'eteindre avec un fondu puis la relancer
-    -- dans la meme macro, c'est compter sur un detail de la console).
-    local function killFxLines(ti, out, fade, except)
-        local gis = overlappingGis(ti)
-        if #gis == 0 then return end
-        local function offRange(a, b)
-            if except and except >= a and except <= b then
-                if except > a then out[#out + 1] = offCmd(a, except - 1, fade) end
-                if except < b then out[#out + 1] = offCmd(except + 1, b, fade) end
-            else
-                out[#out + 1] = offCmd(a, b, fade)
+            -- fade d'arret : la ligne 1 d'Off All.
+            linesO[#linesO + 1] = string.format(
+                'Set Macro %d.1 Property "Command" "%s"',
+                macOffAll, offListCmd({ { baseId, seqLast } }, v))
+            linesC[#linesC + 1] = string.format('Label Macro %d "FADE couleur %s"', macFadeCHdr, fadeLabel(v))
+            linesO[#linesO + 1] = string.format('Label Macro %d "FADE arret %s"', macFadeOHdr, fadeLabel(v))
+            for vj = 1, nV do
+                linesC[#linesC + 1] = string.format('Assign Appearance %d At Macro %d',
+                    (vj == vi) and appAccent or appGrey, macFadeC0 + vj - 1)
+                linesO[#linesO + 1] = string.format('Assign Appearance %d At Macro %d',
+                    (vj == vi) and appAccent or appGrey, macFadeO0 + vj - 1)
             end
-        end
-        if #gis == nFx then                                -- tout le bloc FX
-            offRange(seqFx0, seqLast)
-            return
-        end
-        for _, gi in ipairs(gis) do
-            offRange(seqFx(gi, 1), seqFx(gi, nDir))
-        end
-    end
-
-    -- Lignes du board dont les tuiles doivent etre repeintes quand on tape
-    -- la ligne ti : la sienne, la ligne ALL (qui n'a plus la main partout),
-    -- et toute ligne de groupe qui partage des machines.
-    local function affectedRows(ti)
-        if ti == 1 then return allRows end
-        local rows, seen = { ti }, { [ti] = true }
-        if not seen[1] then rows[#rows + 1] = 1; seen[1] = true end
-        for _, gi in ipairs(overlappingGis(ti)) do
-            local tj = groupTis[gi]
-            if tj and not seen[tj] then rows[#rows + 1] = tj; seen[tj] = true end
-        end
-        return rows
-    end
-
-    -- Nombre de lignes "Off" en tete de chaque tuile : les boutons FADE
-    -- couleur les reecrivent aussi (le fondu de relache des boucles doit
-    -- suivre le fondu de la couleur, sinon les machines que la boucle
-    -- colorait et que la tuile ne possede pas lachent a l'ancien temps).
-    local tileOffCount, fxOffCount = {}, {}
-
-    -- 3a) Tuiles COULEUR.
-    for ti, t in ipairs(targets) do
-        for ci, c in ipairs(colors) do
-            local me    = macTile(ti, ci)
-            local lines = { gotoCmd(seqColor(ti, ci), colorFade) }  -- ligne 1 : reecrite par les FADE
-            killFxLines(ti, lines, colorFade)
-            tileOffCount[me] = #lines - 1
-            -- La tuile tapee s'allume TOUT DE SUITE (juste apres l'action),
-            -- le menage de la ligne suit.
-            lines[#lines + 1] = string.format('Assign Appearance %d At Macro %d', appOn(ci), me)
-            resetLines(affectedRows(ti), lines, me)
-            makeMacro(me, string.format("%s %s", t.label, c.name), appOff(ci), lines)
+            makeMacro(macFadeC0 + vi - 1, fadeLabel(v),  (v == colorFade) and appAccent or appGrey, linesC)
+            makeMacro(macFadeO0 + vi - 1, fadeLabelO(v), (v == offFade)   and appAccent or appGrey, linesO)
         end
         breathe()
-    end
 
-    -- 3b) Tuiles FX (5 formes par ligne de groupe).
-    for gi, ti in ipairs(groupTis) do
-        local t = targets[ti]
-        for di, dir in ipairs(FX_DIRS) do
-            local me = macFx(gi, di)
-            -- Relache les autres boucles qui touchent ces machines (les
-            -- autres formes de la ligne ET les groupes qui chevauchent)
-            -- AVEC un fondu : sans lui, la boucle en cours lache d'un coup
-            -- et le groupe retombe a sa couleur par defaut (flash blanc)
-            -- avant que la nouvelle boucle ne monte. La boucle visee n'est
-            -- pas coupee : Go+ la demarre si elle dort, et ne fait
-            -- qu'avancer d'une cue si elle tourne deja (retaper la tuile).
-            -- Go+ (et non Goto) enchaine les cues Follow.
-            local lines = {}
-            killFxLines(ti, lines, colorFade, seqFx(gi, di))
-            fxOffCount[me] = #lines
-            lines[#lines + 1] = goPlusCmd(seqFx(gi, di))
-            lines[#lines + 1] = string.format('Assign Appearance %d At Macro %d', appFxOn, me)
-            resetLines(affectedRows(ti), lines, me)
-            makeMacro(me, string.format("FX %s %s", t.label, dir.lbl), appFx, lines)
-        end
-        breathe()
-    end
-
-    -- 3c) Outils : Off All (relache tout + remet toutes les tuiles au
-    --     repos), etiquette ALL, banniere.
-    local offAllLines = { offCmd(baseId, seqLast, offFade) }   -- ligne 1 : reecrite par FADE arret
-    resetLines(allRows, offAllLines, nil)
-    makeMacro(macOffAll, "Off All", appRed, offAllLines)
-    makeMacro(macAllHdr, "ALL", appDark, {})
-    makeMacro(macTitle, "C O L O R  P I C K E R   -   v" .. VERSION, appDark, {})
-
-    -- 3d) Boutons de fade : chaque bouton regle d'un coup tout le board ET
-    --     affiche l'etat courant (bouton actif surligne, header relabelle).
-    --     Libelles UNIQUES entre les deux rangees (sinon MA3 suffixe "#2").
-    local function fadeLabel(v)
-        if v == math.floor(v) then return string.format("%ds", v) end
-        return tostring(v) .. "s"
-    end
-    local function fadeLabelO(v)
-        if v == math.floor(v) then return string.format("%d", v) end
-        return tostring(v)
-    end
-    makeMacro(macFadeCHdr, "FADE couleur " .. fadeLabel(colorFade), appDark, {})
-    makeMacro(macFadeOHdr, "FADE arret "   .. fadeLabel(offFade),   appDark, {})
-    for vi, v in ipairs(FADE_VALUES) do
-        local vs = tostring(v)
-        local linesC, linesO = {}, {}
-        for ti2 = 1, nTargets do
-            -- les lignes Off de la ligne ti2, avec le nouveau fondu
-            local offs = {}
-            killFxLines(ti2, offs, v)
-            for ci2 = 1, nColors do
-                local m2 = macTile(ti2, ci2)
-                -- fade couleur : reecrit la ligne 1 (le Goto) de la tuile...
-                linesC[#linesC + 1] = string.format(
-                    'Set Macro %d.1 Property "Command" "%s"',
-                    m2, gotoCmd(seqColor(ti2, ci2), vs))
-                -- ... et ses lignes Off (relache des boucles), 2..1+n.
-                for k = 1, (tileOffCount[m2] or 0) do
-                    linesC[#linesC + 1] = string.format(
-                        'Set Macro %d.%d Property "Command" "%s"', m2, k + 1, offs[k])
-                end
-                -- (rien a poser sur la sequence : le fondu d'arret vit dans
-                --  le "Fade" de la commande Off, reecrite plus bas)
-            end
-        end
-        -- les tuiles FX : leurs lignes Off aussi (1..n, puis le Go+)
-        for gi2, ti2 in ipairs(groupTis) do
-            for di2 = 1, nDir do
-                local m2, offs = macFx(gi2, di2), {}
-                killFxLines(ti2, offs, v, seqFx(gi2, di2))
-                for k = 1, (fxOffCount[m2] or 0) do
-                    linesC[#linesC + 1] = string.format(
-                        'Set Macro %d.%d Property "Command" "%s"', m2, k, offs[k])
-                end
-            end
-        end
-        -- Le vrai fade d'arret : reecrit la ligne 1 du macro Off All.
-        linesO[#linesO + 1] = string.format(
-            'Set Macro %d.1 Property "Command" "%s"',
-            macOffAll, offCmd(baseId, seqLast, vs))
-        -- Feedback : header + surbrillance du bouton actif.
-        linesC[#linesC + 1] = string.format('Label Macro %d "FADE couleur %s"',
-            macFadeCHdr, fadeLabel(v))
-        linesO[#linesO + 1] = string.format('Label Macro %d "FADE arret %s"',
-            macFadeOHdr, fadeLabel(v))
-        for vj = 1, nV do
-            linesC[#linesC + 1] = string.format('Assign Appearance %d At Macro %d',
-                (vj == vi) and appAccent or appGrey, macFadeC0 + vj - 1)
-            linesO[#linesO + 1] = string.format('Assign Appearance %d At Macro %d',
-                (vj == vi) and appAccent or appGrey, macFadeO0 + vj - 1)
-        end
-        makeMacro(macFadeC0 + vi - 1, fadeLabel(v),
-            (v == colorFade) and appAccent or appGrey, linesC)
-        makeMacro(macFadeO0 + vi - 1, fadeLabelO(v),
-            (v == offFade) and appAccent or appGrey, linesO)
-    end
-    breathe()
-
-    -- 3e) Pastilles FX C1 / C2 : copient la couleur choisie dans le preset
-    --     SLOT (Copy /Overwrite) -> la boucle FX se re-teinte. Pastille
-    --     choisie = remplie. Header long ("FX C1 Red") / bouton court
-    --     ("C1 Red") -> aucun doublon de nom.
-    if nFx > 0 then
+        -- 5c) Pastilles FX C1 / C2 : copient la couleur choisie dans le
+        --     preset SLOT (Copy /Overwrite) -> les cues cuisinees, qui
+        --     REFERENCENT le slot, changent de couleur en live.
         makeMacro(macC1Hdr, "FX C1 " .. colors[1].name, appDark, {})
         makeMacro(macC2Hdr, "FX C2 " .. colors[math.min(8, nColors)].name, appDark, {})
         local function makeSlotRow(hdrNo, base0, slotNo, hdrName, btnPrefix, defaultCi)
@@ -1657,129 +1591,147 @@ local function main(display_handle)
         end
         makeSlotRow(macC1Hdr, macC1_0, pFx1, "FX C1", "C1", 1)
         makeSlotRow(macC2Hdr, macC2_0, pFx2, "FX C2", "C2", math.min(8, nColors))
+        breathe()
 
-        -- 3f) Derniere rangee : FX FONDU = le passage d'une couleur FX a
-        --     l'autre, de SEC (FX 0) a fondu. Elle reecrit le CueInFade
-        --     des DEUX cues de chaque boucle, et s'affiche comme les rangees
-        --     FADE (bouton actif surligne, en-tete relabellee).
-        local function fxFadeLabel(v)
-            if v == math.floor(v) then return string.format("FX %d", v) end
-            return "FX " .. tostring(v)
+        -- 5d) FX VITESSE : le battement de la vague = DelayToX des recipes
+        --     de boucle, puis recuisson. (Possible en cours de lecture.)
+        local function secLabel(v)
+            if v == math.floor(v) then return string.format("%ds", v) end
+            return tostring(v) .. "s"
         end
-        makeMacro(macFxFHdr, "FX FONDU " .. fadeLabel(fxFade), appDark, {})
+        makeMacro(macFxVHdr, "FX VITESSE " .. secLabel(fxSweep), appDark, {})
+        for vi, v in ipairs(FX_SWEEPS) do
+            local lines = {}
+            for gi = 1, nFx do
+                for di = 1, nDir do
+                    for k = 1, 2 do
+                        lines[#lines + 1] = string.format(
+                            'Set Sequence %d Cue %d Part 0.1 Property "DelayToX" "%s"',
+                            seqFx(gi, di), k, fmtNum(v))
+                    end
+                end
+            end
+            for gi = 1, nFx do
+                for di = 1, nDir do
+                    lines[#lines + 1] = string.format('Cook Sequence %d /Overwrite', seqFx(gi, di))
+                end
+            end
+            lines[#lines + 1] = string.format('Label Macro %d "FX VITESSE %s"', macFxVHdr, secLabel(v))
+            for vj = 1, nFS do
+                lines[#lines + 1] = string.format('Assign Appearance %d At Macro %d',
+                    (vj == vi) and appAccent or appGrey, macFxV0 + vj - 1)
+            end
+            makeMacro(macFxV0 + vi - 1, "FXV " .. fmtNum(v), (v == fxSweep) and appAccent or appGrey, lines)
+        end
+
+        -- 5e) FX FONDU : le fondu de chaque machine dans la vague
+        --     (CueInFade des deux cues de chaque boucle).
+        makeMacro(macFxFHdr, "FX FONDU " .. secLabel(fxFade), appDark, {})
         for vi, v in ipairs(FX_FADES) do
             local lines = {}
             for gi = 1, nFx do
                 for di = 1, nDir do
                     for k = 1, 2 do
                         lines[#lines + 1] = string.format(
-                            'Set Sequence %d Cue %d Property "CueInFade" "%s"',
-                            seqFx(gi, di), k, tostring(v))
+                            'Set Sequence %d Cue %d Property "CueInFade" "%s"', seqFx(gi, di), k, fmtNum(v))
                     end
                 end
             end
-            lines[#lines + 1] = string.format('Label Macro %d "FX FONDU %s"',
-                macFxFHdr, fadeLabel(v))
+            lines[#lines + 1] = string.format('Label Macro %d "FX FONDU %s"', macFxFHdr, secLabel(v))
             for vj = 1, nFV do
                 lines[#lines + 1] = string.format('Assign Appearance %d At Macro %d',
                     (vj == vi) and appAccent or appGrey, macFxF0 + vj - 1)
             end
-            makeMacro(macFxF0 + vi - 1, fxFadeLabel(v),
-                (v == fxFade) and appAccent or appGrey, lines)
+            makeMacro(macFxF0 + vi - 1, "FXF " .. fmtNum(v), (v == fxFade) and appAccent or appGrey, lines)
         end
-    end
-    breathe()
 
-    -- ------------------------- 4) le layout --------------------------
-    -- (Un layout existant a ete supprime avec le reste, apres le recap :
-    --  ici il n'existe plus, ou n'a jamais existe -> Store le cree vide.)
-    Cmd(string.format('Store Layout %d /NoConfirmation', layNo))
-    Cmd(string.format('Label Layout %d "Color Picker LIVE"', layNo))
-
-    local elements = {}
-    local fullW = 2 + nColors + ((nFx > 0) and nDir or 0)
-
-    -- Banniere titre, pleine largeur.
-    elements[#elements + 1] = { object = "Macro " .. macTitle, x = 0, y = 0,
-        w = fullW, noicon = true }
-
-    -- Lignes : ALL puis groupes/machines. Colonnes FX en bout de ligne
-    -- pour les groupes (5 formes de balayage).
-    local rowTop = 1.3
-    for ti, t in ipairs(targets) do
-        local row = rowTop + (ti - 1)
-        if t.header then
-            elements[#elements + 1] = { object = t.header, x = 0, y = row,
-                w = 2, noicon = true, inert = true }
-        else
-            elements[#elements + 1] = { object = "Macro " .. macAllHdr, x = 0, y = row,
-                w = 2, noicon = true }
+        -- 5f) RE-CUISINER : apres un repatch ou un groupe modifie, toutes
+        --     les cues sont recuisinees depuis leurs recipes.
+        local reLines = {}
+        for sq = baseId, seqLast do
+            reLines[#reLines + 1] = string.format('Cook Sequence %d /Overwrite', sq)
         end
-        for ci = 1, nColors do
-            elements[#elements + 1] = {
-                object = "Macro " .. macTile(ti, ci),
-                x = 2 + ci - 1, y = row, clean = true,
-            }
-        end
-        local gi = fxGiOfTi0[ti]
-        if gi then
-            for di, dir in ipairs(FX_DIRS) do
-                elements[#elements + 1] = {
-                    object = "Macro " .. macFx(gi, di),
-                    x = 2 + nColors + di - 1, y = row, clean = true,
-                    text = dir.lbl, textSize = 14,
-                }
+        makeMacro(macReCook, "RE-CUISINER", appDark, reLines)
+        breathe()
+
+        -- ============================ 6) LAYOUT ============================
+        run(string.format('Store Layout %d /NoConfirmation', layNo))
+        run(string.format('Label Layout %d "Color Picker LIVE"', layNo), true)
+
+        local elements = {}
+        local fullW = 2 + nColors + nDir
+
+        elements[#elements + 1] = { object = "Macro " .. macTitle, x = 0, y = 0, w = fullW, noicon = true }
+
+        -- Lignes : ALL puis groupes ; tuiles = les SEQUENCES.
+        local rowTop = 1.3
+        for ti, t in ipairs(targets) do
+            local row = rowTop + (ti - 1)
+            if t.header then
+                elements[#elements + 1] = { object = t.header, x = 0, y = row, w = 2, noicon = true, inert = true }
+            else
+                elements[#elements + 1] = { object = "Macro " .. macAllHdr, x = 0, y = row, w = 2, noicon = true }
+            end
+            for ci = 1, nColors do
+                elements[#elements + 1] = { object = "Sequence " .. seqColor(ti, ci), x = 2 + ci - 1, y = row, clean = true }
+            end
+            local gi = fxGiOfTi[ti]
+            if gi then
+                for di, dir in ipairs(FX_DIRS) do
+                    elements[#elements + 1] = {
+                        object = "Sequence " .. seqFx(gi, di), x = 2 + nColors + di - 1, y = row,
+                        clean = true, text = dir.lbl, textSize = 14,
+                    }
+                end
             end
         end
-    end
 
-    -- Barre Off All pleine largeur, puis rangees FADE, puis pastilles FX.
-    local yOff = rowTop + nTargets + 0.3
-    local fy1  = yOff + 1.3
-    local fy2  = fy1 + 1
-    elements[#elements + 1] = { object = "Macro " .. macOffAll, x = 0, y = yOff,
-        w = fullW, noicon = true }
-    elements[#elements + 1] = { object = "Macro " .. macFadeCHdr, x = 0, y = fy1,
-        w = 2, noicon = true }
-    elements[#elements + 1] = { object = "Macro " .. macFadeOHdr, x = 0, y = fy2,
-        w = 2, noicon = true }
-    for vi = 1, nV do
-        elements[#elements + 1] = { object = "Macro " .. (macFadeC0 + vi - 1),
-            x = 2 + vi - 1, y = fy1, noicon = true }
-        elements[#elements + 1] = { object = "Macro " .. (macFadeO0 + vi - 1),
-            x = 2 + vi - 1, y = fy2, noicon = true }
-    end
-    -- Pastilles C1 / C2 (seulement si des lignes de groupes ont un FX).
-    local yBottom = fy2
-    if nFx > 0 then
+        -- Barre Off All, rangees FADE, pastilles, rangees FX.
+        local yOff = rowTop + nTargets + 0.3
+        local fy1  = yOff + 1.3
+        local fy2  = fy1 + 1
+        elements[#elements + 1] = { object = "Macro " .. macOffAll,   x = 0, y = yOff, w = fullW, noicon = true }
+        elements[#elements + 1] = { object = "Macro " .. macFadeCHdr, x = 0, y = fy1, w = 2, noicon = true }
+        elements[#elements + 1] = { object = "Macro " .. macFadeOHdr, x = 0, y = fy2, w = 2, noicon = true }
+        for vi = 1, nV do
+            elements[#elements + 1] = { object = "Macro " .. (macFadeC0 + vi - 1), x = 2 + vi - 1, y = fy1, noicon = true }
+            elements[#elements + 1] = { object = "Macro " .. (macFadeO0 + vi - 1), x = 2 + vi - 1, y = fy2, noicon = true }
+        end
         local fy3 = fy2 + 1.3
         local fy4 = fy3 + 1
-        elements[#elements + 1] = { object = "Macro " .. macC1Hdr, x = 0, y = fy3,
-            w = 2, noicon = true }
-        elements[#elements + 1] = { object = "Macro " .. macC2Hdr, x = 0, y = fy4,
-            w = 2, noicon = true }
+        elements[#elements + 1] = { object = "Macro " .. macC1Hdr, x = 0, y = fy3, w = 2, noicon = true }
+        elements[#elements + 1] = { object = "Macro " .. macC2Hdr, x = 0, y = fy4, w = 2, noicon = true }
         for ci = 1, nColors do
-            elements[#elements + 1] = { object = "Macro " .. (macC1_0 + ci - 1),
-                x = 2 + ci - 1, y = fy3, clean = true }
-            elements[#elements + 1] = { object = "Macro " .. (macC2_0 + ci - 1),
-                x = 2 + ci - 1, y = fy4, clean = true }
+            elements[#elements + 1] = { object = "Macro " .. (macC1_0 + ci - 1), x = 2 + ci - 1, y = fy3, clean = true }
+            elements[#elements + 1] = { object = "Macro " .. (macC2_0 + ci - 1), x = 2 + ci - 1, y = fy4, clean = true }
         end
-        local fy5 = fy4 + 1
-        elements[#elements + 1] = { object = "Macro " .. macFxFHdr, x = 0, y = fy5,
-            w = 2, noicon = true }
+        local fy5 = fy4 + 1.3
+        local fy6 = fy5 + 1
+        elements[#elements + 1] = { object = "Macro " .. macFxVHdr, x = 0, y = fy5, w = 2, noicon = true }
+        elements[#elements + 1] = { object = "Macro " .. macFxFHdr, x = 0, y = fy6, w = 2, noicon = true }
+        for vi = 1, nFS do
+            elements[#elements + 1] = { object = "Macro " .. (macFxV0 + vi - 1), x = 2 + vi - 1, y = fy5,
+                noicon = true, text = fmtNum(FX_SWEEPS[vi]) .. "s", textSize = 14 }
+        end
         for vi = 1, nFV do
-            elements[#elements + 1] = { object = "Macro " .. (macFxF0 + vi - 1),
-                x = 2 + vi - 1, y = fy5, noicon = true }
+            elements[#elements + 1] = { object = "Macro " .. (macFxF0 + vi - 1), x = 2 + vi - 1, y = fy6,
+                noicon = true, text = fmtNum(FX_FADES[vi]) .. "s", textSize = 14 }
         end
-        yBottom = fy5
-    end
+        -- RE-CUISINER a droite de la rangee FX VITESSE si la place existe.
+        local yBottom = fy6
+        if fullW >= 2 + nFS + 1 + 2 then
+            elements[#elements + 1] = { object = "Macro " .. macReCook, x = fullW - 2, y = fy5, w = 2, noicon = true }
+        else
+            yBottom = fy6 + 1.3
+            elements[#elements + 1] = { object = "Macro " .. macReCook, x = 0, y = yBottom, w = 2, noicon = true }
+        end
 
-    -- Le layout MA3 rend l'axe Y vers le HAUT : on inverse les Y pour
-    -- afficher le board dans l'ordre concu (titre en haut, FX en bas).
-    for _, e in ipairs(elements) do e.y = yBottom - e.y end
+        -- Le layout MA3 rend l'axe Y vers le HAUT : on inverse les Y pour
+        -- afficher le board dans l'ordre concu (titre en haut, FX en bas).
+        for _, e in ipairs(elements) do e.y = yBottom - e.y end
 
-    placed, failed = fillLayout(layNo, elements)
-    end)   -- ================= fin des phases 3 et 4 =================
+        placed, failed = fillLayout(layNo, elements)
+    end)
     Cmd("ClearAll")
     if not okBoard then
         Printf("[CP] echec pendant la construction du board : %s", tostring(errBoard))
@@ -1792,49 +1744,63 @@ local function main(display_handle)
         return
     end
 
+    -- ===================== ASSISTANT : ecran final =====================
+    local checks = string.format(
+        "CONTROLES\n"
+     .. "  Commandes refusees : %d%s\n"
+     .. "  Lignes de recipe : %d/%d   Cues cuisinees : %d/%d%s\n"
+     .. "  Boucles en Follow : %d/%d%s   Groupes enumeres : %d/%d\n"
+     .. "  CMD de cue : %s\n",
+        CP.fails, (CP.fails > 0 and CP.firstFail) and ("\n    1ere : " .. CP.firstFail) or "",
+        linesOk, linesWanted, cuesCooked, cuesWanted,
+        (cuesUnknown > 0) and string.format(" (%d non verifiables)", cuesUnknown) or "",
+        trigOk, trigWanted,
+        (trigUnknown > 0) and string.format(" (%d non verifiables)", trigUnknown) or "",
+        grpKnown, nFx,
+        (cmdProbe == true) and "OK"
+            or (cmdProbe == false) and "NON (les boucles d'autres groupes ne seront pas coupees)"
+            or "non verifiable")
     local note = ""
     if failed > 0 then
-        note = string.format("  (%d case(s) non placee(s), voir [CP] en ligne de commande)", failed)
+        note = string.format("  (%d case(s) non placee(s))", failed)
     end
     if macroLineFails > 0 then
         note = note .. string.format("  (%d macro(s) sans lignes : regenere)", macroLineFails)
     end
-    if fxFallback > 0 then
-        note = note .. string.format(
-            "\n(%d groupe(s) non enumerable(s) : balayage par plage,\n"
-         .. " E>I et I>E y valent J>C et 1/2 clignote d'un bloc)", fxFallback)
+    if not rangedOk then
+        note = note .. "\n(Set par plage refuse : rangees FADE detaillees, un peu plus lentes.)"
     end
-
-    -- ===================== ASSISTANT : ecran final =====================
-    -- Court : le bilan en quatre lignes, puis le mode d'emploi en six.
+    local headline = (CP.fails == 0 and linesOk == linesWanted and cuesCooked + cuesUnknown == cuesWanted)
+        and "Board construit."
+        or  "Board construit AVEC DES REFUS : regarde les controles."
     local msg = string.format(
-        "Board construit.\n\n"
+        "%s\n\n"
      .. "Lignes %d (%s)\n"
-     .. "%d couleurs - %d boucles FX\n"
+     .. "%d couleurs - %d vagues FX (recipes Group + Preset)\n"
      .. "Sequences %d-%d - Macros %d-%d\n"
      .. "Images 3.%d-3.%d : %d/%d importees\n"
      .. "Presets 4.%d-4.%d : %d reutilises, %d crees, %d corriges\n"
      .. "Layout %d : %d/%d cases%s\n\n"
+     .. "%s\n"
      .. "EN LIVE\n"
-     .. "  Tuile couleur : la ligne change, la tuile se remplit.\n"
-     .. "  J>C  C>J  E>I  I>E  1/2 : boucle C1<->C2 sur le groupe.\n"
-     .. "  C1 / C2 : couleurs de la boucle, modifiables en cours.\n"
-     .. "  FX FONDU : 0 = sec, sinon fondu entre C1 et C2.\n"
+     .. "  Tuile couleur : la ligne change, la tuile s'allume.\n"
+     .. "  J>C  C>J  E>I  I>E  1/2 : vague C1<->C2 sur le groupe.\n"
+     .. "  C1 / C2 : couleurs de la vague, modifiables en cours.\n"
+     .. "  FX VITESSE / FX FONDU : battement et douceur de la vague.\n"
      .. "  FADE couleur / arret : le bouton actif est surligne.\n"
-     .. "  Off All : tout relacher, et remettre le board d'aplomb.\n\n"
-     .. "Les presets 4.x pilotent les couleurs :\n"
-     .. "modifie-les, le board suit.\n"
-     .. "Apres un repatch ou une modif de groupe : regenere.",
-        nTargets, table.concat(rowNames, ", "), nColors, fxBuilt,
+     .. "  Off All : tout relacher.  RE-CUISINER : apres un repatch.",
+        headline,
+        nTargets, table.concat(rowNames, ", "), nColors, nFx * nDir,
         baseId, seqLast, baseId, macEnd,
-        baseId, imgDelEnd, imagesOk, 2 * nColors + 4,
+        baseId, baseId + nImages - 1, imagesOk, nImages,
         baseId, baseId + nColors - 1, presetsReused, presetsCreated, presetsFixed,
-        layNo, placed, placed + failed, note)
+        layNo, placed, placed + failed, note,
+        checks)
 
     MessageBox({ title = "Color Picker LIVE  v" .. VERSION, message = msg,
         commands = { { value = 1, name = "OK" } } })
-    Printf("[ColorPickerLive v%s] %d lignes x %d couleurs, %d FX, layout %d : %d/%d cases.",
-        VERSION, nTargets, nColors, fxBuilt, layNo, placed, placed + failed)
+    Printf("[ColorPickerLive v%s] %d lignes x %d couleurs, %d FX, layout %d : %d/%d cases, %d refus.",
+        VERSION, nTargets, nColors, nFx * nDir, layNo, placed, placed + failed, CP.fails)
 end
 
 return main

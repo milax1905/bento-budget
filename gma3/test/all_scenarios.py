@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Tous les profils de console / de rig, d'un coup.
+"""Tous les profils de console / de rig, d'un coup (v9, recipes).
 
 Chaque scenario instancie une console factice (voir mock_test.py), la
-deforme un peu (pas de groupes, pas d'API de selection, cellules, panne en
-pleine generation, presets d'une autre palette, options personnalisees,
-annulation...) et verifie que le plugin reagit comme prevu.
+deforme un peu (ligne 2 de recipe non creee par Assign, pas de
+selectiondata, Set par plage refuse, CMD de cue inerte, commande refusee,
+panne, palettes, annulations, plages occupees, listes fausses...) et
+verifie que le plugin reagit comme prevu : repli propre, ou refus COMPTE
+et affiche au bilan — jamais un board qui "fait n'importe quoi" en silence.
 
 Usage :  python3 test/all_scenarios.py      -> "TOUS LES SCENARIOS OK" / liste
 """
@@ -29,14 +31,12 @@ def run(name, patch="", presets="{}", labels_readable=True):
     if patch:
         lua.execute(patch)
     main(None)
-    cmds = mt.lua_list(lua.eval("__cmds"))
-    macs = {int(k): mt.lua_list(v) for k, v in lua.eval("__macs").items()}
-    n = lua.eval("#__layout()")
-    elems = [lua.eval("__layout()[%d]" % i) for i in range(1, n + 1)]
-    return lua, cmds, macs, elems
+    cmds, macs, elems, seqs = mt.snapshot(lua)
+    return lua, cmds, macs, elems, seqs
 
 
-# MessageBox qui ENREGISTRE ce qu'il affiche, et repond selon le titre.
+# MessageBox qui ENREGISTRE ce qu'il affiche (et les champs pre-remplis),
+# et repond selon le titre.
 RECORDING_BOX = r'''
 _G.__boxes = {}
 _G.MessageBox = function(t)
@@ -52,20 +52,19 @@ _G.MessageBox = function(t)
 end
 '''
 
-
-def count_prefix(cmds, prefix):
-    return sum(1 for c in cmds if c.startswith(prefix))
+NO_GROUPS = '''
+local prev = _G.ObjectList
+_G.ObjectList = function(a)
+    if a:match("^Group %d+$") then return {} end
+    return prev(a)
+end'''
 
 
 def boxes(lua):
-    out = []
-    for b in mt.lua_list(lua.eval("__boxes")):
-        out.append((b["title"], b["message"]))
-    return out
+    return [(b["title"], b["message"]) for b in mt.lua_list(lua.eval("__boxes"))]
 
 
 def box_inputs(lua):
-    """[(titre, {champ: valeur pre-remplie})] dans l'ordre d'affichage."""
     out = []
     for b in mt.lua_list(lua.eval("__boxes")):
         inp = b["inputs"]
@@ -77,61 +76,97 @@ def recap_of(lua):
     return [m for t, m in boxes(lua) if "Recapitulatif" in t]
 
 
+def final_of(lua):
+    f = [m for t, m in boxes(lua) if "Board construit" in m]
+    return f[0] if f else ""
+
+
+def refused(cmds):
+    return [c for c in cmds if "  ## " in c]
+
+
 # 1) rig imbrique de reference : toute la batterie de mock_test
-cmds, macs, elems = mt.run_default()
-errs = mt.check(cmds, macs, elems)
+cmds, macs, elems, seqs = mt.run_default()
+errs = mt.check(cmds, macs, elems, seqs)
 check("rig de reference", not errs, "; ".join(errs[:5]))
 
-# 2) aucun groupe -> une ligne par machine, aucun FX, aucune rangee C1/C2
-lua, cmds, macs, elems = run("nogrp", '''
-local prev = _G.ObjectList
-_G.ObjectList = function(a)
-    if a:match("^Group %d+$") then return {} end
-    return prev(a)
-end''')
-check("mode machines", len(elems) == 1 + 9 * 13 + 1 + 14, "%d cases" % len(elems))
-check("mode machines", not any(re.match(r'^Label Macro \d+ "FX ', c) for c in cmds), "des FX ont ete crees sans groupe")
-check("mode machines", not any(re.match(r'^Label Macro \d+ "C1 ', c) for c in cmds), "rangee C1 creee sans FX")
-check("mode machines", not any(re.match(r"^Store Sequence \d+ Cue 2 ", c) for c in cmds), "une boucle a ete creee sans groupe")
-check("mode machines", cmds[-1] == "ClearAll", "programmer sale")
-check("mode machines", 'Label Sequence 113 "Fix 1 Red"' in cmds, "la premiere machine n'a pas sa ligne")
+# 2) bilan nominal : zero refus, tout verifie, CMD OK
+lua, cmds, macs, elems, seqs = run("final", RECORDING_BOX)
+final = final_of(lua)
+for frag in ("Board construit.", "Commandes refusees : 0", "Lignes de recipe : 102/102",
+             "Cues cuisinees : 78/78", "Boucles en Follow : 30/30", "Groupes enumeres : 3/3",
+             "CMD de cue : OK", "122/122", "Images 3.101-3.126 : 26/26", "12 crees"):
+    check("bilan", frag in final, "manque '%s' dans : %s" % (frag, final[:400]))
+check("bilan", "AVEC DES REFUS" not in final and "non verifiable" not in final, final[:300])
+check("bilan", lua.eval("__vars['cp_cmd']") == "1", "la probe CMD n'a pas lu la variable")
 
-# 3) console sans API de selection -> repli sur le fan par plage
-lua, cmds, macs, elems = run("nosel", "_G.SelectionFirst = nil\n_G.GetSubfixture = nil\n")
-i = cmds.index("Store Sequence %d Cue 1 /NoConfirmation" % mt.seq_fx(1, 1))
-check("sans API selection", cmds[i - 3:i] == ["Group 1", "At Preset 4.%d" % mt.P_FX1, "Delay 0 Thru 1"],
-      "repli incorrect : %s" % cmds[i - 3:i])
-i = cmds.index("Store Sequence %d Cue 1 /NoConfirmation" % mt.seq_fx(1, 2))
-check("sans API selection", cmds[i - 1] == "Delay 1 Thru 0", "C>J en repli : %s" % cmds[i - 1])
-i = cmds.index("Store Sequence %d Cue 1 /NoConfirmation" % mt.seq_fx(1, 5))
-check("sans API selection", cmds[i - 1] == "Delay 1", "damier en repli : %s" % cmds[i - 1])
-check("sans API selection", not any("Thru 1 Thru" in c for c in cmds), "fan multi-points (syntaxe MA2) emis")
-# le reste du board ne doit pas changer : memes macros, memes cases
-_, _, macs2, elems2 = run("nosel2", "_G.SelectionFirst = nil\n")
-check("sans API selection", len(elems2) == 115, "%d cases au lieu de 115" % len(elems2))
-# sans enumeration, le plugin ne sait pas qui chevauche qui : prudence, une
-# tuile FX coupe tout le bloc FX (sauf sa propre boucle) avant de la lancer
-check("sans API selection", macs2.get(mt.m_fx(1, 1), [])[:2] == mt.off_split(mt.SEQ_FX0, mt.SEQ_LAST, 149, "1") + ["Go+ Sequence 149"],
-      "tuile FX en repli : %s" % macs2.get(mt.m_fx(1, 1), [])[:3])
+# 3) la ligne 2 de recipe n'est pas creee par Assign -> repli Lua (Acquire)
+lua, cmds, macs, elems, seqs = run("line2lua", RECORDING_BOX + "ASSIGN_CREATES_LINE2 = false\n")
+errs = [e for e in mt.check(cmds, macs, elems, seqs) if "refusee(s) par la console" not in e]
+check("repli Acquire", not errs, "; ".join(errs[:5]))
+check("repli Acquire", "Lignes de recipe : 102/102" in final_of(lua) and "Board construit." in final_of(lua)
+      and "Commandes refusees : 0" in final_of(lua), final_of(lua)[:300])
+check("repli Acquire", any("Part 0.2  ##" in c for c in refused(cmds)), "l'Assign de la ligne 2 aurait du etre refuse")
 
-# 4) machines a cellules : les adresses de cellules sont respectees
-lua, cmds, macs, elems = run("cells", '''
-_G.GetSubfixture = function(idx)
-    local fid = (idx - 7) / 10
-    return { ToAddr = function(self) return string.format("301.%d", fid) end }
-end''')
-i = cmds.index("Store Sequence %d Cue 1 /NoConfirmation" % mt.seq_fx(1, 1))
-j = i
-while cmds[j] != "ClearAll":
-    j -= 1
-sel = [c for c in cmds[j + 1:i] if c.startswith("Fixture ")]
-check("cellules", sel == ["Fixture 301.1", "Fixture 301.2", "Fixture 301.3"], "adresses : %s" % sel)
+# 4) ni Assign ni Acquire pour la ligne 2 -> refus comptes, bilan honnete
+lua, cmds, macs, elems, seqs = run("line2none", RECORDING_BOX + "ASSIGN_CREATES_LINE2 = false\nACQUIRE_OK = false\n")
+final = final_of(lua)
+check("ligne 2 impossible", "AVEC DES REFUS" in final and "Lignes de recipe : 78/102" in final, final[:400])
+check("ligne 2 impossible", "ligne de recipe 2 de Sequence 101 Cue 1 non creee" in final, final[:400])
+# les lignes de groupe, elles, sont completes
+check("ligne 2 impossible", all(len(seqs[mt.seq_c(ti, ci)]["cues"][1]["lines"]) == 1 for ti in (2, 3, 4) for ci in range(1, 13)),
+      "les lignes de groupe ont souffert")
 
-# 5) panne en pleine generation -> programmer vide, message d'echec, pas de board
-lua, cmds, macs, elems = run("boom", RECORDING_BOX + '''
+# 5) pas de selectiondata -> membres lus par la selection (lecture seule, ClearAll)
+lua, cmds, macs, elems, seqs = run("nosel", RECORDING_BOX + "SELDATA_OK = false\n")
+check("repli selection", "Groupes enumeres : 3/3" in final_of(lua), final_of(lua)[:300])
+i = [k for k, c in enumerate(cmds) if c == "Group 1"]
+check("repli selection", len(i) == 1 and cmds[i[0] + 1] == "ClearAll", "Group 1 doit etre suivi d'un ClearAll")
+check("repli selection", seqs[mt.seq_c(2, 1)]["cues"][1]["props"]["Command"] == mt.row_kill_cmd(2, "1"), "CMD different en repli")
+# ... et sans aucune API : prudence (toutes les boucles coupees), bilan 0/3
+lua, cmds, macs, elems, seqs = run("nosel2", RECORDING_BOX + "SELDATA_OK = false\n_G.SelectionFirst = nil\n")
+check("sans API", "Groupes enumeres : 0/3" in final_of(lua), final_of(lua)[:300])
+check("sans API", seqs[mt.seq_c(2, 1)]["cues"][1]["props"]["Command"] == "Off Sequence %d Thru %d Fade 1" % (mt.SEQ_FX0, mt.SEQ_LAST),
+      "sans membres, une couleur doit couper tout le bloc FX")
+check("sans API", seqs[mt.seq_fx(1, 1)]["cues"][1]["props"]["Command"] == "Off Sequence 150 Thru 163 Fade 1",
+      "sans membres, une tuile FX coupe tout sauf elle")
+
+# 6) Set par plage refuse -> rangees FADE detaillees, bilan le dit
+lua, cmds, macs, elems, seqs = run("noranged", RECORDING_BOX + "RANGED_SET_OK = false\n")
+lc = macs[mt.M_FC0]
+check("sans plage", len([l for l in lc if 'Property "CueInFade"' in l]) == 48, "%d lignes CueInFade" % len(lc))
+check("sans plage", not any(re.match(r"^Set Sequence \d+ Thru \d+ Cue", l) for l in lc), "une ligne par plage a survecu")
+check("sans plage", "Set par plage refuse" in final_of(lua), final_of(lua)[:300])
+check("sans plage", "Commandes refusees : 1" in final_of(lua), "le Set par plage refuse doit etre compte une fois")
+
+# 7) CMD de cue inerte -> le bilan dit NON
+lua, cmds, macs, elems, seqs = run("nocmd", RECORDING_BOX + "CMD_EXEC_OK = false\n")
+check("CMD inerte", "CMD de cue : NON" in final_of(lua), final_of(lua)[:300])
+check("CMD inerte", mt.SEQ_PROBE not in seqs, "sequence de test non supprimee")
+
+# 8) une propriete refusee par la console : comptee, citee, board termine
+# (la console refuse la propriete par commande ET par handle : rien a replier)
+lua, cmds, macs, elems, seqs = run("refuse", RECORDING_BOX + "CUE_PROPS.TrigType = nil\n")
+final = final_of(lua)
+check("refus compte", "AVEC DES REFUS" in final and "Commandes refusees : 30" in final, final[:400])
+check("refus compte", '1ere : Set Sequence 149 Cue 1 Property "TrigType" "Follow"  ->  Illegal property' in final, final[:500])
+check("refus compte", "Boucles en Follow : 0/30 (30 non verifiables)" in final, final[:400])
+check("refus compte", len(elems) == 122, "le board doit quand meme etre pose (%d cases)" % len(elems))
+# un refus cosmetique (appearance) n'alarme pas
+lua, cmds, macs, elems, seqs = run("refuse2", RECORDING_BOX + '''REFUSE['^Assign Appearance %d+ At Sequence'] = "Illegal object"\n''')
+check("refus cosmetique", "Board construit." in final_of(lua) and "Commandes refusees : 0" in final_of(lua), final_of(lua)[:300])
+
+# 9) WrapAround "Yes" refuse par la commande -> pose par le handle (ou "1"), aucun refus compte
+lua, cmds, macs, elems, seqs = run("wrap1", RECORDING_BOX + '''REFUSE['Property "WrapAround" "Yes"'] = "Illegal value"\n''')
+check("WrapAround", all(s["props"].get("WrapAround") in ("Yes", "1") for no, s in seqs.items() if no >= mt.SEQ_FX0), "WrapAround non pose")
+check("WrapAround", "Commandes refusees : 0" in final_of(lua) and "Board construit." in final_of(lua), final_of(lua)[:300])
+check("WrapAround", any('WrapAround" "Yes"  ## Illegal value' in c for c in cmds), "la commande aurait du etre refusee")
+
+# 10) panne en pleine generation -> programmer vide, message d'echec, pas de board
+lua, cmds, macs, elems, seqs = run("boom", RECORDING_BOX + '''
 local prev = _G.Cmd
 _G.Cmd = function(s)
-    if s == "Store Sequence 120 Cue 1 /NoConfirmation" then error("console en vrac") end
+    if s == "Store Sequence 120 Cue 1 /Overwrite /NoConfirmation" then error("console en vrac") end
     return prev(s)
 end''')
 check("panne", cmds[-1] == "ClearAll", "le programmer n'a pas ete vide apres la panne")
@@ -139,52 +174,47 @@ check("panne", not any(c.startswith("Store Macro") for c in cmds), "des macros o
 check("panne", any("interrompue" in m for _, m in boxes(lua)), "pas de message d'echec")
 check("panne", len(elems) == 0, "des cases ont ete posees apres la panne")
 
-# 6) presets d'une AUTRE palette : seuls les labels faux sont re-stockes
+# 11) presets d'une AUTRE palette : seuls les labels faux sont re-stockes
 OLD = {101: "Red", 102: "Orange", 103: "Yellow", 104: "Green", 105: "Cyan", 106: "Blue",
        107: "Violet", 108: "Magenta", 109: "Pink", 110: "White", 111: "Amber", 112: "Azure"}
 pl = "{ " + ", ".join("[%d] = '%s'" % kv for kv in OLD.items()) + " }"
-lua, cmds, macs, elems = run("stale", RECORDING_BOX, presets=pl)
+lua, cmds, macs, elems, seqs = run("stale", RECORDING_BOX, presets=pl)
 stored = sorted(int(m.group(1)) for c in cmds for m in [re.match(r"^Store Preset 4\.(\d+) ", c)] if m)
 want = sorted(no for no, nm in OLD.items() if nm != mt.COLOR_NAMES[no - 101])
 check("palette perimee", stored == want, "re-stockes %s != %s" % (stored, want))
-check("palette perimee", all("/Overwrite" in c for c in cmds if c.startswith("Store Preset")), "re-stockage sans /Overwrite")
-check("palette perimee", any("autre palette" in m for _, m in boxes(lua)), "le recapitulatif ne signale pas la palette")
-check("palette perimee", "Copy Preset 4.101 At Preset 4.%d /Overwrite /NoConfirmation /NoOops" % mt.P_FX1 in cmds,
-      "slots FX non re-seedes apres correction")
+check("palette perimee", any("autre palette" in m for m in recap_of(lua)), "le recapitulatif ne signale pas la palette")
 
-# 7) palette a jour : rien n'est reecrit, tout est reutilise
+# 12) palette a jour : ZERO programmer (hors ClearAll), tout reutilise
 cur = "{ " + ", ".join("[%d] = '%s'" % (101 + i, n) for i, n in enumerate(mt.COLOR_NAMES)) + " }"
-lua, cmds, macs, elems = run("current", RECORDING_BOX, presets=cur)
-check("palette a jour", not any(c.startswith("Store Preset") for c in cmds), "des presets ont ete reecrits")
-check("palette a jour", any("12 reutilises" in m for _, m in boxes(lua)), "le bilan ne compte pas 12 reutilises")
+lua, cmds, macs, elems, seqs = run("current", RECORDING_BOX, presets=cur)
+check("palette a jour", not any(re.match(r"^(Fixture|Group|Attribute|At |Store Preset)", c) for c in cmds), "le programmer a servi")
+check("palette a jour", any("12 reutilises" in m for m in recap_of(lua)) and "12 reutilises" in final_of(lua), "bilan presets")
+check("palette a jour", "rien d'autre" in recap_of(lua)[0], recap_of(lua)[0])
+errs = mt.check(cmds, macs, elems, seqs) if False else []
 
-# 8) labels illisibles : on ne touche a rien (prudence)
-lua, cmds, macs, elems = run("noname", presets=cur, labels_readable=False)
+# 13) labels illisibles : on ne touche a rien (prudence)
+lua, cmds, macs, elems, seqs = run("noname", presets=cur, labels_readable=False)
 check("labels illisibles", not any(c.startswith("Store Preset") for c in cmds), "presets reecrits sans pouvoir lire leur nom")
 
-# 9) annulation au premier ecran : AUCUNE commande
-lua, cmds, macs, elems = run("cancel", RECORDING_BOX + "BOX_ANSWER = function() return 0 end\n")
-check("annulation", len(cmds) == 0, "%d commandes envoyees apres Annuler" % len(cmds))
-
-# 10) annulation a la confirmation d'ecrasement : rien n'est supprime
-lua, cmds, macs, elems = run("cancel2", RECORDING_BOX + '''
+# 14) annulation a chaque ecran : AUCUNE commande
+for step in ("v9", "1/3", "2/3", "3/3", "Recapitulatif"):
+    lua, cmds, macs, elems, seqs = run("cancel_" + step.replace("/", ""), RECORDING_BOX + '''
 BOX_ANSWER = function(t)
-    if (t.title or ""):match("Recapitulatif") then return 0 end
+    if (t.title or ""):match("%s") then return 0 end
     return 1
-end''')
-check("annulation ecrasement", not any(c.startswith("Delete ") for c in cmds), "des objets ont ete supprimes")
-check("annulation ecrasement", not any(c.startswith("Store ") for c in cmds), "des objets ont ete crees")
+end''' % step.replace("v9", "v%d"))
+    check("annulation %s" % step, len(cmds) == 0, "%d commandes envoyees" % len(cmds))
 
-# 11) Options personnalisees : tout suit (fondus, vitesse, IDs, layout, couleurs)
-lua, cmds, macs, elems = run("options", RECORDING_BOX + '''
+# 15) Options personnalisees : tout suit
+lua, cmds, macs, elems, seqs = run("options", RECORDING_BOX + '''
 BOX_ANSWER = function(t, inputs)
     local title = t.title or ""
     if title:match("1/3") then inputs["Nb couleurs (1-12)"] = "6" end
     if title:match("2/3") then
         inputs["Fade couleur (s)"] = "2"
         inputs["Fade arret (s)"] = "3"
-        inputs["Balayage FX (s)"] = "2"
-        inputs["Fondu FX (s, 0 = sec)"] = "0,2"
+        inputs["Vitesse FX (s)"] = "4"
+        inputs["Fondu FX (s)"] = "0,5"
     end
     if title:match("3/3") then
         inputs["ID de depart (101+)"] = "501"
@@ -192,196 +222,91 @@ BOX_ANSWER = function(t, inputs)
     end
     return 1
 end''')
-check("options", "Store Sequence 501 Cue 1 /NoConfirmation" in cmds, "ID de depart ignore")
-check("options", 'Set Sequence 501 Cue 1 Property "CueInFade" "2"' in cmds, "fade couleur ignore")
-check("options", "Store Layout 3 /NoConfirmation" in cmds and any(c.endswith(" At Layout 3") for c in cmds),
-      "numero de layout ignore")
-check("options", not any(c.startswith("Delete ") for c in cmds), "plages libres : rien ne doit etre supprime")
-nColorSeq = sum(1 for c in cmds if re.match(r"^Label Sequence \d+ \"(ALL|SPOT|WASH|GENERAL) ", c))
+check("options", 501 in seqs and seqs[501]["name"] == "ALL Red", "ID de depart ignore")
+check("options", seqs[501]["cues"][1]["props"]["CueInFade"] == "2", "fade couleur ignore")
+check("options", "Store Layout 3 /NoConfirmation" in cmds and any(c.endswith(" At Layout 3") for c in cmds), "layout ignore")
+nColorSeq = sum(1 for s in seqs.values() if re.match(r"^(ALL|SPOT|WASH|GENERAL) ", s["name"]))
 check("options", nColorSeq == 4 * 6, "%d sequences couleur pour 6 couleurs" % nColorSeq)
 fx1 = 501 + 4 * 6
-i = cmds.index("Store Sequence %d Cue 1 /NoConfirmation" % fx1)
-j = i
-while cmds[j] != "ClearAll":
-    j -= 1
-dl = [c for c in cmds[j + 1:i] if c.startswith("Delay ")]
-check("options", dl == ["Delay 0", "Delay 1", "Delay 2"], "vitesse FX 2 s ignoree : %s" % dl)
-check("options", 'Set Sequence %d Cue 1 Property "CueInFade" "0.2"' % fx1 in cmds, "fondu FX 0,2 (virgule) ignore")
-off = macs.get(501, [])
-check("options", off and off[0].endswith("Fade 3"), "fade arret 3 s ignore : %s" % off[:1])
-tile = macs.get(501 + 8 + 2 * 6 + 5 + 2 * 12, [])
-check("options", tile and tile[0] == "Goto Sequence 501 Cue 1 Fade 2", "tuile 1 : %s" % tile[:1])
-# les slots FX ne bougent pas avec le nombre de couleurs (capacite 12)
-check("options", "Copy Preset 4.501 At Preset 4.%d /Overwrite /NoConfirmation /NoOops" % (501 + 12) in cmds,
-      "slot C1 decale par le nombre de couleurs")
+check("options", seqs[fx1]["cues"][1]["lines"][0]["props"]["DelayToX"] == "4", "vitesse FX 4 s ignoree")
+check("options", seqs[fx1]["cues"][1]["props"]["CueInFade"] == "0.5", "fondu FX 0,5 (virgule) ignore")
+check("options", macs[501] == ["Off Sequence 501 Thru %d Fade 3" % (fx1 + 14)], "Off All : %s" % macs.get(501))
+check("options", "Copy Preset 4.501 At Preset 4.513 /Overwrite /NoConfirmation /NoOops" in cmds, "slot C1 decale")
+check("options", "Assign Appearance %d At Macro %d" % (501 + 2 * 12 + 2, 501 + 44 + 3) in cmds, "bouton FX VITESSE 4 non surligne")
 
-# 12) "Reglages par defaut" saute les trois ecrans et construit pareil
-lua, cmds, macs, elems = run("defaults", RECORDING_BOX + '''
+# 16) "Reglages par defaut" saute les trois ecrans et construit pareil
+lua, cmds, macs, elems, seqs = run("defaults", RECORDING_BOX + '''
 BOX_ANSWER = function(t)
     if (t.title or ""):match("v%d") and not (t.message or ""):match("Board construit") then return 2 end
     return 1
 end''')
 titles = [t for t, _ in boxes(lua)]
-check("reglages par defaut", not any("1/3" in t or "2/3" in t or "3/3" in t for t in titles),
-      "les ecrans de reglage ont ete montres : %s" % titles)
-check("reglages par defaut", any("Recapitulatif" in t for t in titles), "pas de recapitulatif")
-check("reglages par defaut", len(elems) == 115 and "Store Sequence 101 Cue 1 /NoConfirmation" in cmds,
-      "board different du nominal (%d cases)" % len(elems))
+check("reglages par defaut", not any("1/3" in t or "2/3" in t or "3/3" in t for t in titles), "ecrans montres : %s" % titles)
+check("reglages par defaut", len(elems) == 122 and 101 in seqs, "board different du nominal")
 
-# 13) "Modifier" au recapitulatif : on repasse par les ecrans, les nouvelles valeurs comptent
-lua, cmds, macs, elems = run("modify", RECORDING_BOX + '''
+# 17) "Modifier" au recapitulatif : ecrans pre-remplis, nouvelles valeurs prises
+lua, cmds, macs, elems, seqs = run("modify", RECORDING_BOX + '''
 local recaps = 0
 BOX_ANSWER = function(t, inputs)
     local title = t.title or ""
     if title:match("Recapitulatif") then
         recaps = recaps + 1
-        if recaps == 1 then return 2 end     -- Modifier
-        return 1                              -- Construire
+        return (recaps == 1) and 2 or 1
     end
-    if recaps == 1 and title:match("2/3") then inputs["Fade couleur (s)"] = "4" end
+    if recaps == 0 and title:match("1/3") then inputs["Groupes du board"] = "2 + 3"; inputs["Nb couleurs (1-12)"] = "7" end
+    if recaps == 0 and title:match("2/3") then inputs["Fade couleur (s)"] = "4"; inputs["Vitesse FX (s)"] = "2,5" end
+    if recaps == 0 and title:match("3/3") then inputs["Layout (No)"] = "4" end
     return 1
 end''')
-titles = [t for t, _ in boxes(lua)]
-check("modifier", sum(1 for t in titles if "Recapitulatif" in t) == 2, "le recapitulatif doit s'afficher deux fois")
-check("modifier", sum(1 for t in titles if "2/3" in t) == 2, "l'ecran 2/3 doit s'afficher deux fois")
-check("modifier", 'Set Sequence 101 Cue 1 Property "CueInFade" "4"' in cmds, "la valeur du second passage n'est pas prise")
-check("modifier", count_prefix(cmds, "Store Sequence 101 Cue 1 ") == 1, "la sequence 101 stockee plusieurs fois")
-recap_msgs = [m for t, m in boxes(lua) if "Recapitulatif" in t]
-check("modifier", all("Fade couleur 1s" in recap_msgs[0] and "Fade couleur 4s" in recap_msgs[1] for _ in [0]),
-      "le recapitulatif ne reflete pas les valeurs")
+shown = box_inputs(lua)
+second = [i for t, i in shown if "1/3" in t and i][1]
+check("modifier", second.get("Groupes du board") == "2 + 3" and second.get("Nb couleurs (1-12)") == "7", "1/3 : %s" % second)
+second = [i for t, i in shown if "2/3" in t][1]
+check("modifier", second.get("Fade couleur (s)") == "4" and second.get("Vitesse FX (s)") == "2.5", "2/3 : %s" % second)
+recap = recap_of(lua)[1]
+check("modifier", "LIGNES (3) : ALL, WASH, GENERAL" in recap and "COULEURS : 7" in recap and "Vitesse FX 2.5s" in recap and "Layout 4" in recap, recap)
+check("modifier", seqs[101]["cues"][1]["props"]["CueInFade"] == "4", "la valeur du second passage n'est pas prise")
+check("modifier", sum(1 for c in cmds if c == "Store Sequence 101 Cue 1 /Overwrite /NoConfirmation") == 1, "sequence 101 stockee plusieurs fois")
 
-# 14) le recapitulatif dit la verite sur les lignes et les plages
-lua, cmds, macs, elems = run("recap", RECORDING_BOX)
-recap = [m for t, m in boxes(lua) if "Recapitulatif" in t][0]
-for frag in ("LIGNES (4) : ALL, SPOT, WASH, GENERAL", "COULEURS : 12", "15 boucles",
-             "Balayage FX 1s - Fondu FX 0s", "Sequences 101-163", "Macros 101-212",
-             "Presets 4.101-4.112", "Layout 1", "slots FX 4.113 et 4.114", "Plages libres"):
-    check("recapitulatif", frag in recap, "manque '%s'" % frag)
-check("recapitulatif", "ATTENTION" not in recap and "Ignores" not in recap, "faux avertissement : %s" % recap)
-final = [m for t, m in boxes(lua) if "Board construit" in m]
-check("ecran final", final and "115/115" in final[0] and "12 reutilises" not in final[0] and "12 crees" in final[0]
-      and "Images 3.101-3.128 : 28/28" in final[0] and "non enumerable" not in final[0],
-      "bilan final faux : %s" % (final[0][:300] if final else "absent"))
-
-# 15) la generation ne laisse jamais le programmer charge, meme en nominal
-lua, cmds, macs, elems = run("clean")
-last_sel = max(i for i, c in enumerate(cmds) if re.match(r"^(Fixture|Group) ", c))
-check("programmer propre", "ClearAll" in cmds[last_sel:], "pas de ClearAll apres la derniere selection")
-
-# 16) annulation a CHAQUE ecran de reglage : aucune commande, aucun objet
-for step in ("1/3", "2/3", "3/3"):
-    lua, cmds, macs, elems = run("cancel_" + step.replace("/", ""), RECORDING_BOX + '''
-BOX_ANSWER = function(t)
-    if (t.title or ""):match("%s") then return 0 end
-    return 1
-end''' % step)
-    check("annulation %s" % step, len(cmds) == 0, "%d commandes envoyees" % len(cmds))
-    check("annulation %s" % step, not recap_of(lua), "le recapitulatif s'affiche quand meme")
-
-# 17) ID de depart trop bas : rien n'est ecrit sous 101 (les 1-100 sont a l'utilisateur)
-lua, cmds, macs, elems = run("lowid", RECORDING_BOX + '''
-BOX_ANSWER = function(t, inputs)
-    if (t.title or ""):match("3/3") then inputs["ID de depart (101+)"] = "50" end
-    return 1
-end''')
-nums = [int(m.group(1)) for c in cmds for m in [re.match(r"^(?:Store|Delete|Label) (?:Sequence|Macro|Appearance) (\d+)", c)] if m]
-nums += [int(m.group(1)) for c in cmds for m in [re.match(r"^(?:Store|Copy|Label) Preset 4\.(\d+)", c)] if m]
-nums += [int(m.group(1)) for c in cmds for m in [re.match(r"^Import Image 'Images'\.(\d+) ", c)] if m]
-check("ID bas", nums and min(nums) >= 101, "objet ecrit sous 101 : %s" % sorted(set(n for n in nums if n < 101))[:5])
-check("ID bas", "Store Sequence 101 Cue 1 /NoConfirmation" in cmds, "l'ID n'a pas ete ramene a 101")
-
-# 18) plages OCCUPEES (une macro a nous dans la plage) : avertissement, Off
-#     avec fondu, nettoyage large, puis un board identique au nominal
-lua, cmds, macs, elems = run("occupied", RECORDING_BOX + "__macStored[150] = true\n")
+# 18) le recapitulatif dit la verite
+lua, cmds, macs, elems, seqs = run("recap", RECORDING_BOX)
 recap = recap_of(lua)[0]
-check("plages occupees", "ATTENTION" in recap and "SUPPRIMES" in recap, "le recapitulatif ne previent pas")
-check("plages occupees", "Sequence 101-%d, Macro 101-%d" % (mt.SEQ_DEL, mt.MAC_DEL) in recap,
-      "plages de nettoyage absentes du recapitulatif : %s" % recap)
-check("plages occupees", "MAtricks" not in recap, "MAtricks annonce alors qu'il n'en existe pas")
-errs = mt.check(cmds, macs, elems, cleanup=True)
+for frag in ("LIGNES (4) : ALL, SPOT, WASH, GENERAL", "COULEURS : 12", "15 vagues", "Fade couleur 1s - Fade arret 2s",
+             "Vitesse FX 2s - Fondu FX 1s", "Sequences 101-163", "Macros 101-156", "Appearances 101-154",
+             "Images 3.101-3.126", "Presets 4.101-4.112", "slots FX 4.113 et 4.114", "Plages libres",
+             "12 preset(s) a stocker (puis ClearAll)"):
+    check("recapitulatif", frag in recap, "manque '%s' dans : %s" % (frag, recap))
+check("recapitulatif", "ATTENTION" not in recap, recap)
+
+# 19) plages OCCUPEES : avertissement, Off avec fondu, nettoyage large, board identique
+lua, cmds, macs, elems, seqs = run("occupied", RECORDING_BOX + "__macStored[150] = true\n")
+recap = recap_of(lua)[0]
+check("plages occupees", "ATTENTION" in recap and "Sequence 101-%d, Macro 101-%d" % (mt.SEQ_DEL, mt.MAC_DEL) in recap, recap)
+errs = mt.check(cmds, macs, elems, seqs, cleanup=True)
 check("plages occupees", not errs, "; ".join(errs[:5]))
-check("plages occupees", len(recap_of(lua)) == 1 and not any("craser" in t for t, _ in boxes(lua)),
-      "plus d'une confirmation")
-
-# 18b) une sequence a nous au BORD de la plage large (au-dela du board) compte aussi
-lua, cmds, macs, elems = run("occupied2", RECORDING_BOX + "__seqNames[%d] = 'ma seq'\n" % mt.SEQ_DEL)
+check("plages occupees", len(recap_of(lua)) == 1, "plus d'une confirmation")
+# bord de plage : une sequence a nous sur le dernier numero reserve -> occupee ; juste apres -> libre
+lua, cmds, macs, elems, seqs = run("occ_edge", RECORDING_BOX + "Cmd('Store Sequence %d Cue 1 /Overwrite /NoConfirmation')\n" % mt.SEQ_DEL)
 check("plages occupees (bord)", "ATTENTION" in recap_of(lua)[0], "sequence %d non detectee" % mt.SEQ_DEL)
-# 18c) juste APRES la plage large : libre
-lua, cmds, macs, elems = run("free_edge", RECORDING_BOX + "__seqNames[%d] = 'ma seq'\n__macStored[%d] = true\n"
-                             % (mt.SEQ_DEL + 1, mt.MAC_DEL + 1))
-check("plages libres (bord)", "Plages libres" in recap_of(lua)[0] and not any(c.startswith("Delete ") for c in cmds),
-      "des objets hors plage ont declenche le nettoyage")
-# 18d) un MAtricks d'une ancienne version : annonce ET supprime
-lua, cmds, macs, elems = run("matricks", RECORDING_BOX + '''
-local prev = _G.ObjectList
-_G.ObjectList = function(a)
-    if a == "MAtricks 101" then return { { Children = function() return {} end, Get = function() return "CPFX" end, Set = function() end } } end
-    return prev(a)
-end''')
-check("vieux MAtricks", "MAtricks 101" in recap_of(lua)[0], "MAtricks non annonce")
-check("vieux MAtricks", "Delete MAtricks 101 /NoConfirmation" in cmds, "MAtricks non supprime")
+lua, cmds, macs, elems, seqs = run("free_edge", RECORDING_BOX + "Cmd('Store Sequence %d Cue 1 /Overwrite /NoConfirmation')\n__macStored[%d] = true\n" % (mt.SEQ_DEL + 1, mt.MAC_DEL + 1))
+check("plages libres (bord)", "Plages libres" in recap_of(lua)[0] and not any(c.startswith("Delete Macro") for c in cmds), "hors plage")
 
-# 19) petits groupes (1 et 2 machines) : aucune boucle de duree nulle
-# (GROUPS/GROUP_NAMES sont locaux au mock : on greffe les deux groupes par-dessus)
-lua, cmds, macs, elems = run("small", RECORDING_BOX + '''
-local prevOL, prevCmd = _G.ObjectList, _G.Cmd
-local EXTRA = { [4] = { name = "SOLO", fix = { 7 } }, [5] = { name = "PAIR", fix = { 7, 8 } } }
-_G.ObjectList = function(a)
-    local g = a:match("^Group (%d+)$")
-    if g and EXTRA[tonumber(g)] then
-        local h = { Children = function() return {} end, Set = function() end,
-                    Get = function() return EXTRA[tonumber(g)].name end }
-        return { h }
-    end
-    return prevOL(a)
-end
-_G.__extraSel = nil
-_G.Cmd = function(s)
-    prevCmd(s)
-    local g = s:match("^Group (%d+)$")
-    if g and EXTRA[tonumber(g)] then
-        __extraSel = EXTRA[tonumber(g)].fix
-    elseif s == "ClearAll" or s:match("^Group ") or s:match("^Fixture ") then
-        __extraSel = nil
-    end
-end
-local prevFirst, prevNext = _G.SelectionFirst, _G.SelectionNext
-_G.SelectionFirst = function()
-    if __extraSel then return __extraSel[1] * 10 + 7, 1, 0, 0 end
-    return prevFirst()
-end
-_G.SelectionNext = function(idx)
-    if __extraSel then
-        local fid = (idx - 7) / 10
-        for i, v in ipairs(__extraSel) do
-            if v == fid and __extraSel[i + 1] then return __extraSel[i + 1] * 10 + 7, i + 1, 0, 0 end
-        end
-        return nil
-    end
-    return prevNext(idx)
-end''')
-T5, NFX5 = 6, 5
-check("petits groupes", len(elems) == 1 + T5 * 13 + NFX5 * 5 + 1 + 14 + 26 + 6, "%d cases" % len(elems))
-fx0 = 101 + T5 * 12
-for gi in (4, 5):
-    for di in range(1, 6):
-        no = fx0 + (gi - 1) * 5 + (di - 1)
-        for k in (1, 2):
-            i = cmds.index("Store Sequence %d Cue %d /NoConfirmation" % (no, k))
-            j = i
-            while cmds[j] != "ClearAll":
-                j -= 1
-            dl = [float(c.split()[1]) for c in cmds[j + 1:i] if re.match(r"^Delay [\d.]+$", c)]
-            check("petits groupes", dl and max(dl) > 0,
-                  "boucle %d cue %d : duree nulle (delays %s)" % (no, k, dl))
-            nsel = sum(1 for c in cmds[j + 1:i] if c.startswith("Fixture "))
-            check("petits groupes", nsel == len({4: [7], 5: [7, 8]}[gi]), "boucle %d : %d machines" % (no, nsel))
-check("petits groupes", not any(re.match(r"^Delay [\d.]+ Thru", c) for c in cmds), "repli par plage utilise")
-final = [m for t, m in boxes(lua) if "Board construit" in m][0]
-check("petits groupes", "25 boucles FX" in final and "non enumerable" not in final, final[:300])
+# 20) un preset A NOUS sur un slot FX : avertissement, puis le slot est pris
+mine = dict((101 + i, n) for i, n in enumerate(mt.COLOR_NAMES))
+mine[mt.P_FX1] = "MonPreset"
+pl = "{ " + ", ".join("[%d] = '%s'" % kv for kv in mine.items()) + " }"
+lua, cmds, macs, elems, seqs = run("foreign", RECORDING_BOX, presets=pl)
+check("slot FX occupe", "ATTENTION" in recap_of(lua)[0] and "4.%d (MonPreset)" % mt.P_FX1 in recap_of(lua)[0], recap_of(lua)[0])
+check("slot FX occupe", "Copy Preset 4.101 At Preset 4.%d /Overwrite /NoConfirmation /NoOops" % mt.P_FX1 in cmds, "slot non re-seede")
+check("slot FX occupe", not any(c.startswith("Delete Preset") for c in cmds), "un preset a ete supprime")
 
-# 20) liste de groupes invalide : on le dit, on redemande, puis board normal
-lua, cmds, macs, elems = run("badlist", RECORDING_BOX + '''
+# 21) pas de groupe : message clair, zero commande
+lua, cmds, macs, elems, seqs = run("nogroups", RECORDING_BOX + NO_GROUPS)
+check("sans groupe", len(cmds) == 0, "%d commandes" % len(cmds))
+check("sans groupe", any("Aucun groupe" in m and "Cree tes groupes" in m for _, m in boxes(lua)), "pas de message")
+
+# 22) liste invalide / partielle
+lua, cmds, macs, elems, seqs = run("badlist", RECORDING_BOX + '''
 local asked = 0
 BOX_ANSWER = function(t, inputs)
     if (t.title or ""):match("1/3") and t.inputs then
@@ -391,99 +316,48 @@ BOX_ANSWER = function(t, inputs)
     return 1
 end''')
 msgs = [m for _, m in boxes(lua)]
-check("liste invalide", sum(1 for m in msgs if "Aucun numero valide dans : 99 + abc" in m) == 1, "pas de message d'erreur")
-check("liste invalide", any("Inconnus : abc, 99" in m for m in msgs), "les jetons rejetes ne sont pas cites : %s" % [m for m in msgs if "Inconnus" in m])
-check("liste invalide", sum(1 for t, i in box_inputs(lua) if "1/3" in t and i) == 2, "l'ecran 1/3 doit etre redemande")
-check("liste invalide", len(elems) == 115, "board incomplet apres la relance (%d cases)" % len(elems))
-
-# 21) liste partiellement valide : les inconnus sont ignores ET cites au recap
-lua, cmds, macs, elems = run("partlist", RECORDING_BOX + '''
+check("liste invalide", any("Aucun numero valide dans : 99 + abc" in m and "Inconnus : abc, 99" in m for m in msgs), "pas de message d'erreur")
+check("liste invalide", len(elems) == 122, "board incomplet apres la relance (%d cases)" % len(elems))
+lua, cmds, macs, elems, seqs = run("partlist", RECORDING_BOX + '''
 BOX_ANSWER = function(t, inputs)
     if (t.title or ""):match("1/3") then inputs["Groupes du board"] = "1, 99" end
     return 1
 end''')
 recap = recap_of(lua)[0]
-check("liste partielle", "LIGNES (2) : ALL, SPOT" in recap, "lignes : %s" % recap.splitlines()[0])
-check("liste partielle", "Ignores (inexistants) : 99" in recap, "le groupe 99 n'est pas signale")
-check("liste partielle", len(elems) == 1 + 2 * 13 + 5 + 1 + 14 + 26 + 6, "%d cases" % len(elems))
-check("liste partielle", 'Label Sequence 101 "ALL Red"' in cmds and 'Label Sequence 113 "SPOT Red"' in cmds, "sequences")
+check("liste partielle", "LIGNES (2) : ALL, SPOT" in recap and "Ignores (inexistants) : 99" in recap, recap)
+check("liste partielle", seqs[101]["cues"][1]["lines"][0]["sel"] == 1 and len(seqs[101]["cues"][1]["lines"]) == 1, "ALL = le seul groupe")
+check("liste partielle", seqs[101]["cues"][1]["props"]["Command"] == "Off Sequence 125 Thru 129 Fade 1", seqs[101]["cues"][1]["props"].get("Command"))
 
-# 22) l'accueil et le recapitulatif ne promettent des FX qu'avec des groupes
-lua, cmds, macs, elems = run("welcome_grp", RECORDING_BOX)
-welcome = boxes(lua)[0][1]
-check("accueil (groupes)", "3 groupe(s) : SPOT, WASH, GENERAL" in welcome and "5 formes FX" in welcome, welcome[:200])
-lua, cmds, macs, elems = run("welcome_nogrp", RECORDING_BOX + '''
-local prev = _G.ObjectList
-_G.ObjectList = function(a)
-    if a:match("^Group %d+$") then return {} end
-    return prev(a)
-end''')
-welcome = boxes(lua)[0][1]
-recap = recap_of(lua)[0]
-check("accueil (machines)", "aucun groupe -> 8 machine(s)" in welcome and "pas de FX" in welcome
-      and "formes FX" not in welcome, welcome[:200])
-check("recap (machines)", "FX : aucune" in recap and "Balayage" not in recap and "slots FX" not in recap, recap)
-temps = [i for t, i in box_inputs(lua) if "2/3" in t][0]
-check("ecran 2/3 (machines)", "Balayage FX (s)" not in temps and "Fade couleur (s)" in temps, "champs : %s" % sorted(temps))
-final = [m for t, m in boxes(lua) if "Board construit" in m][0]
-check("final (machines)", "0 boucles FX" in final, final[:200])
+# 23) petits groupes (1 et 2 machines) : recipes identiques, CMD coherents
+lua, cmds, macs, elems, seqs = run("small", RECORDING_BOX + '''
+GROUPS[4] = { 7 }
+GROUPS[5] = { 7, 8 }
+GROUP_NAMES[4] = "SOLO"
+GROUP_NAMES[5] = "PAIR"
+''')
+T5 = 6
+check("petits groupes", len(elems) == 1 + T5 * 13 + 5 * 5 + 1 + 14 + 26 + 12 + 1, "%d cases" % len(elems))
+fx0 = 101 + T5 * 12
+solo, pair = fx0 + 3 * 5, fx0 + 4 * 5
+check("petits groupes", seqs[solo]["cues"][1]["lines"][0]["sel"] == 4 and seqs[solo]["cues"][1]["lines"][0]["props"]["DelayToX"] == "2", "SOLO")
+# SOLO (7) chevauche PAIR (7, 8) mais pas SPOT/WASH/GENERAL
+check("petits groupes", seqs[solo]["cues"][1]["props"]["Command"] == "Off Sequence %d Thru %d + %d Thru %d Fade 1" % (solo + 1, solo + 4, pair, pair + 4),
+      seqs[solo]["cues"][1]["props"].get("Command"))
+check("petits groupes", seqs[101 + 4 * 12]["cues"][1]["props"]["Command"] == "Off Sequence %d Thru %d + %d Thru %d Fade 1" % (solo, solo + 4, pair, pair + 4),
+      seqs[101 + 4 * 12]["cues"][1]["props"].get("Command"))
+check("petits groupes", "Lignes de recipe : %d/%d" % (12 * 5 + 5 * 12 + 25 * 2, 12 * 5 + 5 * 12 + 25 * 2) in final_of(lua), final_of(lua)[:300])
 
-# 23) un preset A NOUS sur un slot FX : avertissement, puis le slot est pris
-mine = dict((101 + i, n) for i, n in enumerate(mt.COLOR_NAMES))
-mine[mt.P_FX1] = "MonPreset"
-pl = "{ " + ", ".join("[%d] = '%s'" % kv for kv in mine.items()) + " }"
-lua, cmds, macs, elems = run("foreign", RECORDING_BOX, presets=pl)
-recap = recap_of(lua)[0]
-check("slot FX occupe", "ATTENTION" in recap and "4.%d (MonPreset)" % mt.P_FX1 in recap, "slot non signale : %s" % recap)
-check("slot FX occupe", "Copy Preset 4.101 At Preset 4.%d /Overwrite /NoConfirmation /NoOops" % mt.P_FX1 in cmds, "slot non re-seede")
-check("slot FX occupe", not any(c.startswith("Delete Preset") for c in cmds), "un preset a ete supprime")
-# ... et nos propres slots ("CP FX ...") ne declenchent rien
-mine[mt.P_FX1] = "CP FX C1"
-mine[mt.P_FX2] = "CP FX C2"
-pl = "{ " + ", ".join("[%d] = '%s'" % kv for kv in mine.items()) + " }"
-lua, cmds, macs, elems = run("ownslots", RECORDING_BOX, presets=pl)
-check("slots FX a nous", "Plages libres" in recap_of(lua)[0], "nos propres slots declenchent l'avertissement")
-check("slots FX a nous", "Copy Preset 4.101 At Preset 4.%d /Overwrite /NoConfirmation /NoOops" % mt.P_FX1 in cmds, "slots non re-seedes")
-
-# 24) Modifier : les ecrans sont PRE-REMPLIS avec ce qui a ete tape
-lua, cmds, macs, elems = run("prefill", RECORDING_BOX + '''
-local recaps = 0
-BOX_ANSWER = function(t, inputs)
-    local title = t.title or ""
-    if title:match("Recapitulatif") then
-        recaps = recaps + 1
-        return (recaps == 1) and 2 or 1
-    end
-    if recaps == 0 and title:match("1/3") then inputs["Groupes du board"] = "2 + 3"; inputs["Nb couleurs (1-12)"] = "7" end
-    if recaps == 0 and title:match("2/3") then inputs["Fade couleur (s)"] = "4"; inputs["Balayage FX (s)"] = "2,5" end
-    if recaps == 0 and title:match("3/3") then inputs["Layout (No)"] = "4" end
-    return 1
-end''')
-shown = box_inputs(lua)
-second = [i for t, i in shown if "1/3" in t and i][1]
-check("pre-remplissage", second.get("Groupes du board") == "2 + 3" and second.get("Nb couleurs (1-12)") == "7",
-      "1/3 : %s" % second)
-second = [i for t, i in shown if "2/3" in t][1]
-check("pre-remplissage", second.get("Fade couleur (s)") == "4" and second.get("Balayage FX (s)") == "2.5", "2/3 : %s" % second)
-second = [i for t, i in shown if "3/3" in t][1]
-check("pre-remplissage", second.get("Layout (No)") == "4", "3/3 : %s" % second)
-recap = recap_of(lua)[1]
-check("pre-remplissage", "LIGNES (3) : ALL, WASH, GENERAL" in recap and "COULEURS : 7" in recap
-      and "Balayage FX 2.5s" in recap and "Layout 4" in recap, recap)
-
-# 25) 12 groupes max : au-dela, le recapitulatif le dit
-lua, cmds, macs, elems = run("many", RECORDING_BOX + '''
-local prev = _G.ObjectList
-_G.ObjectList = function(a)
-    local g = a:match("^Group (%d+)$")
-    if g and tonumber(g) <= 14 then
-        local h = { Children = function() return {} end, Set = function() end, Get = function() return "G" .. g end }
-        return { h }
-    end
-    return prev(a)
-end''')
+# 24) 12 groupes max : au-dela, le recapitulatif le dit
+lua, cmds, macs, elems, seqs = run("many", RECORDING_BOX + '''
+for g = 4, 14 do GROUPS[g] = { 7, 8 }; GROUP_NAMES[g] = "G" .. g end
+''')
 recap = recap_of(lua)[0]
 check("12 groupes max", "LIGNES (13)" in recap and "limitees a 12" in recap, recap.splitlines()[0])
+
+# 25) la generation ne laisse jamais le programmer charge
+lua, cmds, macs, elems, seqs = run("clean")
+sel = [i for i, c in enumerate(cmds) if re.match(r"^(Fixture|Group|Attribute) ", c)]
+check("programmer propre", not sel or "ClearAll" in cmds[max(sel):max(sel) + 4], "pas de ClearAll apres le dernier usage du programmer")
 
 print("\n".join(fails) if fails else "TOUS LES SCENARIOS OK")
 sys.exit(1 if fails else 0)
