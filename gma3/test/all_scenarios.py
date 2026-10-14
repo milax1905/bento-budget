@@ -144,7 +144,7 @@ errs = mt.check(cmds, macs, elems, seqs, vars_, groups=mt.groups_of(lua))
 check("bilan", not errs, "; ".join(errs[:5]))
 # un seul ecran avant la construction, puis le bilan
 titles = [t for t, _ in boxes(lua)]
-check("un seul ecran", len(titles) == 2 and titles[0] == "Color Picker LIVE  v9.2" and "Bilan" in titles[1], titles)
+check("un seul ecran", len(titles) == 2 and titles[0].startswith("Color Picker LIVE  v9.2") and "Bilan" in titles[1], titles)
 
 # 3) le groupe union : Store Group refuse -> pas de demi-ALL, ligne retiree, MODE DEGRADE
 lua, cmds, macs, elems, seqs, vars_ = run("unionrefused", RECORDING_BOX + '''REFUSE['^Store Group'] = "Illegal command"\n''')

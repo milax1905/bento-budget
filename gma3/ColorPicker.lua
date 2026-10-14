@@ -59,7 +59,7 @@
 -- Version affichee dans les dialogues : elle dit quelle version du .lua
 -- la console a REELLEMENT chargee (apres un ReloadAllPlugins). Les objets
 -- deja stockes dans le show, eux, datent de la derniere GENERATION.
-local VERSION = "9.2"
+local VERSION = "9.2.1"
 
 -- Palette en ordre ARC-EN-CIEL (blanc en dernier).
 local COLORS = {
@@ -184,6 +184,12 @@ local function zlibStored(raw)
 end
 
 local TILE_SIZE, TILE_THICK, TILE_RADIUS, TILE_FILLA = 96, 9, 18, 26
+
+-- Retrait d'une SEQUENCE posee sous sa macro neon : l'aplat de la
+-- sequence est un carre, le contour de l'image est un rectangle arrondi.
+-- Rentree de l'epaisseur du trait (+1 px) de chaque cote, la couleur ne
+-- remplit que l'interieur du neon ; ses coins passent sous le trait opaque.
+local TILE_INSET = (TILE_THICK + 1) / TILE_SIZE
 
 -- filled=false : contour plein + centre presque transparent (repos).
 -- filled=true  : pave arrondi entierement rempli (actif).
@@ -933,6 +939,12 @@ local function fillLayout(layoutNo, elements)
         local py = math.max(0, math.floor((e.y or 0) * stepY))
         local pw = math.max(1, math.floor(w * pitchX + (w - 1) * pitchX * GAP))
         local ph = math.max(1, math.floor(h * pitchY + (h - 1) * pitchY * GAP))
+        -- Retrait (fraction du cote) : la case est rentree de chaque cote.
+        if e.inset then
+            local ins = math.floor(math.min(pw, ph) * e.inset)
+            px, py = px + ins, py + ins
+            pw, ph = math.max(1, pw - 2 * ins), math.max(1, ph - 2 * ins)
+        end
         -- Deux chemins possibles selon le build : il suffit que l'UN des
         -- deux passe pour que la case soit posee.
         local okA = pcall(function()
@@ -2507,7 +2519,7 @@ local function main(display_handle)
             if not (t.isAll and allMode == "none") then
                 for ci = 1, nColors do
                     local sq = seqColor(ti, ci)
-                    elements[#elements + 1] = { object = "Sequence " .. sq, x = 2 + ci - 1, y = row, clean = true }
+                    elements[#elements + 1] = { object = "Sequence " .. sq, x = 2 + ci - 1, y = row, clean = true, inset = TILE_INSET }
                     elements[#elements + 1] = { object = "Macro " .. macTile(sq), x = 2 + ci - 1, y = row, clean = true }
                 end
             end
@@ -2515,7 +2527,8 @@ local function main(display_handle)
             if gi then
                 for di, dir in ipairs(FX_DIRS) do
                     local sq = seqFx(gi, di)
-                    elements[#elements + 1] = { object = "Sequence " .. sq, x = 2 + nColors + di - 1, y = row, clean = true }
+                    elements[#elements + 1] = { object = "Sequence " .. sq, x = 2 + nColors + di - 1, y = row,
+                        clean = true, inset = TILE_INSET }
                     elements[#elements + 1] = {
                         object = "Macro " .. macTile(sq), x = 2 + nColors + di - 1, y = row,
                         clean = true, text = dir.lbl, textSize = 14,
@@ -2531,9 +2544,13 @@ local function main(display_handle)
         elements[#elements + 1] = { object = "Macro " .. macOffAll,   x = 0, y = yOff, w = fullW, noicon = true }
         elements[#elements + 1] = { object = "Macro " .. macFadeCHdr, x = 0, y = fy1, w = 2, noicon = true }
         elements[#elements + 1] = { object = "Macro " .. macFadeOHdr, x = 0, y = fy2, w = 2, noicon = true }
+        -- Texte personnalise : la console retire les points des NOMS d'objets
+        -- ("0.5s" s'afficherait "05s"), pas des textes de case.
         for vi = 1, nV do
-            elements[#elements + 1] = { object = "Macro " .. (macFadeC0 + vi - 1), x = 2 + vi - 1, y = fy1, noicon = true }
-            elements[#elements + 1] = { object = "Macro " .. (macFadeO0 + vi - 1), x = 2 + vi - 1, y = fy2, noicon = true }
+            elements[#elements + 1] = { object = "Macro " .. (macFadeC0 + vi - 1), x = 2 + vi - 1, y = fy1,
+                noicon = true, text = secLabel(FADE_VALUES[vi]), textSize = 14 }
+            elements[#elements + 1] = { object = "Macro " .. (macFadeO0 + vi - 1), x = 2 + vi - 1, y = fy2,
+                noicon = true, text = fmtNum(FADE_VALUES[vi]), textSize = 14 }
         end
         local fy3 = fy2 + 1.3
         local fy4 = fy3 + 1

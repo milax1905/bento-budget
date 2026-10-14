@@ -1400,6 +1400,13 @@ def check(cmds, macs, elems, seqs, vars_=None, cleanup=False, groups=None):
         if o.startswith("Sequence "):
             if i + 1 >= len(objs) or objs[i + 1] != "Macro %d" % mac_tile(int(o.split()[1])):
                 E("%s n'est pas recouverte par sa macro neon (suivant : %s)" % (o, objs[i + 1] if i + 1 < len(objs) else None)); break
+            # la sequence est RENTREE sous sa macro : la couleur ne remplit que l'interieur du contour
+            sq, mc = elems[i], elems[i + 1]
+            ins_x, ins_y = sq.posx - mc.posx, sq.posy - mc.posy
+            if not (ins_x == ins_y and 0.08 * mc.positionw <= ins_x <= 0.15 * mc.positionw
+                    and sq.positionw == mc.positionw - 2 * ins_x and sq.positionh == mc.positionh - 2 * ins_y):
+                E("%s : retrait sous sa macro %s (seq %s,%s %sx%s ; macro %s,%s %sx%s)" % (
+                    o, objs[i + 1], sq.posx, sq.posy, sq.positionw, sq.positionh, mc.posx, mc.posy, mc.positionw, mc.positionh)); break
     if any(o.startswith("Macro ") and (int(o.split()[1]) > M_END or M_SET_END < int(o.split()[1]) < M_TILE0) for o in objs):
         E("une macro hors plage est posee sur le layout")
     go = [e for e in elems if getattr(e, "__set_Action", None) == "Go+"]
@@ -1409,7 +1416,9 @@ def check(cmds, macs, elems, seqs, vars_=None, cleanup=False, groups=None):
     if len(inert) != NFX:
         E("en-tetes de groupe inertes : %d != %d" % (len(inert), NFX))
     texts = [(getattr(e, "__object", ""), getattr(e, "__set_CustomTextText", None)) for e in elems]
-    if sorted(t for _, t in texts if t) != sorted(DIR_LABELS * NFX + [v + "s" for v in FX_SWEEPS] + [v + "s" for v in FX_FADES]):
+    want_texts = (DIR_LABELS * NFX + [v + "s" for v in FX_SWEEPS] + [v + "s" for v in FX_FADES]
+                  + [v + "s" for v in FADE_VALUES] + list(FADE_VALUES))
+    if sorted(t for _, t in texts if t) != sorted(want_texts):
         E("textes des cases : %s" % sorted(t for _, t in texts if t))
     if any(o.startswith("Sequence ") and t for o, t in texts):
         E("texte pose sur une sequence (cachee sous sa macro) au lieu de la macro neon")

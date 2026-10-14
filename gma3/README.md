@@ -41,7 +41,9 @@ chaque propriété relue, probes à la génération, bilan par état le plus gra
 - La **macro** `Sequence + 56` (une ligne : `Go+ Sequence N`) est posée **juste après**, à la même
   place : elle se dessine par-dessus. Son appearance (`CP <Couleur> Dim`) porte l'image contour néon
   (fond alpha 0, centre à 10 %) : au repos on voit le contour sur le fond sombre ; quand la séquence
-  joue, sa couleur pleine remplit le contour. La tape touche la macro → une ligne → réaction immédiate.
+  joue, sa couleur pleine remplit le contour. La séquence est **rentrée** de l'épaisseur du trait de
+  chaque côté (`TILE_INSET`) : son aplat carré ne déborde jamais du contour arrondi. La tape touche la
+  macro → une ligne → réaction immédiate.
   Les tuiles FX ont un contour violet (`CP FX Dim`) et le texte de la forme (`J>C`…).
 - `OffWhenOverridden = Yes` partout : la couleur tapée prend toutes les valeurs de l'ancienne
   couleur de la ligne → elle s'éteint seule (LTP). `WrapAround` : retaper une tuile allumée = la
