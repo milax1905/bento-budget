@@ -1354,8 +1354,12 @@ def check(cmds, macs, elems, seqs, vars_=None, cleanup=False, groups=None):
         if (w, h) != (96, 96):
             E("PNG %s : taille %dx%d" % (f, w, h))
         centre, corner, edge = px[48][48], px[0][0], px[48][3]
-        if corner[3] != 0 or edge[3] != 255:
-            E("PNG %s : coin / contour" % f)
+        if edge[3] != 255:
+            E("PNG %s : contour" % f)
+        if f.startswith("cp_neon") and corner != (65, 69, 73, 255):
+            E("PNG %s : les coins d'un contour doivent etre OPAQUES couleur du fond (vu %s)" % (f, corner))
+        if f.startswith("cp_fill") and corner[3] != 0:
+            E("PNG %s : les coins d'un pave plein doivent etre transparents" % f)
         if f.startswith("cp_fill") and centre[3] != 255:
             E("PNG %s : tuile pleine au centre transparent" % f)
         if f.startswith("cp_neon") and centre[3] >= 64:
@@ -1400,12 +1404,11 @@ def check(cmds, macs, elems, seqs, vars_=None, cleanup=False, groups=None):
         if o.startswith("Sequence "):
             if i + 1 >= len(objs) or objs[i + 1] != "Macro %d" % mac_tile(int(o.split()[1])):
                 E("%s n'est pas recouverte par sa macro neon (suivant : %s)" % (o, objs[i + 1] if i + 1 < len(objs) else None)); break
-            # la sequence est RENTREE sous sa macro : la couleur ne remplit que l'interieur du contour
+            # la macro neon recouvre EXACTEMENT sa sequence (la console ne laisse pas reduire une case :
+            # ce sont les coins opaques de l'image qui masquent le carre de la sequence)
             sq, mc = elems[i], elems[i + 1]
-            ins_x, ins_y = sq.posx - mc.posx, sq.posy - mc.posy
-            if not (ins_x == ins_y and 0.08 * mc.positionw <= ins_x <= 0.15 * mc.positionw
-                    and sq.positionw == mc.positionw - 2 * ins_x and sq.positionh == mc.positionh - 2 * ins_y):
-                E("%s : retrait sous sa macro %s (seq %s,%s %sx%s ; macro %s,%s %sx%s)" % (
+            if (sq.posx, sq.posy, sq.positionw, sq.positionh) != (mc.posx, mc.posy, mc.positionw, mc.positionh):
+                E("%s : pas exactement sous sa macro %s (seq %s,%s %sx%s ; macro %s,%s %sx%s)" % (
                     o, objs[i + 1], sq.posx, sq.posy, sq.positionw, sq.positionh, mc.posx, mc.posy, mc.positionw, mc.positionh)); break
     if any(o.startswith("Macro ") and (int(o.split()[1]) > M_END or M_SET_END < int(o.split()[1]) < M_TILE0) for o in objs):
         E("une macro hors plage est posee sur le layout")

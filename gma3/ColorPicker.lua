@@ -59,7 +59,7 @@
 -- Version affichee dans les dialogues : elle dit quelle version du .lua
 -- la console a REELLEMENT chargee (apres un ReloadAllPlugins). Les objets
 -- deja stockes dans le show, eux, datent de la derniere GENERATION.
-local VERSION = "9.2.1"
+local VERSION = "9.2.2"
 
 -- Palette en ordre ARC-EN-CIEL (blanc en dernier).
 local COLORS = {
@@ -185,14 +185,17 @@ end
 
 local TILE_SIZE, TILE_THICK, TILE_RADIUS, TILE_FILLA = 96, 9, 18, 26
 
--- Retrait d'une SEQUENCE posee sous sa macro neon : l'aplat de la
--- sequence est un carre, le contour de l'image est un rectangle arrondi.
--- Rentree de l'epaisseur du trait (+1 px) de chaque cote, la couleur ne
--- remplit que l'interieur du neon ; ses coins passent sous le trait opaque.
-local TILE_INSET = (TILE_THICK + 1) / TILE_SIZE
+-- Couleur de fond du layout (gris MA3 par defaut). Les COINS exterieurs
+-- de l'image contour sont peints de cette couleur, OPAQUES : la sequence
+-- posee sous la macro neon est un rectangle plein, ses coins carres
+-- passeraient sinon a travers les coins arrondis transparents (tuile
+-- allumee = carre au lieu d'un pave arrondi). La console ne laisse pas
+-- reduire la taille d'une case : c'est l'image qui masque.
+local LAYOUT_BG = { 65, 69, 73 }
 
--- filled=false : contour plein + centre presque transparent (repos).
--- filled=true  : pave arrondi entierement rempli (actif).
+-- filled=false : contour plein + centre presque transparent (repos), et
+--                coins exterieurs OPAQUES couleur du fond (voir LAYOUT_BG).
+-- filled=true  : pave arrondi entierement rempli (actif), coins transparents.
 local function tilePng(r, g, b, filled)
     local function inside(x, y, inset)
         local lo, hi = inset, TILE_SIZE - 1 - inset
@@ -207,12 +210,14 @@ local function tilePng(r, g, b, filled)
     for y = 0, TILE_SIZE - 1 do
         local row = { "\0" }
         for x = 0, TILE_SIZE - 1 do
-            local a
-            if not inside(x, y, 0) then a = 0
-            elseif filled then a = 255
-            elseif not inside(x, y, TILE_THICK) then a = 255
-            else a = TILE_FILLA end
-            row[#row + 1] = string.char(r, g, b, a)
+            if not inside(x, y, 0) then
+                if filled then row[#row + 1] = string.char(r, g, b, 0)
+                else row[#row + 1] = string.char(LAYOUT_BG[1], LAYOUT_BG[2], LAYOUT_BG[3], 255) end
+            elseif filled or not inside(x, y, TILE_THICK) then
+                row[#row + 1] = string.char(r, g, b, 255)
+            else
+                row[#row + 1] = string.char(r, g, b, TILE_FILLA)
+            end
         end
         rows[#rows + 1] = table.concat(row)
     end
@@ -939,12 +944,6 @@ local function fillLayout(layoutNo, elements)
         local py = math.max(0, math.floor((e.y or 0) * stepY))
         local pw = math.max(1, math.floor(w * pitchX + (w - 1) * pitchX * GAP))
         local ph = math.max(1, math.floor(h * pitchY + (h - 1) * pitchY * GAP))
-        -- Retrait (fraction du cote) : la case est rentree de chaque cote.
-        if e.inset then
-            local ins = math.floor(math.min(pw, ph) * e.inset)
-            px, py = px + ins, py + ins
-            pw, ph = math.max(1, pw - 2 * ins), math.max(1, ph - 2 * ins)
-        end
         -- Deux chemins possibles selon le build : il suffit que l'UN des
         -- deux passe pour que la case soit posee.
         local okA = pcall(function()
@@ -2476,9 +2475,10 @@ local function main(display_handle)
 
         -- 5f) TUILES NEON : une macro d'UNE ligne ("Go+ Sequence N") par
         --     sequence, posee PAR-DESSUS elle dans le layout. Son appearance
-        --     porte l'image contour (centre quasi transparent) : la
-        --     sequence sombre ou pleine se voit a travers -> contour au
-        --     repos, tuile pleine quand elle joue. La tape touche la macro.
+        --     porte l'image contour (centre quasi transparent, coins
+        --     exterieurs opaques couleur du fond) : la sequence sombre ou
+        --     pleine se voit a travers, en pave arrondi -> contour au repos,
+        --     tuile pleine quand elle joue. La tape touche la macro.
         for ti, t in ipairs(targets) do
             if not (t.isAll and allMode == "none") then
                 for ci, c in ipairs(colors) do
@@ -2519,7 +2519,7 @@ local function main(display_handle)
             if not (t.isAll and allMode == "none") then
                 for ci = 1, nColors do
                     local sq = seqColor(ti, ci)
-                    elements[#elements + 1] = { object = "Sequence " .. sq, x = 2 + ci - 1, y = row, clean = true, inset = TILE_INSET }
+                    elements[#elements + 1] = { object = "Sequence " .. sq, x = 2 + ci - 1, y = row, clean = true }
                     elements[#elements + 1] = { object = "Macro " .. macTile(sq), x = 2 + ci - 1, y = row, clean = true }
                 end
             end
@@ -2527,8 +2527,7 @@ local function main(display_handle)
             if gi then
                 for di, dir in ipairs(FX_DIRS) do
                     local sq = seqFx(gi, di)
-                    elements[#elements + 1] = { object = "Sequence " .. sq, x = 2 + nColors + di - 1, y = row,
-                        clean = true, inset = TILE_INSET }
+                    elements[#elements + 1] = { object = "Sequence " .. sq, x = 2 + nColors + di - 1, y = row, clean = true }
                     elements[#elements + 1] = {
                         object = "Macro " .. macTile(sq), x = 2 + nColors + di - 1, y = row,
                         clean = true, text = dir.lbl, textSize = 14,

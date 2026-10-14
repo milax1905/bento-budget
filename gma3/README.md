@@ -41,8 +41,9 @@ chaque propriété relue, probes à la génération, bilan par état le plus gra
 - La **macro** `Sequence + 56` (une ligne : `Go+ Sequence N`) est posée **juste après**, à la même
   place : elle se dessine par-dessus. Son appearance (`CP <Couleur> Dim`) porte l'image contour néon
   (fond alpha 0, centre à 10 %) : au repos on voit le contour sur le fond sombre ; quand la séquence
-  joue, sa couleur pleine remplit le contour. La séquence est **rentrée** de l'épaisseur du trait de
-  chaque côté (`TILE_INSET`) : son aplat carré ne déborde jamais du contour arrondi. La tape touche la
+  joue, sa couleur pleine remplit le contour. Les **coins extérieurs** de l'image sont peints de la
+  couleur de fond du layout, opaques (`LAYOUT_BG`, le gris MA3 par défaut) : l'aplat carré de la séquence
+  reste caché dans les coins, la tuile allumée est un pavé arrondi comme une pastille. La tape touche la
   macro → une ligne → réaction immédiate.
   Les tuiles FX ont un contour violet (`CP FX Dim`) et le texte de la forme (`J>C`…).
 - `OffWhenOverridden = Yes` partout : la couleur tapée prend toutes les valeurs de l'ancienne
@@ -249,7 +250,8 @@ l'effet de chaque bouton pressé.
 
 - Tap d'une case : propriété **`Action`** (`Go+`, `None`). Un en-tête de groupe reste inerte.
 - Un layout ne rend l'**image** d'une appearance que pour une macro → la séquence porte l'aplat,
-  la macro posée par-dessus porte le contour néon.
+  la macro posée par-dessus porte le contour néon. La console ne laisse pas **réduire** la taille d'une
+  case d'une colonne (la position bouge, pas la taille) → les coins de l'image masquent le carré.
 - Sur onPC 2.5.0.3, ni `Assign … Part 0.2` ni `part:Acquire("StandardRecipe")` ne créent une
   2ᵉ ligne de recipe → groupe union.
 - `Goto` n'enchaîne pas les cues `Follow` ; seul `Go+` le fait.
