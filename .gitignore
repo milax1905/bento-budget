@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+gma3/test/_imglib/
+gma3/test/_img_*/
+__pycache__/
+gma3/test/_mut/
