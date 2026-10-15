@@ -1354,12 +1354,8 @@ def check(cmds, macs, elems, seqs, vars_=None, cleanup=False, groups=None):
         if (w, h) != (96, 96):
             E("PNG %s : taille %dx%d" % (f, w, h))
         centre, corner, edge = px[48][48], px[0][0], px[48][3]
-        if edge[3] != 255:
-            E("PNG %s : contour" % f)
-        if f.startswith("cp_neon") and corner != (65, 69, 73, 255):
-            E("PNG %s : les coins d'un contour doivent etre OPAQUES couleur du fond (vu %s)" % (f, corner))
-        if f.startswith("cp_fill") and corner[3] != 0:
-            E("PNG %s : les coins d'un pave plein doivent etre transparents" % f)
+        if corner[3] != 0 or edge[3] != 255:
+            E("PNG %s : coin / contour" % f)
         if f.startswith("cp_fill") and centre[3] != 255:
             E("PNG %s : tuile pleine au centre transparent" % f)
         if f.startswith("cp_neon") and centre[3] >= 64:
@@ -1404,12 +1400,13 @@ def check(cmds, macs, elems, seqs, vars_=None, cleanup=False, groups=None):
         if o.startswith("Sequence "):
             if i + 1 >= len(objs) or objs[i + 1] != "Macro %d" % mac_tile(int(o.split()[1])):
                 E("%s n'est pas recouverte par sa macro neon (suivant : %s)" % (o, objs[i + 1] if i + 1 < len(objs) else None)); break
-            # la macro neon recouvre EXACTEMENT sa sequence (la console ne laisse pas reduire une case :
-            # ce sont les coins opaques de l'image qui masquent le carre de la sequence)
+            # la sequence est CALEE sous la zone image de sa macro (SEQ_UNDER_MACRO, fractions du pas natif P)
             sq, mc = elems[i], elems[i + 1]
-            if (sq.posx, sq.posy, sq.positionw, sq.positionh) != (mc.posx, mc.posy, mc.positionw, mc.positionh):
-                E("%s : pas exactement sous sa macro %s (seq %s,%s %sx%s ; macro %s,%s %sx%s)" % (
-                    o, objs[i + 1], sq.posx, sq.posy, sq.positionw, sq.positionh, mc.posx, mc.posy, mc.positionw, mc.positionh)); break
+            P = mc.positionw
+            want = (mc.posx + int(P * 6 / 42), mc.posy + int(P * 3 / 42), int(P * 30 / 42), int(P * 29 / 42))
+            if (sq.posx, sq.posy, sq.positionw, sq.positionh) != want:
+                E("%s : calage sous sa macro %s (seq %s,%s %sx%s ; attendu %s)" % (
+                    o, objs[i + 1], sq.posx, sq.posy, sq.positionw, sq.positionh, want)); break
     if any(o.startswith("Macro ") and (int(o.split()[1]) > M_END or M_SET_END < int(o.split()[1]) < M_TILE0) for o in objs):
         E("une macro hors plage est posee sur le layout")
     go = [e for e in elems if getattr(e, "__set_Action", None) == "Go+"]

@@ -41,10 +41,11 @@ chaque propriété relue, probes à la génération, bilan par état le plus gra
 - La **macro** `Sequence + 56` (une ligne : `Go+ Sequence N`) est posée **juste après**, à la même
   place : elle se dessine par-dessus. Son appearance (`CP <Couleur> Dim`) porte l'image contour néon
   (fond alpha 0, centre à 10 %) : au repos on voit le contour sur le fond sombre ; quand la séquence
-  joue, sa couleur pleine remplit le contour. Les **coins extérieurs** de l'image sont peints de la
-  couleur de fond du layout, opaques (`LAYOUT_BG`, le gris MA3 par défaut) : l'aplat carré de la séquence
-  reste caché dans les coins, la tuile allumée est un pavé arrondi comme une pastille. La tape touche la
-  macro → une ligne → réaction immédiate.
+  joue, sa couleur pleine remplit le contour. La console dessine l'image d'une macro dans une zone plus
+  petite que sa case (mesuré : 30×29 px dans une case tracée de 38, décalée de 4 px sur les côtés et 8 px
+  en haut) : la séquence est donc demandée plus petite et décalée (`SEQ_UNDER_MACRO`, fractions du pas
+  natif) pour tomber 2 px à l'intérieur du trait. Sa couleur ne déborde jamais du contour. La tape touche
+  la macro → une ligne → réaction immédiate.
   Les tuiles FX ont un contour violet (`CP FX Dim`) et le texte de la forme (`J>C`…).
 - `OffWhenOverridden = Yes` partout : la couleur tapée prend toutes les valeurs de l'ancienne
   couleur de la ligne → elle s'éteint seule (LTP). `WrapAround` : retaper une tuile allumée = la
@@ -250,8 +251,9 @@ l'effet de chaque bouton pressé.
 
 - Tap d'une case : propriété **`Action`** (`Go+`, `None`). Un en-tête de groupe reste inerte.
 - Un layout ne rend l'**image** d'une appearance que pour une macro → la séquence porte l'aplat,
-  la macro posée par-dessus porte le contour néon. La console ne laisse pas **réduire** la taille d'une
-  case d'une colonne (la position bouge, pas la taille) → les coins de l'image masquent le carré.
+  la macro posée par-dessus porte le contour néon. Une case demandée de P×P est tracée avec 2 px de marge ;
+  l'image d'une macro (mode Bar) occupe la case tracée moins 4 px à gauche et à droite, 8 px en haut, 1 px
+  en bas → la séquence est calée sur cette zone (`SEQ_UNDER_MACRO`).
 - Sur onPC 2.5.0.3, ni `Assign … Part 0.2` ni `part:Acquire("StandardRecipe")` ne créent une
   2ᵉ ligne de recipe → groupe union.
 - `Goto` n'enchaîne pas les cues `Follow` ; seul `Go+` le fait.
