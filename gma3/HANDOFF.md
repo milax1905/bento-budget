@@ -165,7 +165,7 @@ fait ~3 px à l'écran). Les coins de l'image contour sont redevenus transparent
   `STORE_TRIG_AS_GO`, `MACRO_SUB_OK`, `REFUSE[motif] = réponse`, `DELETE_LEAVES`) ; `Go+ Macro` exécute
   les lignes avec substitution ; `check()` vérifie tout (recipes, CMD, macros exactes, layout, calage,
   variables, images). `python3 gma3/test/mock_test.py` ; `all_scenarios.py` (37 scénarios, boutons
-  pressés) ; `mutations.py` (32 bugs réintroduits, 32 attrapés sur la v9.2.2 ; relancer sur la 9.2.3).
+  pressés) ; `mutations.py` (32 bugs réintroduits, 32 attrapés sur la v9.2.3).
   Les cibles de mutation sont des chaînes exactes du source : les mettre à jour quand on édite ces lignes.
 
 ## 7. Faits console établis (ne pas re-découvrir)
